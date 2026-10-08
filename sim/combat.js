@@ -1,13 +1,13 @@
 import { Bodies, Body, Composite, Query, CAT, MASK } from './physics.js';
-import { weightOf } from './fighters.js';
+import { weightOf, formOf } from './fighters.js';
 import { pose, subtree, PARENT, PIVOT_FROM_CENTER, HALF_H } from '../render/rig.js';
 import { S, rnd, clamp } from '../engine/const.js';
 import { knockdown, pushActor, buildRagdoll, ragdollOf, breakJoint, gib, makeLimb, releaseHeld, pinLimb, addStump } from './ragdoll.js';
 import { extendedAttack, dropWeapon, damageProp } from './props.js';
-import { hazardBulletHit } from './hazards.js';
-import { MOVES, HEAVY, AIR, NOX_AIR, JUMA_AIR, BEAST_AIR, NATURAL, comboOf } from './moves.js';
+import { hazardBulletHit, breakLamp } from './hazards.js';
+import { MOVES, HEAVY, AIR, NOX_AIR, JUMA_AIR, BEAST_AIR, TITAN_AIR, NATURAL, comboOf, airOf } from './moves.js';
 import { MAP } from './map.js';
-import { startSpecial, startStomp, throwCarried, startChase, endAct, startPlunge, startSwarm, startBite, startCharge } from './specials.js';
+import { startSpecial, startStomp, throwCarried, startChase, endAct, startPlunge, startSwarm, startBite, startCharge, feedRage } from './specials.js';
 import { isMelee, WEAPON_INFO, weaponSlot } from './weapons.js';
 
 export const KIND = {
@@ -76,35 +76,39 @@ export function attack(g, a) {
   const prey = a.chase && g.time < a.chase.until ? g.actor(a.chase.id) : null;
   if (prey && !prey.dead && !prey.knocked && !prey.ground) { a.chase = null; startChase(g, a, prey); return; }
   let id;
-  const list = comboOf(a), chaining = a.comboTimer > 0 && (list.includes(a.attackKind) || ['shadowCut', 'scytheDash', 'batStrike', 'jBolt'].includes(a.attackKind));
+  const list = comboOf(a), chaining = a.comboTimer > 0 && (list.includes(a.attackKind) || ['shadowCut', 'scytheDash', 'batStrike', 'jBolt', 'jCross'].includes(a.attackKind));
   const nox = a.type === 4, side = a.input.left || a.input.right, tapped = g.time - (a.dirTap ?? -9) < 0.2;
-  const juma = a.type === 3, beast = juma && a.form === 'beast';
+  const juma = a.type === 3, small = juma && !a.form, titan = juma && a.form === 'titan';
   if (a.dashStrike) id = 'dashAtk';
   else if (!a.ground && !a.climbing) {
-    const air = nox ? NOX_AIR : beast ? BEAST_AIR : juma ? JUMA_AIR : AIR, prev = air.indexOf(a.attackKind);
+    const air = airOf(a), prev = air.indexOf(a.attackKind);
     id = air[a.comboTimer > 0 && prev >= 0 ? (prev + 1) % air.length : 0];
   } else if (a.input.down) {
-    // Juma: small, S+J bites (out of a string it rakes low); the beast shakes the whole floor.
-    if (beast) id = 'bQuake';
+    // Juma: small, S+J bites (out of a string it rakes low); the beast shakes the whole floor; the
+    // titan heaves it, or hammers a downed rival into it.
+    if (titan) id = downedNear(g, a) ? 'tPound' : 'tQuake';
+    else if (juma && a.form) id = 'bQuake';
     else if (juma && !chaining && !(a.biteCd > 0)) { startBite(g, a); return; }
     else id = nox && chaining ? 'scytheSweep' : nox && downedNear(g, a) ? 'execute' : HEAVY[a.type];
   }
   else if (nox && !chaining && side) { a.face = a.input.right ? 1 : -1; id = 'shadowCut'; }
   else if (nox && chaining && side && tapped && a.attackKind !== 'scytheDash') { a.face = a.input.right ? 1 : -1; id = 'scytheDash'; }
-  else if (juma && !chaining && side && !(beast && a.chargeCd > 0)) {
+  // Juma with a direction: small, the lightning pounce (a fresh tap inside the string: the cross);
+  // the beast and the titan charge, out of the string too.
+  else if (juma && side && (!chaining || tapped) && !(a.form && a.chargeCd > 0) && !(small && chaining && a.attackKind === 'jCross')) {
     a.face = a.input.right ? 1 : -1;
-    if (beast) { startCharge(g, a); return; }
-    id = 'jBolt';
+    if (a.form) { startCharge(g, a); return; }
+    id = chaining ? 'jCross' : 'jBolt';
   }
   else {
     // The shadow cut opens the string at the reap; the phantom reap picks it up at the guillotine;
-    // Juma's pounce goes on into the storm of claws.
-    a.combo = chaining ? (a.attackKind === 'shadowCut' || a.attackKind === 'batStrike' ? 1 : a.attackKind === 'scytheDash' ? 3 : a.attackKind === 'jBolt' ? 2 : (a.combo + 1) % list.length) : 0;
+    // Juma's pounce goes on into the storm of claws, her cross into the rake.
+    a.combo = chaining ? (a.attackKind === 'shadowCut' || a.attackKind === 'batStrike' ? 1 : a.attackKind === 'scytheDash' ? 3 : a.attackKind === 'jBolt' ? 2 : a.attackKind === 'jCross' ? 3 : (a.combo + 1) % list.length) : 0;
     id = list[a.combo];
   }
   // Nox's strings never drop to distance: a rival knocked out of reach of the next blow is chased
   // as a swarm of bats, and that blow lands as he forms beside them. Small Juma pounces after them.
-  if ((nox || (juma && !beast)) && a.comboTimer > 0) {
+  if ((nox || small) && a.comboTimer > 0) {
     const prey = comboPrey(g, a), mv = MOVES[id];
     if (prey && mv && !mv.blink && !mv.execute && !mv.pass && (Math.abs(prey.x - a.x) > mv.range + 12 || Math.abs(prey.y - a.y) > mv.band + 14) && Math.hypot(prey.x - a.x, prey.y - a.y) < (nox ? 300 : 190)) {
       if (nox) startSwarm(g, a, { prey, then: id });
@@ -194,6 +198,7 @@ function reaches(a, mv, x, y, pad = 0, low = !!mv.low) {
 export function strike(g, a, mv, i) {
   if (mv.blink) { blinkCut(g, a, mv); return; }
   if (mv.execute) { execute(g, a, mv); return; }
+  if (mv.pound) { pound(g, a, mv, i); return; }
   const face = a.face;
   const kind = mv.kind === 'air' ? NATURAL[a.type] : mv.kind;
   const counter = a.counter > 0;
@@ -208,7 +213,7 @@ export function strike(g, a, mv, i) {
   for (const b of g.enemies(a)) {
     if (b.knocked) continue;
     if (b.iframes > 0 && b.dodge > 0 && !b.perfect && Math.abs(b.x - a.x) < mv.range + 30 && Math.abs(b.y - a.y) < mv.band + 12) { perfectDodge(g, b); continue; }
-    if (!reaches(a, mv, b.x, b.y)) continue;
+    if (!reaches(a, mv, b.x, b.y, bulk(b))) continue;
     // A blade swung into one held up in guard toward it can glance off. Only a real guard
     // counts: someone attacking or just recovering from an attack takes the hit (trades land).
     const guarding = !(b.attack > 0) && !(b.attackCd > 0) && !b.act;
@@ -224,7 +229,7 @@ export function strike(g, a, mv, i) {
     if (!dealt) continue;
     struck = true;
     first ||= b;
-    // Small Juma's fury: every claw that lands brings the beast closer.
+    // Small Juma's claws wind her up: every one that lands brings the frenzy closer.
     if (juma && !a.form) a.abilityCd = Math.max(0, a.abilityCd - 0.3);
     if (mv.lift && !b.knocked && !b.dead) { Body.setVelocity(b.body, { x: side * kb[0], y: kb[1] / weightOf(b) }); b.stun = Math.max(b.stun, 0.55); b.float = 0.5; }
     if (mv.launch && last && !b.knocked && !b.dead) {
@@ -246,7 +251,7 @@ export function strike(g, a, mv, i) {
     }
     // Air strings rise with the rival: the attacker is carried along with them, so the next hit connects.
     if (vamp && !a.ground && NOX_AIR.includes(a.attackKind)) shove(a, a.body.velocity.x * 0.5, Math.min(a.body.velocity.y, -0.6));
-    else if (!vamp && !a.ground && !mv.spike && !b.knocked && (AIR.includes(a.attackKind) || JUMA_AIR.includes(a.attackKind))) shove(a, b.body.velocity.x * 0.9, Math.min(a.body.velocity.y, b.body.velocity.y));
+    else if (!vamp && !a.ground && !mv.spike && !b.knocked && (AIR.includes(a.attackKind) || JUMA_AIR.includes(a.attackKind) || BEAST_AIR.includes(a.attackKind) || TITAN_AIR.includes(a.attackKind))) shove(a, b.body.velocity.x * 0.9, Math.min(a.body.velocity.y, b.body.velocity.y));
     if (mv.drain) {
       a.hp = Math.min(a.maxHp, a.hp + dealt * (mv.drain + feast * 0.1));
       g.fx(last ? 'drainStream' : 'drain', { x: b.x, y: b.y - 6, tx: a.x + a.face * 3, ty: a.y - 6 });
@@ -262,6 +267,8 @@ export function strike(g, a, mv, i) {
   // The guillotine's blade bites into the floor ahead.
   if (mv.floor && a.ground) { g.fx('scytheFloor', { x: a.x + face * mv.floor, y: a.y + 16, face }); g.shake = Math.max(g.shake, 4); g.sound('chop', a.x); }
   if (mv.shock) struck = shockwave(g, a, mv, amount, hit) || struck;
+  // The beast's clap: a ring of force out of her paws shoves everyone else back.
+  if (mv.clap) clapRing(g, a, hit);
   // The beast's blows crack the floor where they land and throw up rocks.
   if (mv.quake && a.ground) { g.fx('quake', { x: a.x + face * (mv.shockAt ?? Math.round(mv.range * 0.6)), y: a.y + 16, p: mv.quake, face }); g.shake = Math.max(g.shake, 2 + mv.quake); }
   // Through and past: turn back to the rival for the rest of the string.
@@ -282,11 +289,13 @@ export function strike(g, a, mv, i) {
     } else if ((kind === 'claw' || kind === 'katana' || kind === 'axe' || kind === 'blade') && gore === 2 && l.ragdoll && l.part !== 'body' && owner?.dead) cutCorpse(g, l);
   }
   for (const p of [...g.props]) {
-    if (p.held || p.fixed || !reaches(a, mv, p.x, p.y, 8)) continue;
-    damageProp(g, p, amount, a.id);
-    if (g.props.includes(p) && !p.body.isStatic) Body.setVelocity(p.body, { x: face * kb[0] * 0.9, y: kb[1] - 1 });
+    if (p.held || p.fixed || !reaches(a, mv, p.x, p.y, 8 + (mv.wreck ? 8 : 0))) continue;
+    damageProp(g, p, amount * (mv.wreck || 1), a.id);
+    if (g.props.includes(p) && !p.body.isStatic) Body.setVelocity(p.body, { x: face * Math.max(kb[0], mv.wreck ? 8 : 0) * 0.9, y: kb[1] - (mv.wreck ? 4 : 1) });
     struck = true;
   }
+  // The titan's blows tear down the lamps they reach.
+  if (mv.wreck) for (const lamp of g.hz?.lamps || []) if (lamp.on && reaches(a, mv, lamp.body.position.x, lamp.body.position.y, 12)) breakLamp(g, lamp, { vx: face * 25, vy: kb[1] * 2 });
   const finisher = mv.launch || mv.knock || mv.spike || i > 0;
   if (mv.weapon) {
     if (struck) g.sound(kind === 'axe' ? 'chop' : kind === 'hammer' || kind === 'pipe' ? 'thud' : 'slash', a.x);
@@ -297,6 +306,38 @@ export function strike(g, a, mv, i) {
   const fy = mv.flurry ? [-5, 4, -2, 6, -7][i % 5] : 0;
   g.fx('slash', { x: a.x + face * Math.round(mv.range * 0.6), y: a.y + (low ? 12 : mv.launch ? -6 : 2) + fy, face, size: Math.max(18, mv.range * 0.55), kind, fin: finisher ? 1 : 0, color: SLASH[kind] || '#fff', up: mv.launch ? 1 : 0, down: mv.spike ? 1 : 0 });
   if (struck) g.sound(kind === 'claw' ? 'slash' : kind === 'fang' ? 'squish' : kind === 'blood' ? 'blood' : 'punch', a.x);
+}
+
+// The titan is a much bigger target than her body box.
+const bulk = b => (b.form === 'titan' ? 8 : b.form === 'beast' ? 3 : 0);
+
+function clapRing(g, a, already) {
+  const x = a.x + a.face * 18, y = a.y - 4;
+  for (const b of g.enemies(a)) {
+    if (b.dead || b.knocked || already.has(b.id) || Math.abs(b.x - x) > 70 || Math.abs(b.y - y) > 40) continue;
+    const s = Math.sign(b.x - x) || a.face, k = 1 - Math.abs(b.x - x) / 70;
+    damage(g, b, 4 + 4 * k, { x: b.x - s * 4, y: b.y }, a.id, 'sonic', { kb: { x: s * (4 + 5 * k), y: -2 - 2 * k } });
+  }
+  g.fx('clap', { x, y, face: a.face });
+  g.sound('thud', x);
+}
+
+// The titan's pound: a fist hammered down into the nearest downed rival, the floor cracking under
+// them; they stay down while it lasts.
+function pound(g, a, mv, i) {
+  const b = g.enemies(a).filter(b => !b.dead && b.knocked && Math.abs(b.x - a.x) < mv.range + 8 && Math.abs(b.y - a.y) < mv.band + 10)
+    .sort((p, q) => Math.abs(p.x - a.x) - Math.abs(q.x - a.x))[0];
+  const last = i === mv.hits.length - 1, x = b ? b.x : a.x + a.face * 22;
+  g.fx('quake', { x, y: a.y + 16, p: last ? 6 : mv.quake, face: a.face, both: 1 });
+  g.fx('land', { x, y: a.y + 16, p: 1 });
+  g.shake = Math.max(g.shake, last ? 10 : 6);
+  g.sound('thud', x);
+  if (!b) return;
+  const r = ragdollOf(g, b);
+  for (const l of r ? Object.values(r.limbs) : []) Body.setVelocity(l.body, { x: l.body.velocity.x * 0.4, y: last ? -6 : 3 });
+  if (!damage(g, b, mv.dmg[i] ?? mv.dmg[0], { x: b.x, y: b.y }, a.id, mv.kind, { part: 'body', kb: { x: 0, y: 3 }, force: true, lag: mv.lag })) return;
+  b.knock = Math.max(b.knock || 0, 1);
+  if (last) { g.text(b.x, b.y - 30, 'AMASSOU!', '#ff9a3a'); drama(g, 0.25, a, b); }
 }
 
 // A velocity that survives the hitlag freeze the hit just started.
@@ -625,7 +666,9 @@ export function damage(g, a, amount, point, ownerId, kind = 'punch', opts = {}) 
   const cat = KIND[kind] || 'blunt';
   const owner = g.actor(ownerId);
   // Mid-requiem Nox is a blur of blood, and a swarm of bats has nothing to hit: fighters cannot touch him.
-  if ((a.act === 'requiem' || a.act === 'swarm') && owner && owner !== a) return 0;
+  // Neither can they touch Juma tearing into someone in her frenzy, or turning into her next form.
+  if ((a.act === 'requiem' || a.act === 'swarm' || (a.act === 'frenzy' && a.frenzy?.prey != null)) && owner && owner !== a) return 0;
+  if (a.act === 'morph' && owner && owner !== a && !opts.environment && !['crush', 'grind'].includes(kind)) { if (!DOT.has(cat)) g.fx('armor', { x: point.x, y: point.y, a: 0 }); return 0; }
   if ((a.invincible > 0 || a.iframes > 0) && !['grind', 'bleed', 'crush'].includes(cat) && !opts.force) {
     if (a.iframes > 0 && a.dodge > 0 && owner && owner !== a && !DOT.has(cat) && !a.perfect) perfectDodge(g, a);
     return 0;
@@ -636,11 +679,11 @@ export function damage(g, a, amount, point, ownerId, kind = 'punch', opts = {}) 
   }
   if (owner && ownerId !== a.id && owner.team === a.team) return 0;
   if (a.act === 'ball') amount *= 0.5;
-  // Juma's beast takes blows on a thick hide, and does not flinch while she swings, charges or
-  // transforms (super armor); she is still thrown by explosions and crushed by the press.
-  if (a.form === 'beast' && !DOT.has(cat)) amount *= 0.8;
-  if (a.act === 'morph') amount *= 0.5;
-  const tough = ((a.form === 'beast' && (a.attack > 0 || ['charge', 'leap', 'meteor'].includes(a.act))) || a.act === 'morph' || a.act === 'unmorph') && cat !== 'explosion' && !opts.environment && kind !== 'crush' && kind !== 'grind';
+  // Juma's beast and titan take blows on a thick hide. The beast does not flinch while she swings
+  // or charges (super armor); the titan does not flinch at all. Explosions still throw them and
+  // the press still crushes them.
+  if (a.type === 3 && a.form && !DOT.has(cat)) amount *= formOf(a).armor;
+  const tough = ((a.form === 'beast' && (a.attack > 0 || ['charge', 'leap', 'meteor', 'clap', 'crush'].includes(a.act))) || a.form === 'titan' || a.act === 'morph') && cat !== 'explosion' && !opts.environment && kind !== 'crush' && kind !== 'grind';
   if (a.frozen > 0 && (cat === 'blunt' || cat === 'explosion' || cat === 'pierce') && amount >= 14) {
     a.lastHit = ownerId; a.lastHitTime = g.time;
     kill(g, a, ownerId, { kind: 'shatter' });
@@ -658,6 +701,7 @@ export function damage(g, a, amount, point, ownerId, kind = 'punch', opts = {}) 
   if (bone && woundType && (!DOT.has(cat) || Math.random() < 0.15)) addWound(a, bone, point, woundType, amount, opts.dir);
   a.partDmg[part] = (a.partDmg[part] || 0) + amount;
   a.hp -= amount;
+  feedRage(g, a, amount);
   a.hurt = 0.16;
   if (!DOT.has(cat) || ownerId !== a.id) { a.lastHit = ownerId; a.lastHitTime = g.time; }
   a.lastHitKind = kind;

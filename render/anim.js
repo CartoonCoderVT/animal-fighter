@@ -241,6 +241,81 @@ export const FRAMES = {
   // Out of breath at the end of the form: slouched, heaving.
   bTired1: { head: [1, 3, 22.5], body: [0, 2], armF: [1, 2, 0], armB: [0, 2, 5], footF: [3, 0], footB: [-3, 0], tailDeg: 20 },
   bTired2: { head: [1, 4, 33.75], body: [0, 3], armF: [1, 3, 5], armB: [0, 3, 10], footF: [3, 0], footB: [-3, 0], tailDeg: 24 },
+  // Juma, small, more: the cross (two claws crossing as she lunges through) and the frenzy (a flat
+  // dash, then a blur of slashing poses as she goes back and forth through the rival).
+  jCrA: { head: [-1, 2, 11.25], body: [-1, 1], armF: [-2, -2, 150], armB: [-3, 0, 120], footF: [3, 0], footB: [-3, 0], tailDeg: -18 },
+  jCrX: { head: [3, 1, 22.5], body: [3, 1], armF: [5, -2, -150], armB: [4, 2, -40], footF: [5, 0], footB: [-4, -1, 33.75], tailDeg: 22 },
+  jCrI: { head: [4, 2, 22.5], body: [3, 1], armF: [6, 2, -30], armB: [5, -2, -140], footF: [5, 0], footB: [-4, 0, 22.5], front: 'armB', tailDeg: 26 },
+  jFrz1: { head: [3, 1, 22.5], body: [2, 0], armF: [5, -1, -120], armB: [-3, 0, 60], footF: [-2, -1, 50], footB: [-4, -1, 60], tailDeg: 30 },
+  jFrz2: { head: [2, -1, -11.25], body: [1, -1], armF: [4, -3, -160], armB: [3, 1, -40], footF: [2, -2], footB: [-2, -1], front: 'armB', tailDeg: -24 },
+  // The beast's clap: paws flung out wide, then swung in and slammed together on the rival.
+  bClA: { head: [-1, 0, -11.25], body: [-1, 0], armF: [6, -6, -150], armB: [-7, -6, 140], footF: [3, 0], footB: [-3, 0], tailDeg: -16 },
+  bClX: { head: [2, 0, 11.25], body: [1, 0], armF: [7, -4, -100], armB: [4, -5, -70], footF: [4, 0], footB: [-3, 0], tailDeg: 8 },
+  bClI: { head: [3, 1, 22.5], body: [2, 1], armF: [8, -3, -90], armB: [7, -3, -90], footF: [4, 0], footB: [-4, 0], tailDeg: 18 },
+  bAcA: { head: [-1, -1, -11.25], body: [-1, -1], armF: [-5, -4, 130], armB: [3, -2, -80], footF: [1, -2], footB: [-1, -1], tailDeg: -18 },
+  bAcI: { head: [3, 0, 11.25], body: [2, 0], armF: [8, -2, -90], armB: [-3, -2, 70], footF: [1, -2], footB: [-1, -1], tailDeg: 20 },
+  bAcA2: { head: [2, 0], body: [1, 0], armB: [-4, -5, 140], armF: [5, 0, -40], footF: [1, -2], footB: [-1, -1], tailDeg: -10 },
+  bAcI2: { head: [3, 1, 22.5], body: [2, 1], armB: [8, -1, -70], armF: [3, 1, 20], footF: [1, -2], footB: [-1, -1], front: 'armB', tailDeg: 22 },
+  // Juma, the titan. A gorilla's stance: hunched behind the hump, knuckles low, swaying with each
+  // heavy breath; a knuckle-walk at a run.
+  tStance1: { head: [0, 1], armF: [3, 1, -25], armB: [-1, 0, 20], footF: [1, 0], footB: [-1, 0], tailDeg: 6 },
+  tStance2: { head: [0, 2], body: [0, 1], armF: [3, 2, -25], armB: [-1, 1, 20], footF: [1, 0], footB: [-1, 0], tailDeg: 10 },
+  tRun1: { head: [1, 1, 11.25], body: [1, 0], armF: [4, 0, -50], armB: [-3, 0, 40], footF: [3, 0], footB: [-3, -1], tailDeg: 10 },
+  tRunP: { head: [1, 0, 11.25], body: [1, -1], armF: [2, -1, -20], armB: [-1, -1, 10], footF: [0, -1], footB: [0, 0], tailDeg: 4 },
+  tRun2: { head: [1, 1, 11.25], body: [1, 0], armF: [0, 0, 15], armB: [2, 0, -40], footF: [-2, -1], footB: [3, 0], tailDeg: -6 },
+  // The hook: the paw drawn all the way back past the hump, then one sweep across.
+  tHkA1: { head: [-1, 0, -11.25], body: [-1, 0], armF: [-6, -2, 100], armB: [2, 0, -50], footF: [2, 0], footB: [-2, 0], tailDeg: -14 },
+  tHkA2: { head: [-2, 1, -22.5], body: [-2, 1], armF: [-6, -2, 120], armB: [3, 1, -60], footF: [3, 0], footB: [-2, 0], tailDeg: -22 },
+  tHkX: { head: [2, 0, 11.25], body: [2, 0], armF: [4, -2, -110], armB: [-2, 0, 40], footF: [3, 0], footB: [-3, -1, 22.5], tailDeg: 12 },
+  tHkI: { head: [4, 1, 22.5], body: [3, 1], armF: [6, -1, -85], armB: [-4, 0, 50], footF: [4, 0], footB: [-4, 0], tailDeg: 22 },
+  tHkF: { head: [3, 1, 11.25], body: [2, 1], armF: [5, -2, -150], armB: [-3, 0, 40], footF: [4, 0], footB: [-4, 0], tailDeg: 16 },
+  tR: { head: [1, 1], body: [0, 1], armF: [3, 1, -30], armB: [-1, 1, 20], footF: [2, 0], footB: [-2, 0], tailDeg: 8 },
+  // The smash: both fists raised high over the hump, held, then brought down into the floor.
+  tSmA1: { head: [-1, -1, -11.25], body: [-1, -1], armF: [-2, -2, 170], armB: [-4, -1, -175], footF: [2, 0], footB: [-2, 0], tailDeg: -16 },
+  tSmA2: { head: [-2, -1, -22.5], body: [-2, -2], armF: [-3, -3, 175], armB: [-5, -2, -170], footF: [2, -1], footB: [-2, 0], tailDeg: -26 },
+  tSmX: { head: [2, 0, 11.25], body: [1, 0], armF: [4, -3, -130], armB: [2, -2, -120], footF: [3, 0], footB: [-3, 0], tailDeg: 6 },
+  tSmI: { head: [4, 4, 33.75], body: [2, 3], armF: [7, 3, -40], armB: [5, 3, -30], footF: [4, 0], footB: [-4, 0], tailDeg: 22 },
+  tSmF: { head: [3, 4, 22.5], body: [2, 3], armF: [7, 4, -15], armB: [5, 4, -5], footF: [4, 0], footB: [-4, 0], tailDeg: 14 },
+  // The uppercut: down into a crouch, then the whole mass uncoiling upward behind the fist.
+  tUpA1: { head: [0, 3, 11.25], body: [0, 2], armF: [-1, 3, 40], armB: [-2, 2, 20], footF: [4, 0], footB: [-4, 0], tailDeg: -10 },
+  tUpA2: { head: [-1, 5, 22.5], body: [-1, 4], armF: [-2, 4, 60], armB: [-3, 3, 30], footF: [4, 0], footB: [-4, 0], tailDeg: -20 },
+  tUpX: { head: [2, -2, -11.25], body: [1, -2], armF: [4, -3, -165], armB: [-2, -1, 40], footF: [2, -1], footB: [-2, 0], tailDeg: 14 },
+  tUpI: { head: [2, -4, -22.5], body: [1, -4], armF: [3, -5, 180], armB: [-3, -2, 50], footF: [1, -3], footB: [-2, -2, 22.5], tailDeg: 24 },
+  tUpF: { head: [1, -1, -11.25], body: [0, -1], armF: [3, -3, -170], armB: [-1, 0, 30], footF: [2, 0], footB: [-2, 0], tailDeg: 12 },
+  // The cataclysm: up on the toes with both fists high, then down into the floor on both sides.
+  tQkA: { head: [0, -2, -22.5], body: [0, -3], armF: [0, -4, 175], armB: [-3, -3, -175], footF: [2, -1], footB: [-2, -1], tailDeg: -24 },
+  tQkI: { head: [2, 6, 33.75], body: [1, 4], armF: [7, 5, -20], armB: [-4, 5, 20], footF: [5, 0], footB: [-5, 0], tailDeg: 26 },
+  // Pounding a downed rival: one fist and then the other hammered down.
+  tPdA: { head: [1, -1, -11.25], body: [0, -1], armF: [1, -4, 175], armB: [2, 1, -40], footF: [3, 0], footB: [-3, 0], tailDeg: -14 },
+  tPdI: { head: [3, 5, 33.75], body: [2, 4], armF: [8, 5, -25], armB: [3, 2, -50], footF: [4, 0], footB: [-4, 0], tailDeg: 22 },
+  tPdA2: { head: [1, -1, -11.25], body: [0, -1], armB: [-2, -3, 175], armF: [5, 2, -40], footF: [3, 0], footB: [-3, 0], tailDeg: -14 },
+  tPdI2: { head: [3, 5, 33.75], body: [2, 4], armB: [7, 5, -25], armF: [5, 3, -40], footF: [4, 0], footB: [-4, 0], front: 'armB', tailDeg: 22 },
+  // In the air: a backhand that sweeps all around, and both fists hammered down.
+  tAcA: { head: [-1, -1, -11.25], body: [-1, -1], armF: [-5, -2, 110], armB: [3, -2, -70], footF: [1, -2], footB: [-1, -2], tailDeg: -18 },
+  tAcI: { head: [3, 0, 11.25], body: [2, 0], armF: [6, -1, -90], armB: [-4, -2, 70], footF: [1, -2], footB: [-1, -2], tailDeg: 22 },
+  tAsA: { head: [-1, -2, -22.5], body: [-1, -2], armF: [-2, -4, 170], armB: [-4, -3, 175], footF: [1, -3], footB: [-1, -3], tailDeg: -22 },
+  tAsI: { head: [3, 3, 33.75], body: [2, 2], armF: [7, 4, -20], armB: [5, 4, -15], footF: [1, -2], footB: [-1, -2], tailDeg: 24 },
+  // The thunderclap: arms flung wide, then slammed together straight ahead.
+  tClA: { head: [-1, -2, -22.5], body: [-1, -1], armF: [6, -3, -140], armB: [-6, -2, 135], footF: [3, 0], footB: [-3, 0], tailDeg: -22 },
+  tClI: { head: [4, 0, 11.25], body: [3, 0], armF: [7, -2, -90], armB: [6, -2, -90], footF: [5, 0], footB: [-4, 0], tailDeg: 22 },
+  // The crushing grab: the rival held up over her head, then driven into the floor ahead or behind.
+  tGrUp: { head: [0, -1, -22.5], body: [0, -1], armF: [1, -4, 180], armB: [-4, -2, 40], footF: [3, 0], footB: [-3, 0], tailDeg: -12 },
+  tGrF: { head: [4, 4, 33.75], body: [3, 3], armF: [8, 4, -40], armB: [-4, 1, 40], footF: [5, 0], footB: [-4, 0], tailDeg: 24 },
+  tGrB: { head: [-2, 3, -11.25], body: [-2, 2], armF: [-6, 4, 50], armB: [-4, 1, 40], footF: [3, 0], footB: [-5, 0], tailDeg: -20 },
+  // The stampede: head down behind the hump, shoulder first, fists pounding the floor.
+  tChgA: { head: [-1, 4, 22.5], body: [-1, 3], armF: [-1, 3, 30], armB: [-3, 3, 40], footF: [4, 0], footB: [-4, 0], tailDeg: -18 },
+  tChg1: { head: [4, 4, 33.75], body: [3, 3], armF: [5, 3, -70], armB: [2, 1, 40], footF: [4, 0], footB: [-3, -1], tailDeg: 20 },
+  tChg2: { head: [4, 3, 33.75], body: [3, 2], armF: [3, 3, -10], armB: [6, 2, -60], footF: [-2, -1], footB: [3, 0], tailDeg: 14 },
+  tChgHit: { head: [5, 2, 22.5], body: [4, 2], armF: [7, -1, -100], armB: [5, -1, -110], footF: [5, 0], footB: [-5, 0], tailDeg: 24 },
+  // Her roar, arms flung up and wide, jaws open on the sky.
+  tRoar: { head: [1, -3, -33.75], body: [0, -2], armF: [6, -3, -140], armB: [-6, -3, 140], footF: [5, 0], footB: [-5, 0], tailDeg: -26 },
+  tRoar2: { head: [1, -4, -45], body: [0, -2], armF: [6, -4, -150], armB: [-6, -4, 150], footF: [5, 0], footB: [-5, 0], tailDeg: -30 },
+  // Her hero pose on the select screen: hunched low, one fist cocked high, glaring from under the brow.
+  tHero1: { head: [2, 2, 22.5], body: [1, 1], armF: [5, -2, -160], armB: [-2, 1, 30], footF: [3, 0], footB: [-3, 0], tailDeg: 8 },
+  tHero2: { head: [2, 3, 22.5], body: [1, 2], armF: [5, -1, -160], armB: [-2, 2, 30], footF: [3, 0], footB: [-3, 0], tailDeg: 14 },
+  // Swelling into the titan: crouched, both fists on the floor, the body heaving.
+  mHeave1: { head: [1, 4, 33.75], body: [0, 3], armF: [5, 3, -20], armB: [-4, 3, 20], footF: [4, 0], footB: [-4, 0], tailDeg: 24 },
+  mHeave2: { head: [0, 3, 22.5], body: [0, 2], armF: [6, 2, -30], armB: [-5, 2, 30], footF: [4, 0], footB: [-4, 0], tailDeg: -20 },
   // Lola's quick kicks and the rocket kick that launches
   kickA0: { footF: [-1, -1], body: [-1, 0], head: [-1, 0] },
   kickA1: { footF: [4, -3, -90], head: [-1, 0], armF: [-1, -1, 40], armB: [-1, -1, 40] },
@@ -375,7 +450,18 @@ const KEYS = {
   bHammer: [[0, 'bHmA1', 'Angry'], [0.2, 'bHmA2', 'Angry'], [0.4, 'bHmX', 'Open'], [0.48, 'bHmI', 'Open'], [0.68, 'bHmF', 'Angry'], [0.88, 'bSlR', '']],
   bUpper: [[0, 'bUpA1', 'Angry'], [0.2, 'bUpA2', 'Angry'], [0.38, 'bUpX', 'Open'], [0.45, 'bUpI', 'Open'], [0.7, 'bUpF', 'Angry'], [0.9, 'bSlR', '']],
   bQuake: [[0, 'bQkA', 'Angry'], [0.28, 'bSlA2', 'Open'], [0.42, 'bSlX', 'Open'], [0.5, 'bQkI', 'Open'], [0.8, 'bSlF', 'Angry'], [0.92, 'bSlR', '']],
-  bAirSmash: [[0, 'bAsA', 'Angry'], [0.28, 'bSlA2', 'Open'], [0.42, 'bAsI', 'Open']]
+  bAirSmash: [[0, 'bAsA', 'Angry'], [0.28, 'bSlA2', 'Open'], [0.42, 'bAsI', 'Open']],
+  jCross: [[0, 'jCrA', 'Angry'], [0.28, 'jCrX', 'Open'], [0.5, 'jCrI', 'Angry'], [0.86, 'jSwR', '']],
+  bClap: [[0, 'bClA', 'Angry'], [0.3, 'bClA', 'Open'], [0.44, 'bClX', 'Open'], [0.5, 'bClI', 'Open'], [0.8, 'bSlR', '']],
+  bAirClaw: [[0, 'bAcA', 'Angry'], [0.24, 'bAcI', 'Open'], [0.46, 'bAcA2', 'Angry'], [0.56, 'bAcI2', 'Open']],
+  // The titan: wind-ups held even longer, and impact poses that sink into the floor.
+  tHook: [[0, 'tHkA1', 'Angry'], [0.2, 'tHkA2', 'Angry'], [0.42, 'tHkX', 'Open'], [0.5, 'tHkI', 'Open'], [0.72, 'tHkF', 'Angry'], [0.9, 'tR', '']],
+  tSmash: [[0, 'tSmA1', 'Angry'], [0.18, 'tSmA2', 'Open'], [0.42, 'tSmX', 'Open'], [0.5, 'tSmI', 'Open'], [0.72, 'tSmF', 'Angry'], [0.9, 'tR', '']],
+  tUpper: [[0, 'tUpA1', 'Angry'], [0.2, 'tUpA2', 'Angry'], [0.38, 'tUpX', 'Open'], [0.46, 'tUpI', 'Open'], [0.72, 'tUpF', 'Angry'], [0.9, 'tR', '']],
+  tQuake: [[0, 'tQkA', 'Angry'], [0.3, 'tQkA', 'Open'], [0.44, 'tSmX', 'Open'], [0.5, 'tQkI', 'Open'], [0.82, 'tSmF', 'Angry'], [0.94, 'tR', '']],
+  tPound: [[0, 'tPdA', 'Angry'], [0.24, 'tPdI', 'Open'], [0.38, 'tPdA2', 'Angry'], [0.5, 'tPdI2', 'Open'], [0.64, 'tPdA', 'Angry'], [0.76, 'tPdI', 'Open'], [0.92, 'tR', '']],
+  tAirClaw: [[0, 'tAcA', 'Angry'], [0.36, 'tAcI', 'Open']],
+  tAirSmash: [[0, 'tAsA', 'Angry'], [0.32, 'tAsA', 'Open'], [0.42, 'tAsI', 'Open']]
 };
 export const keyFor = (kind, p) => { const k = KEYS[kind]; if (!k) return null; let r = k[0]; for (const e of k) if (p >= e[0]) r = e; return r; };
 
@@ -468,7 +554,7 @@ export function frameFor(a, time = 0) {
   if (act === 'slam') return pick('slam', 'Angry');
   if (act === 'bite') return pick('bite', 'Open');
   if (act === 'shake') return pick(Math.floor(time * 10) % 2 ? 'shake1' : 'shake2', 'Open');
-  if (act === 'toss') return pick('toss', 'Angry');
+  if (act === 'toss') return pick(a.form === 'titan' ? 'tHkF' : 'toss', 'Angry');
   if (act === 'requiem') {
     // Cape open as the bubble closes, then a slash pose at every cut, then the drop from above.
     const at = a.actT ?? 0;
@@ -484,26 +570,39 @@ export function frameFor(a, time = 0) {
     return at < 0.5 ? pick(air ? 'beamFA' : 'beamF', 'Open') : pick(air ? 'beamRA' : 'beamR', 'Angry');
   }
   if (act === 'morph') {
+    const at = a.actT ?? 0, k = Math.floor(at * 22);
+    if (a.morphTo === 'titan') {
+      // Into the titan: the beast curls up, then heaves on all fours faster and faster as she
+      // swells, the pop, and the roar of the titan.
+      if (at < 0.15) return pick('mCurl', 'Pain');
+      if (at < 0.6) return pick(k % 2 ? 'mShiv1' : 'mShiv2', k % 4 < 2 ? 'Angry' : 'Pain');
+      if (at < 1.15) return pick(Math.floor(at * 30) % 2 ? 'mHeave1' : 'mHeave2', k % 3 ? 'Open' : 'Pain');
+      return pick(Math.floor(at * 12) % 2 ? 'tRoar' : 'tRoar2', 'Open');
+    }
     // Curled up, then shivering as she swells (her face going between fury and pain), the pop out
     // as the beast and the roar.
-    const at = a.actT ?? 0, k = Math.floor(at * 22);
     if (at < 0.12) return pick('mCurl', 'Pain');
     if (at < 0.6) return pick(k % 2 ? 'mShiv1' : 'mShiv2', k % 4 < 2 ? 'Angry' : 'Pain');
     if (at < 0.68) return pick('mPop', 'Open');
     return pick(Math.floor(at * 14) % 2 ? 'bRoar' : 'bRoar2', 'Open');
   }
-  if (act === 'unmorph') {
-    // The beast heaving for breath, a puff of steam, and she shakes herself off, small again.
-    const at = a.actT ?? 0;
-    if (at < 0.32) return pick(Math.floor(at * 8) % 2 ? 'bTired1' : 'bTired2', 'Hurt');
-    if (at < 0.46) return pick('mCurl', 'Blink');
-    return pick(Math.floor(at * 12) % 2 ? 'jShake1' : 'jShake2', 'Angry');
+  if (act === 'frenzy') {
+    // A flat dash, then a blur of slashes as she goes through the rival again and again.
+    const rip = a.rip ?? (a.frenzy?.prey != null);
+    return rip ? pick(Math.floor((a.actT ?? 0) / 0.075) % 2 ? 'jFrz2' : 'jFrz1', 'Open') : pick('jBoX', 'Open');
   }
-  if (act === 'charge') return pick((a.actT ?? 0) < 0.2 ? 'bChgA' : Math.floor((a.actT ?? 0) * 10) % 2 ? 'bChg1' : 'bChg2', 'Angry');
-  if (act === 'chargeEnd') return pick('bChgHit', 'Open');
+  if (act === 'clap') { const at = a.actT ?? 0; return at < 0.36 ? pick('tClA', 'Angry') : at < 0.62 ? pick('tClI', 'Open') : pick('tR', 'Angry'); }
+  if (act === 'crush') {
+    // Overhead, then driven into the floor ahead, behind, and ahead again.
+    const at = a.actT ?? 0, i = [0.46, 0.86, 1.26].findIndex(t => at > t - 0.14 && at < t + 0.12);
+    return i < 0 ? pick('tGrUp', 'Angry') : pick(i === 1 ? 'tGrB' : 'tGrF', 'Open');
+  }
+  const titan = a.form === 'titan';
+  if (act === 'charge') return pick((a.actT ?? 0) < (titan ? 0.26 : 0.2) ? (titan ? 'tChgA' : 'bChgA') : (Math.floor((a.actT ?? 0) * (titan ? 12 : 10)) % 2 ? (titan ? 'tChg1' : 'bChg1') : (titan ? 'tChg2' : 'bChg2')), 'Angry');
+  if (act === 'chargeEnd') return pick(titan ? 'tChgHit' : 'bChgHit', 'Open');
   if (act === 'leap') return pick((a.vy ?? 0) < -1.5 ? 'bLeapUp' : 'bLeapDn', 'Open');
-  if (act === 'meteor') return pick('bLeapDn', 'Open');
-  if (act === 'slamLand') return pick('bLand', 'Open');
+  if (act === 'meteor') return pick(titan ? 'tAsA' : 'bLeapDn', 'Open');
+  if (act === 'slamLand') return pick(titan ? 'tQkI' : 'bLand', 'Open');
   if (act === 'stomp') return pick('stomp', 'Angry');
   if (act === 'chase') return pick('chase', 'Angry');
   if (a.frozen > 0) return pick('hurt', 'Hurt');
@@ -566,12 +665,13 @@ export function frameFor(a, time = 0) {
   else if (a.skid > 0) base = pick('skid');
   else if (Math.abs(a.vx || 0) > 0.6) {
     const rate = Math.min(1.4, 0.55 + Math.abs(a.vx) / 6);
-    base = pick(['run1', 'runPass', 'run2', 'runPass2'][Math.floor((time + seed) * 12 * rate) % 4]);
+    // The titan lumbers along on her knuckles.
+    base = pick((a.form === 'titan' ? ['tRun1', 'tRunP', 'tRun2', 'tRunP'] : ['run1', 'runPass', 'run2', 'runPass2'])[Math.floor((time + seed) * (a.form === 'titan' ? 9 : 12) * rate) % 4]);
   } else {
     const breath = Math.floor((time + seed) * 1.6) % 2;
     // Nox never stands neutral: low, claws up, leaning toward the fight.
     base = a.type === 4 ? pick(breath ? 'nStance2' : 'nStance1', blink ? 'Blink' : 'Angry')
-      : a.type === 3 ? (a.form === 'beast' ? pick(breath ? 'bStance2' : 'bStance1', blink ? 'Blink' : 'Angry') : pick(breath ? 'jStance2' : 'jStance1'))
+      : a.type === 3 ? (a.form === 'titan' ? pick(breath ? 'tStance2' : 'tStance1', blink ? 'Blink' : 'Angry') : a.form === 'beast' ? pick(breath ? 'bStance2' : 'bStance1', blink ? 'Blink' : 'Angry') : pick(breath ? 'jStance2' : 'jStance1'))
       : pick(breath ? 'idle2' : 'idle');
     base = { ...base, frame: { ...base.frame, tailDeg: Math.round(Math.sin((time + seed) * 1.7) * 2) * 3 } };
   }

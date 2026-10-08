@@ -7,7 +7,7 @@ import { think } from './ai.js';
 import { attack, power, damage, breakBone, tickAttack } from './combat.js';
 import { interact, dropWeapon, detonateCharges, updateHolding } from './props.js';
 import { knockdown, recover, ragdollOf } from './ragdoll.js';
-import { stepSpecial, startSwarm, tickForm } from './specials.js';
+import { stepSpecial, startSwarm, tickForm, tickTitan } from './specials.js';
 import { HALF_H, FOOT } from '../render/rig.js';
 
 export { HALF_H };
@@ -105,7 +105,7 @@ export function stepActor(g, a, dt) {
   if (a.turnT && g.time >= a.turnT) { const o = g.actor(a.turnTo); if (o && !o.dead) a.face = o.x >= a.x ? 1 : -1; a.turnT = 0; }
   for (const k of TIMERS) a[k] = Math.max(0, (a[k] || 0) - dt);
   for (const k in a.drop) a.drop[k] = Math.max(0, a.drop[k] - dt);
-  tickForm(g, a, dt);
+  tickForm(g, a);
   if (a.frozen > 0) {
     a.frozen -= dt;
     if (a.frozen <= 0) { a.frozen = 0; g.fx('shatter', { x: a.x, y: a.y, n: 6, small: true }); g.text(a.x, a.y - 28, 'DESCONGELOU', '#bdeeff'); }
@@ -116,6 +116,8 @@ export function stepActor(g, a, dt) {
 
   const queued = a.queued || {};
   const input = a.bot ? think(g, a, dt) : { ...a.input };
+  // Moves read the held directions off a.input (side+J, S+J): a bot's come from its own plan.
+  if (a.bot) a.input = input;
   if (!a.bot) for (const k of Object.keys(queued)) input[k] = true;
   a.queued = {};
   const pressed = k => input[k] && (!a.lastInput[k] || queued[k]);
@@ -251,7 +253,7 @@ export function stepActor(g, a, dt) {
   if (!a.climbing && a.jumpBuffer > 0 && control >= 1 && (a.jumpGrace > 0 || (a.airJumps > 0 && pressed('jump')))) {
     const doubleJump = a.jumpGrace <= 0;
     if (doubleJump) { a.airJumps--; vy = -9.6; g.fx('ring', { x: a.x, y: a.y + 24, size: 16, color: '#b8c8f0' }); }
-    else { vy = -10.8 * (legs === 2 ? 1 : 0.8) * (a.form === 'beast' ? 0.9 : 1); g.fx('dust', { x: a.x, y: a.y + FOOT, n: 5 }); }
+    else { vy = -10.8 * (legs === 2 ? 1 : 0.8) * (a.form === 'titan' ? 0.86 : a.form ? 0.9 : 1); g.fx('dust', { x: a.x, y: a.y + FOOT, n: a.form === 'titan' ? 9 : 5 }); }
     vx += sv * 0.5;
     a.jumpBuffer = 0; a.jumpGrace = 0; a.jumpHeld = true; a.ground = false; a.jumpAt = g.time;
     g.sound('jump', a.x);
@@ -316,13 +318,14 @@ export function stepActor(g, a, dt) {
   a.lastInput = { ...input };
   if (a.dead || a.knocked) return;
   updateHolding(g, a);
+  tickTitan(g, a);
 
   Body.setVelocity(body, { x: vx, y: vy });
   updateMask(g, a, vy);
   a.lastPreVy = vy;
 }
 
-const GHOST_ACTS = ['chase', 'ride', 'pounce', 'kickoff', 'plunge', 'requiem', 'swarm', 'charge', 'leap', 'meteor'];
+const GHOST_ACTS = ['chase', 'ride', 'pounce', 'kickoff', 'plunge', 'requiem', 'swarm', 'charge', 'leap', 'meteor', 'frenzy'];
 function updateMask(g, a, vy) {
   const b = a.body;
   let mask = MASK.actor;

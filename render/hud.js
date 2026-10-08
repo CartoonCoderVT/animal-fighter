@@ -5,7 +5,7 @@ import { drawText, measure } from '../engine/font.js';
 import { FIGHTERS } from '../sim/fighters.js';
 import { TOUCH_BUTTONS } from '../engine/input.js';
 import { WEAPON_INFO } from '../sim/weapons.js';
-import { SPECIALS } from '../sim/moves.js';
+import { seeded } from '../engine/const.js';
 
 const X = v => Math.round(v * S);
 const DEATH_TAG = {
@@ -13,6 +13,13 @@ const DEATH_TAG = {
   impact: 'ARREMESSO', bullet: 'TIRO', pellet: 'TIRO', thrown: 'LÂMINA', claw: 'GARRAS', whip: 'RABADA', kick: 'COICE', paw: 'PATADA',
   fang: 'MORDIDA', bite: 'MORDIDA', roar: 'RUGIDO', sonic: 'GRITO', blood: 'HEMOMANCIA', hemo: 'PERFURANTE', scythe: 'FOICE', stomp: 'PISÃO', slam: 'PISÃO DO CÉU',
   blade: 'FACA', katana: 'KATANA', spear: 'LANÇA', pipe: 'CANO', axe: 'MACHADO', hammer: 'MARRETA'
+};
+
+// The fury bar's colors while it fills toward the beast, toward the titan, and as the titan.
+export const RAGE_COLORS = {
+  small: { base: '#ff8a1e', light: '#ffc85a', dark: '#b8460e', back: '#3a1a10' },
+  beast: { base: '#e83a1a', light: '#ff7a3a', dark: '#8a1610', back: '#3a1010' },
+  titan: { base: '#ff3a10', light: '#ffe08a', dark: '#a01008', back: '#4a0a08' }
 };
 
 export function panel(g, x, y, w, h, { fill = '#120d1ecc', edge = '#3b3052', light = '#5a4a78', accent = null } = {}) {
@@ -36,8 +43,9 @@ export class HUD {
     this.r = renderer;
     this.feed = [];
     this.lastHp = new Map();
+    this.rage = new Map();
   }
-  reset() { this.feed.length = 0; this.lastHp.clear(); }
+  reset() { this.feed.length = 0; this.lastHp.clear(); this.rage.clear(); }
   kill(e) {
     this.feed.unshift({ killer: e.killer, victim: e.victim, kind: e.kind, life: 5 });
     this.feed.length = Math.min(this.feed.length, 5);
@@ -49,7 +57,9 @@ export class HUD {
       if (a.dead) continue;
       const f = FIGHTERS[a.type];
       const p = this.r.worldToView(a.x, a.y), z = VIEW_W / this.r.cam.sw;
-      const x = Math.round(p.x), y = Math.round(p.y - (a.knocked ? 10 : 14) * z - 6);
+      // Juma's bigger forms carry their tag higher, over their heads.
+      const tall = a.knocked ? 0 : a.form === 'titan' ? 12 : a.form === 'beast' ? 5 : 0;
+      const x = Math.round(p.x), y = Math.round(p.y - ((a.knocked ? 10 : 14) + tall) * z - 6);
       const local = a.id === localId;
       const name = (local ? '▼ ' : '') + a.name;
       drawText(g, name, x, y - 11, { color: local ? '#fff1c8' : f.color, outline: '#0b0812', align: 'center' });
@@ -59,11 +69,20 @@ export class HUD {
       g.fillStyle = '#6a2a3a'; g.fillRect(x - w / 2, y, Math.round(w * clamp(prev / a.maxHp, 0, 1)), 2);
       g.fillStyle = a.team === state.actors.find(b => b.id === localId)?.team && !local ? '#8fd6c4' : a.hp < a.maxHp * 0.3 ? '#ee6b6b' : '#8fd694';
       g.fillRect(x - w / 2, y, Math.round(w * clamp(a.hp / a.maxHp, 0, 1)), 2);
-      if (a.frozen > 0) drawText(g, 'CONGELADO', x, y + 5, { color: '#bdeeff', outline: '#0b0812', align: 'center' });
-      if (a.chain > 1) {
-        const big = a.chain >= 6, pulse = Math.floor(time * 12) % 2;
-        drawText(g, a.chain + '', x + 16, y - 26, { color: big ? (pulse ? '#ff6c8c' : '#ffd36c') : '#ffd36c', outline: '#1a0c14', shadow: '#5a1830', scale: big ? 3 : 2 });
-        drawText(g, 'HITS!', x + 18 + (a.chain > 9 ? 2 : 1) * (big ? 18 : 12), y - 16, { color: '#fff1d6', outline: '#1a0c14' });
+      // Juma's fury, under her life for everyone to see.
+      if (a.type === 3) {
+        const k = a.form === 'titan' ? 1 : clamp((a.rage || 0) / 100, 0, 1), c = RAGE_COLORS[a.form || 'small'];
+        g.fillStyle = '#0b0812'; g.fillRect(x - w / 2 - 1, y + 3, w + 2, 2);
+        g.fillStyle = k >= 1 && a.form !== 'titan' && Math.floor(time * 16) % 2 ? '#ffffff' : (Math.floor(time * 10) % 2 ? c.light : c.base);
+        g.fillRect(x - w / 2, y + 3, Math.round(w * k), 1);
+      }
+      if (a.frozen > 0) drawText(g, 'CONGELADO', x, y + (a.type === 3 ? 7 : 5), { color: '#bdeeff', outline: '#0b0812', align: 'center' });
+      // A live game's fighters keep their last count; it only shows while the combo is running.
+      const chain = a.chainT !== undefined && state.time - a.chainT >= 1.1 ? 0 : a.chain;
+      if (chain > 1) {
+        const big = chain >= 6, pulse = Math.floor(time * 12) % 2;
+        drawText(g, chain + '', x + 16, y - 26, { color: big ? (pulse ? '#ff6c8c' : '#ffd36c') : '#ffd36c', outline: '#1a0c14', shadow: '#5a1830', scale: big ? 3 : 2 });
+        drawText(g, 'HITS!', x + 18 + (chain > 9 ? 2 : 1) * (big ? 18 : 12), y - 16, { color: '#fff1d6', outline: '#1a0c14' });
       }
     }
     // Rivals outside the camera view get an arrow on the screen edge.
@@ -93,14 +112,23 @@ export class HUD {
       panel(g, cx, 6, cw, 26, { accent: f.color, fill: local ? '#1d1430e6' : '#120d1ed9', edge: local ? '#6a5490' : '#3b3052' });
       g.save();
       g.beginPath(); g.rect(cx + 3, 8, 22, 22); g.clip();
-      this.r.drawPreview(g, a.type, cx + 13, 34, { density: 1, key: 'hud' + a.id, dt: 0, form: a.form || null });
+      // The titan towers out of the frame: lower her so the face shows.
+      const titan = a.form === 'titan';
+      this.r.drawPreview(g, a.type, cx + (titan ? 5 : 13), titan ? 45 : 34, { density: 1, key: 'hud' + a.id, dt: 0, form: a.form || null });
       g.restore();
       if (a.dead) { g.fillStyle = 'rgba(10,6,16,0.6)'; g.fillRect(cx + 3, 8, 22, 22); drawText(g, Math.max(1, Math.ceil(a.respawn)) + '', cx + 14, 14, { color: '#f0d2b0', align: 'center', outline: '#0b0812' }); }
       drawText(g, a.name, cx + 29, 9, { color: local ? '#fff1c8' : '#d8cde8' });
-      bar(g, cx + 29, 21, 58, 3, a.hp / a.maxHp, a.hp < a.maxHp * 0.3 ? '#ee6b6b' : '#8fd694');
-      // As the beast, Juma's bar is the time she has left in that form.
-      const beast = a.form === 'beast', cd = beast ? clamp((a.formT || 0) / SPECIALS[3].form, 0, 1) : clamp(1 - a.abilityCd / f.cooldown, 0, 1);
-      bar(g, cx + 29, 27, 58, 1, cd, beast ? '#ff8a3a' : cd >= 1 ? '#f2c35b' : '#8a7aa8');
+      const cd = clamp(1 - a.abilityCd / f.cooldown, 0, 1);
+      if (a.type === 3) {
+        // Juma's card carries her fury bar under her life, and the K cooldown under that.
+        bar(g, cx + 29, 19, 58, 3, a.hp / a.maxHp, a.hp < a.maxHp * 0.3 ? '#ee6b6b' : '#8fd694');
+        this.rageBar(g, a, cx + 29, 25, 58, 4, dt, time);
+        g.fillStyle = '#2a2036'; g.fillRect(cx + 29, 30, 58, 1);
+        g.fillStyle = cd >= 1 ? '#f2c35b' : '#8a7aa8'; g.fillRect(cx + 29, 30, Math.round(58 * cd), 1);
+      } else {
+        bar(g, cx + 29, 21, 58, 3, a.hp / a.maxHp, a.hp < a.maxHp * 0.3 ? '#ee6b6b' : '#8fd694');
+        bar(g, cx + 29, 27, 58, 1, cd, cd >= 1 ? '#f2c35b' : '#8a7aa8');
+      }
       if (mode !== 'sandbox' && mode !== 'attract') {
         for (let k = 0; k < killsToWin; k++) {
           g.fillStyle = k < a.kills ? f.color : '#2a2036';
@@ -143,6 +171,53 @@ export class HUD {
       drawText(g, label, VIEW_W / 2, VIEW_H / 2 - 30, { color: n > 0 ? '#f2c35b' : '#ff8f6a', outline: '#1a1020', shadow: '#402b43', scale, align: 'center', alpha: n > 0 ? clamp(k * 3, 0, 1) : 1 });
     }
     if (touch) this.drawTouch(g, state.actors.find(a => a.id === localId)?.type);
+  }
+
+  // Juma's fury bar. Fire runs along the fill; past two thirds it shakes and throws up flames, full
+  // it flashes white, and when she transforms it drains back to zero to fill again for the next
+  // form. As the titan it stays full and molten. The pips beside it are her three forms.
+  rageBar(g, a, x, y, w, h, dt, time) {
+    const titan = a.form === 'titan' && !a.dead, target = a.dead ? 0 : titan ? 100 : clamp(a.rage || 0, 0, 100);
+    let v = this.rage.get(a.id) ?? target;
+    v = target >= v ? v + (target - v) * Math.min(1, dt * 12) : Math.max(target, v - dt * 150);
+    this.rage.set(a.id, v);
+    const k = v / 100, c = RAGE_COLORS[(!a.dead && a.form) || 'small'], full = !titan && target >= 100;
+    const hot = titan ? 1 : clamp((k - 0.6) / 0.4, 0, 1), f30 = Math.floor(time * 30);
+    // Shaking as it nears full.
+    const sx = hot > 0.5 && f30 % 2 ? (f30 % 4 < 2 ? 1 : -1) : 0, bx = x + sx;
+    g.fillStyle = '#0b0812'; g.fillRect(bx - 1, y - 1, w + 2, h + 2);
+    g.fillStyle = c.back; g.fillRect(bx, y, w, h);
+    const fw = Math.round(w * k);
+    for (let i = 0; i < fw; i++) {
+      // Bands of fire flowing toward the leading edge, brighter on top, darker underneath.
+      const band = ((i - Math.floor(time * (titan ? 40 : 26))) % 7 + 7) % 7;
+      const mid = full ? (f30 % 4 < 2 ? '#ffffff' : c.light) : band < 2 ? c.light : band < 5 ? c.base : c.dark;
+      g.fillStyle = mid; g.fillRect(bx + i, y, 1, h);
+      g.fillStyle = full ? '#ffffff' : c.light; g.fillRect(bx + i, y, 1, 1);
+      g.fillStyle = c.dark; g.fillRect(bx + i, y + h - 1, 1, 1);
+    }
+    if (fw > 0 && fw < w) { g.fillStyle = f30 % 2 ? '#ffffff' : '#ffe8a0'; g.fillRect(bx + fw - 1, y, 1, h); }
+    // Segment ticks at the thirds.
+    g.fillStyle = '#0b0812';
+    for (const t of [1 / 3, 2 / 3]) g.fillRect(bx + Math.round(w * t), y + h - 1, 1, 1);
+    // Flames licking up off the fill.
+    if (hot > 0) {
+      const rnd = seeded(Math.floor(time * 14) + a.id * 31);
+      for (let i = 0; i < fw; i++) {
+        if (rnd() > hot * 0.45) continue;
+        const tall = rnd() < 0.4 ? 2 : 1;
+        g.fillStyle = rnd() < 0.5 ? c.light : '#ffe8a0';
+        g.fillRect(bx + i, y - tall, 1, tall);
+      }
+    }
+    // The three forms: small, beast, titan.
+    ['small', 'beast', 'titan'].forEach((form, i) => {
+      const px = x + w + 4 + i * 8, cur = (a.form || 'small') === form, reached = i <= ['small', 'beast', 'titan'].indexOf(a.form || 'small');
+      g.fillStyle = '#0b0812'; g.fillRect(px - 1, y - 1, 7, h + 2);
+      g.fillStyle = reached ? RAGE_COLORS[form].base : '#2a2036'; g.fillRect(px, y, 5, h);
+      if (cur) { g.fillStyle = Math.floor(time * 4) % 2 ? '#ffffff' : RAGE_COLORS[form].light; g.fillRect(px, y, 5, 1); }
+      if (i === 2 && !reached) { g.fillStyle = '#4a3a5a'; g.fillRect(px + 2, y + 1, 1, h - 2); }
+    });
   }
 
   drawTouch(g, type) {

@@ -16,6 +16,9 @@ const PALETTES = {
   ocelot: { o: '#3a2010', 1: '#ffd36c', 2: '#eca83e', 3: '#bf7a26', 4: '#fff2cf', 5: '#f0d39a', 6: '#e0a070', 7: '#d0605e', 8: '#5a2e18', 9: '#8a5028', e: '#1e1420', w: '#ffffff', r: '#ffa08a' },
   // Juma's beast form: deeper fur, near-black rosettes, ivory fangs and claws, burning eyes.
   ocelotBeast: { o: '#220c04', 1: '#f2a848', 2: '#c86c20', 3: '#8a4214', 4: '#f6e2b8', 5: '#d6ad78', 6: '#e09070', 7: '#b8343a', 8: '#2e1408', 9: '#62300f', e: '#140806', w: '#ffffff', r: '#ff7a5a', f: '#fff6e0', g: '#ffd23a', m: '#4a0a10' },
+  // Juma's third form, the titan: scorched fur gone almost to rust, black rosettes, glowing cracks
+  // of fury (v) under the hide, white-hot eyes.
+  ocelotTitan: { o: '#160402', 1: '#e2843a', 2: '#a4461a', 3: '#68240c', 4: '#ecd2a4', 5: '#b88c5c', 6: '#d07060', 7: '#8e1e28', 8: '#1a0802', 9: '#4a1a08', e: '#120404', w: '#ffffff', f: '#fff4dc', g: '#fff2a0', m: '#3a0408', v: '#ff8a1e' },
   bat: { o: '#2a2038', 1: '#ffffff', 2: '#e8e2f0', 3: '#bdb2d2', 4: '#ffffff', 5: '#e0d6ea', 6: '#ffb0c6', 7: '#e46e92', 8: '#4e3a6a', 9: '#6e5890', e: '#1e1420', w: '#ffffff', r: '#ffa0b8', x: '#e2445c', y: '#a82840' }
 };
 export const OVERLAY = { B: '#b4243a', K: '#5c1020', F: '#e8868a', O: '#f4ead2', U: '#7a4874', C: '#2a1a1c', D: '#4a2a22', I: '#c8f2ff', J: '#7fd0f0' };
@@ -24,8 +27,9 @@ export const OVERLAY = { B: '#b4243a', K: '#5c1020', F: '#e8868a', O: '#f4ead2',
 // arms from the shoulder.
 const PIVOT = { arm: [1, 0], scarf: [4, 1] };
 const baseName = name => (name.startsWith('head') ? 'head' : name);
-export function pivotOf(name, m) {
-  const p = PIVOT[baseName(name)];
+// A cast can hang its parts from pivots of its own (the titan's thick arms from mid-shoulder).
+export function pivotOf(name, m, ch = null) {
+  const p = ch?.pivot?.[baseName(name)] || PIVOT[baseName(name)];
   if (p) return p;
   return [Math.floor((m[0].length - 1) / 2), m.length - 1];
 }
@@ -34,7 +38,8 @@ export const TAILS = {
   ocelot: { width: 3, colors: ['2', '1', '3'], stripe: '8', every: 2.5, tip: '8', shape: [[1, 0], [-2, 0], [-5, -1], [-7, -3], [-8, -6], [-8, -9], [-6, -11]] },
   rat: { width: 1, colors: ['6', '6', '7'], shape: [[0, 0], [-3, 1], [-6, 0], [-8, -2], [-9, -5], [-8, -8]] },
   rabbit: { blob: true },
-  ocelotBeast: { width: 4, colors: ['2', '1', '3'], stripe: '8', every: 2.5, tip: '8', shape: [[1, 0], [-3, 0], [-7, -1], [-10, -3], [-12, -7], [-12, -11], [-10, -14]] }
+  ocelotBeast: { width: 4, colors: ['2', '1', '3'], stripe: '8', every: 2.5, tip: '8', shape: [[1, 0], [-3, 0], [-7, -1], [-10, -3], [-12, -7], [-12, -11], [-10, -14]] },
+  ocelotTitan: { width: 5, colors: ['2', '1', '3'], stripe: '8', every: 3, tip: '8', shape: [[1, 0], [-4, 1], [-9, 1], [-13, -1], [-16, -5], [-17, -10], [-15, -15], [-12, -17]] }
 };
 // Nox's scarf: a knot in the matrix and two loose ends drawn as chains from the back of the knot.
 export const SCARF = {
@@ -44,7 +49,7 @@ export const SCARF = {
 
 const castOf = id => ({ id, palette: PALETTES[id], parts: PARTS[id], tail: TAILS[id] || null, scarf: id === 'bat' ? SCARF : null });
 // The fighters, by type. Alternate forms are casts of their own with their own anchors.
-export const CAST = Object.keys(PARTS).filter(id => id !== 'ocelotBeast').map(castOf);
+export const CAST = Object.keys(PARTS).filter(id => id !== 'ocelotBeast' && id !== 'ocelotTitan').map(castOf);
 // Juma's beast form is bigger: a taller chest carries the head higher and the shoulders wider.
 export const BEAST = {
   ...castOf('ocelotBeast'),
@@ -52,7 +57,16 @@ export const BEAST = {
   joint: { head: [2, -12], armF: [5, -10], armB: [1, -11], footF: [3, -2], footB: [-3, -2] },
   eye: [2, -8]
 };
-export const castFor = (type, form) => (form === 'beast' && CAST[type]?.id === 'ocelot' ? BEAST : CAST[type]);
+// The titan towers over the beast: hunched behind a hump of shoulder, the head low and forward,
+// arms hanging to the knuckles.
+export const TITAN = {
+  ...castOf('ocelotTitan'),
+  anchor: { head: [10, -18], body: [0, -2], armF: [5, -21], armB: [-3, -23], footF: [5, -1], footB: [-5, -1], tail: [-9, -9], scarf: [0, -9] },
+  joint: { head: [10, -18], armF: [5, -21], armB: [-3, -23], footF: [5, -3], footB: [-5, -3] },
+  pivot: { arm: [3, 1] },
+  eye: [5, -9]
+};
+export const castFor = (type, form) => (CAST[type]?.id === 'ocelot' && form ? (form === 'titan' ? TITAN : BEAST) : CAST[type]);
 const anchorsOf = ch => ch?.anchor || ANCHOR;
 const jointsOf = ch => ch?.joint || JOINT;
 
@@ -280,7 +294,7 @@ export function placeSlot(ch, slot, frame = {}, opts = {}) {
   if (!m0) return null;
   const [ax, ay] = anchorsOf(ch)[slot];
   const [dx = 0, dy = 0, deg = 0] = transformOf(frame, slot);
-  const piv0 = pivotOf(mname, m0);
+  const piv0 = pivotOf(mname, m0, ch);
   const extra = [...(opts.wounds?.[slot] || []), ...(opts.stumps?.[slot] || [])];
   if (extra.length) m0 = applyWounds(m0, piv0, extra);
   const { m, piv } = deg ? rotate(m0, piv0, deg) : { m: m0, piv: piv0 };
@@ -408,7 +422,7 @@ export function composePose(ch, frame = {}, opts = {}) {
 // Center of a slot's matrix in character space (rest pose) and its size in pixels.
 export function partCenter(ch, slot) {
   const m = ch.parts[MATRIX[slot]];
-  const [px, py] = pivotOf(MATRIX[slot], m), [ax, ay] = anchorsOf(ch)[slot];
+  const [px, py] = pivotOf(MATRIX[slot], m, ch), [ax, ay] = anchorsOf(ch)[slot];
   return [ax - px + m[0].length / 2, ay - py + m.length / 2];
 }
 export function partSize(ch, slot) {

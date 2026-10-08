@@ -33,6 +33,9 @@ export const MOVES = {
   // Side+J: the lightning pounce, flat out through the rival raking twice; the string goes on
   // from the storm of claws. bolt: dash speed for the first half of the move.
   jBolt: { dur: 0.32, hits: [0.3, 0.56], range: 40, band: 22, dmg: [5, 6], kind: 'claw', kb: [[0.4, -0.5], [1.4, -2.5]], cd: 0.26, pass: true, bolt: 7.5, hold: 0.42 },
+  // A fresh tap of a direction + J inside the string: the cross, a lunge through two crossing claws
+  // that picks the string up again at the rake.
+  jCross: { dur: 0.3, hits: [0.36, 0.62], range: 34, band: 24, dmg: [5, 6], kind: 'claw', kb: [[0.5, -0.5], [1.2, -1]], cd: 0.12, step: 5, hold: 0.5 },
   // Her air string: twin claws, a spinning ball of claws, the dive that slams them into the floor.
   jAirClaw: { dur: 0.2, hits: [0.3, 0.64], range: 28, band: 26, dmg: [4, 4], kind: 'claw', kb: [[0.4, -0.5], [0.5, -0.5]], cd: 0.08 },
   jAirSpin: { dur: 0.36, hits: [0.2, 0.4, 0.6, 0.8], range: 30, band: 30, dmg: [3, 3, 3, 4], kind: 'claw', kb: [[0, 0], [0, 0], [0, 0], [0.6, -1]], cd: 0.1, around: true, pull: true },
@@ -42,10 +45,27 @@ export const MOVES = {
   bSlam: { dur: 0.56, hits: [0.46], range: 40, band: 30, dmg: [15], kind: 'paw', kb: [[1, 0]], cd: 0.26, step: 2, hold: 0.66, crumple: true, quake: 3, lag: 1.5 },
   bHammer: { dur: 0.62, hits: [0.48], range: 46, band: 30, dmg: [17], kind: 'paw', kb: [[1.8, 0]], cd: 0.3, step: 3, hold: 0.7, shock: 64, quake: 4, lag: 1.6 },
   bUpper: { dur: 0.64, hits: [0.45], range: 40, band: 36, dmg: [18], kind: 'paw', kb: [[1.5, -12.5]], cd: 0.36, launch: true, step: 2, quake: 3, lag: 1.7 },
+  // Third in the string: both paws swung in from wide and clapped together on the rival (clap: a
+  // ring of force out of the clap that shoves everyone else back).
+  bClap: { dur: 0.58, hits: [0.5], range: 40, band: 32, dmg: [16], kind: 'paw', kb: [[0.4, -1]], cd: 0.28, step: 2, hold: 0.8, crumple: true, clap: 1, lag: 1.7 },
   // S+J: the earthquake, both fists into the floor and a shockwave out both ways.
   bQuake: { dur: 0.72, hits: [0.5], range: 30, band: 30, dmg: [14], kind: 'paw', kb: [[2, -6]], cd: 0.6, knock: true, around: true, shock: 112, shockAt: 0, quake: 7, lag: 1.6 },
-  // In the air: both paws together, slamming the rival down to bounce.
+  // In the air: a raking swipe each way, then both paws together, slamming the rival down to bounce.
+  bAirClaw: { dur: 0.34, hits: [0.3, 0.62], range: 36, band: 34, dmg: [7, 8], kind: 'paw', kb: [[0.4, -0.6], [0.6, -0.8]], cd: 0.14, lag: 1.3 },
   bAirSmash: { dur: 0.42, hits: [0.42], range: 38, band: 38, dmg: [14], kind: 'paw', kb: [[1.5, 10]], cd: 0.3, spike: true, bounce: true, around: true, lag: 1.5 },
+  // Juma as the titan: every blow is enormous and wrecks whatever it touches (wreck: props in
+  // reach take several times the damage, hanging lamps are torn down). A hook that folds the
+  // rival over, the double-fisted smash into the floor, and the uppercut that sends them flying.
+  tHook: { dur: 0.6, hits: [0.5], range: 50, band: 34, dmg: [18], kind: 'paw', kb: [[1.4, -0.5]], cd: 0.3, step: 3, hold: 0.8, crumple: true, quake: 3, lag: 1.7, wreck: 4 },
+  tSmash: { dur: 0.72, hits: [0.5], range: 50, band: 34, dmg: [22], kind: 'paw', kb: [[0.6, 0]], cd: 0.34, step: 2, hold: 0.9, crumple: true, shock: 80, quake: 7, lag: 1.9, wreck: 4 },
+  tUpper: { dur: 0.72, hits: [0.46], range: 46, band: 42, dmg: [22], kind: 'paw', kb: [[1.5, -13.5]], cd: 0.4, launch: true, step: 2, quake: 4, lag: 2, wreck: 4 },
+  // S+J: the cataclysm, both fists into the floor and the whole level heaves.
+  tQuake: { dur: 0.85, hits: [0.5], range: 36, band: 34, dmg: [18], kind: 'paw', kb: [[3, -7]], cd: 0.7, knock: true, around: true, shock: 180, shockAt: 0, quake: 9, lag: 1.8, wreck: 6 },
+  // S+J over a downed rival: three blows hammered down into them (pound).
+  tPound: { dur: 0.95, hits: [0.3, 0.56, 0.82], range: 44, band: 40, dmg: [9, 9, 15], kind: 'paw', kb: [[0, 2], [0, 2], [0, 3]], cd: 0.6, pound: true, quake: 4, lag: 1.4 },
+  // In the air: a sweeping backhand, then the double-fisted hammer down that bounces them.
+  tAirClaw: { dur: 0.4, hits: [0.45], range: 44, band: 40, dmg: [12], kind: 'paw', kb: [[0.6, -1.2]], cd: 0.16, around: true, lag: 1.5, wreck: 3 },
+  tAirSmash: { dur: 0.5, hits: [0.42], range: 46, band: 46, dmg: [18], kind: 'paw', kb: [[1.5, 11]], cd: 0.34, spike: true, bounce: true, around: true, lag: 1.8, wreck: 3 },
   // Nox, hemomancy. A claw of blood, then a scythe of blood: the reap hooks the rival and drags
   // them in (negative push), the cyclone spins it around him and holds them, the guillotine
   // chops down and folds them over, and the stakes burst from the floor to launch.
@@ -89,10 +109,13 @@ export const HEAVY = ['lowclaw', 'sweep', 'kick', 'jLow', 'vampKiss'];
 export const AIR = ['airA', 'airB', 'spike'];
 export const NOX_AIR = ['nAirClaw', 'nAirVortex', 'nAirCross', 'nAirScythe'];
 export const JUMA_AIR = ['jAirClaw', 'jAirSpin', 'jAirDive'];
-export const BEAST_COMBO = ['bSlam', 'bHammer', 'bUpper'];
-export const BEAST_AIR = ['bAirSmash'];
-// The ground string a fighter is on right now (Juma's depends on her form).
-export const comboOf = a => (a.type === 3 && a.form === 'beast' ? BEAST_COMBO : COMBOS[a.type]);
+export const BEAST_COMBO = ['bSlam', 'bHammer', 'bClap', 'bUpper'];
+export const BEAST_AIR = ['bAirClaw', 'bAirSmash'];
+export const TITAN_COMBO = ['tHook', 'tSmash', 'tUpper'];
+export const TITAN_AIR = ['tAirClaw', 'tAirSmash'];
+// The ground and air strings a fighter is on right now (Juma's depend on her form).
+export const comboOf = a => (a.type === 3 && a.form ? (a.form === 'titan' ? TITAN_COMBO : BEAST_COMBO) : COMBOS[a.type]);
+export const airOf = a => (a.type === 4 ? NOX_AIR : a.type === 3 ? (a.form === 'titan' ? TITAN_AIR : a.form === 'beast' ? BEAST_AIR : JUMA_AIR) : AIR);
 // Air moves and the dash strike hit with each fighter's natural weapon.
 export const NATURAL = ['claw', 'whip', 'kick', 'claw', 'blood'];
 
@@ -101,8 +124,10 @@ export const SPECIALS = [
   { id: 'pounce', cd: 6, dur: 0.75, ride: 1.3 },
   { id: 'ball', cd: 8, dur: 2.6 },
   { id: 'sky', cd: 7, dur: 2.2 },
-  // Juma turns into the beast: the shiver, the pop at `pop`, the roar; `form` seconds as the beast.
-  { id: 'morph', cd: 9, dur: 1.0, pop: 0.6, form: 11 },
+  // Juma's K changes with her form (the frenzy, the seismic leap, the thunderclap or the crushing
+  // grab). Her transformations are not on a button: they come out of the fury bar, the beast's
+  // after `dur` seconds of shivering (the pop at `pop`), the titan's after `titan` (pop at `titanPop`).
+  { id: 'fury', cd: 7, dur: 1.0, pop: 0.6, titan: 1.7, titanPop: 1.15 },
   // Piercing blood: blood condensed into an orb (charge, open to hits), then fired as a beam
   // through the arena; diagonally down from the air. Three blood marks on a rival go supernova.
   { id: 'beam', cd: 6, dur: 0.78, charge: 0.34 }

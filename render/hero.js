@@ -8,7 +8,8 @@
 // Everything is drawn on the UI canvas at the menu's pixel density.
 import { FRAMES } from './anim.js';
 import { figureSprite, drawFigure, figurePoint, tintOf } from './fighter-art.js';
-import { slotPoint } from './pixel-data.js';
+import { slotPoint, castFor } from './pixel-data.js';
+import { RAGE_COLORS } from './hud.js';
 import { drawScythe, bloodPal } from './blood-art.js';
 import { seeded } from '../engine/const.js';
 
@@ -138,5 +139,173 @@ export class NoxHero {
       for (let i = 0; i < 16; i++) { const vx = (r2() - 0.5) * 3, vy = -1.5 - r2() * 3; dot(g, r2() < 0.5 ? P.mid : P.light, gx + vx * st * 30, y - 2 + vy * st * 30 + st * st * 120, s, s); }
       g.globalAlpha = 1;
     }
+  }
+}
+
+// Juma's entrance, played from the moment she is picked:
+//   0.00  she pounces in from off the pedestal and lands in a crouch, dust kicking up;
+//   0.50  the fury takes her: she shivers, steams and smoulders while her fury bar fills;
+//   1.05  she bursts into the beast in a flash, and roars; the bar drains and fills again;
+//   2.05  the beast heaves on all fours, stones lifting off the floor, and bursts into the TITAN:
+//         the floor splits, three huge claw marks tear open in the dark behind her and burn;
+//   2.85  the hero pose, looping: hunched over a cracked, glowing floor, one fist cocked, eyes
+//         burning, steam on her breath, embers drifting up, and every few seconds both fists
+//         hammered into the floor.
+const J_LAND = 0.45, J_BEAST = 1.05, J_TITAN = 2.05, J_POSE = 2.85, J_CYCLE = 4.4;
+const ROCK = ['#5a5068', '#7a6e88', '#3e3648'], EMBER = ['#ffffff', '#ffe2a0', '#ffb040', '#ff6a2a'];
+
+// Three claw marks ripped through the dark behind her, curving, molten at the core: each one tears
+// open from its top end.
+function clawMarks(g, cx, cy, k, t, s) {
+  const L = 44 * s;
+  for (let m = 0; m < 3; m++) {
+    const x0 = cx + (m - 1) * 13 * s + 16 * s, y0 = cy - 22 * s + Math.abs(m - 1) * 4 * s, len = L * ease(clamp01(k * 1.5 - m * 0.25));
+    for (let d = 0; d < len; d++) {
+      const u = d / L, w = Math.max(1, Math.round(Math.sin(u * Math.PI) * 4.5 * s));
+      const x = x0 - d * 0.78 + Math.sin(u * Math.PI) * 5 * s, y = y0 + d * 0.85;
+      g.globalAlpha = 0.8 + Math.sin(t * 8 + m * 2 + d * 0.2) * 0.2;
+      dot(g, '#2a0604', x - w / 2 - s, y, w + 2 * s, 1);
+      dot(g, '#c8280c', x - w / 2, y, w, 1);
+      if (w > s) dot(g, '#ff7a1e', x - w / 3, y, Math.max(1, (w * 2) / 3), 1);
+      if (w > s * 3) dot(g, '#ffe8a0', x - w / 8, y, Math.max(1, w / 4), 1);
+    }
+  }
+  g.globalAlpha = 1;
+}
+
+export class JumaHero {
+  constructor(renderer) { this.r = renderer; }
+
+  draw(g, x, y, t, { density: s = 2, dt = 1 / 60 } = {}) {
+    // The claw marks burn behind her from the moment the titan bursts out.
+    const tear = clamp01((t - J_TITAN) / 0.4);
+    if (tear > 0) clawMarks(g, x, y - 44 * s, tear, t, s);
+    // Embers drifting up out of the marks.
+    if (tear > 0.5) for (let i = 0; i < 14; i++) {
+      const ph = (t * (0.25 + (i % 5) * 0.06) + i / 14) % 1;
+      g.globalAlpha = (1 - ph) * 0.9;
+      dot(g, EMBER[i % 4], x - 34 * s + ((i * 37) % 68) * s + Math.sin(t * 2 + i) * 3 * s, y - 10 * s - ph * 70 * s, s, s);
+    }
+    g.globalAlpha = 1;
+
+    // Her form and pose for this moment of the entrance.
+    let form = null, name = 'jStance1', expr = 'Angry', ox = 0, oy = 0, jit = 0, flash = null, face = 1;
+    const cyc = t > J_POSE ? (t - J_POSE) % J_CYCLE : -1;
+    if (t < J_LAND) {
+      // The pounce: in from the left in an arc, claws first.
+      const k = t / J_LAND;
+      ox = -(1 - k) * 60 * s; oy = -Math.sin(k * Math.PI) * 26 * s;
+      name = k < 0.5 ? 'jPuX' : 'jDvX'; expr = 'Open';
+    } else if (t < J_LAND + 0.12) { name = 'land'; }
+    else if (t < J_BEAST - 0.08) {
+      const k = Math.floor(t * 22);
+      name = k % 2 ? 'mShiv1' : 'mShiv2'; expr = k % 4 < 2 ? 'Angry' : 'Pain'; jit = 1;
+    } else if (t < J_BEAST + 0.06) { form = 'beast'; name = 'mPop'; expr = 'Open'; flash = Math.floor(t * 40) % 2 ? '#ffffff' : '#ffe2a0'; }
+    else if (t < J_BEAST + 0.5) { form = 'beast'; name = Math.floor(t * 14) % 2 ? 'bRoar' : 'bRoar2'; expr = 'Open'; }
+    else if (t < J_TITAN - 0.08) {
+      form = 'beast'; const k = Math.floor(t * (18 + (t - J_BEAST) * 14));
+      name = k % 2 ? 'mHeave1' : 'mHeave2'; expr = k % 3 ? 'Open' : 'Pain'; jit = t > J_TITAN - 0.5 ? 2 : 1;
+    } else if (t < J_TITAN + 0.08) { form = 'titan'; name = 'tRoar'; expr = 'Open'; flash = Math.floor(t * 40) % 2 ? '#ffffff' : '#ffe2a0'; }
+    else if (t < J_POSE) { form = 'titan'; name = Math.floor(t * 12) % 2 ? 'tRoar' : 'tRoar2'; expr = 'Open'; jit = t < J_TITAN + 0.4 ? 2 : 1; }
+    else {
+      form = 'titan';
+      if (cyc < 3.4) { name = Math.floor((t - J_POSE) * 1.3) % 2 ? 'tHero2' : 'tHero1'; expr = (t % 3.1) < 0.12 ? 'Blink' : 'Angry'; }
+      else if (cyc < 3.78) { name = 'tSmA2'; expr = 'Open'; }
+      else if (cyc < 3.88) { name = 'tSmX'; expr = 'Open'; }
+      else { name = 'tSmI'; expr = 'Open'; }
+    }
+    const pound = cyc >= 3.88 ? cyc - 3.88 : -1;
+    // The burst into the titan and each pound shake her whole stage.
+    const quake = (t > J_TITAN && t < J_TITAN + 0.5) ? (1 - (t - J_TITAN) / 0.5) * 3 : pound >= 0 && pound < 0.3 ? (1 - pound / 0.3) * 2 : 0;
+    if (quake > 0) { ox += Math.round(Math.sin(t * 90) * quake) * s; oy += Math.round(Math.cos(t * 77) * quake * 0.5) * s; }
+    if (jit) ox += (Math.floor(t * 34) % 2 ? jit : -jit) * s;
+    const fx = x + ox, fy = y + oy;
+
+    // Cracks in the floor under her once she is the titan, glowing.
+    if (t > J_TITAN) {
+      const glow = 0.55 + Math.sin(t * 4) * 0.2 + (pound >= 0 ? Math.max(0, 0.5 - pound) : 0);
+      const r2 = seeded(9);
+      for (let i = 0; i < 6; i++) {
+        let cx = x + (i % 2 ? 1 : -1) * 3 * s, cy = y - 1;
+        const d = i % 2 ? 1 : -1, n = 8 + Math.floor(r2() * 8);
+        for (let k = 0; k < n; k++) {
+          cx += d * (1 + r2() * 2) * s * 0.7; cy += (r2() < 0.3 ? 1 : 0);
+          g.globalAlpha = clamp01(glow * (1 - k / n) + 0.2);
+          dot(g, k < 3 ? '#ffe08a' : '#ff5a1a', cx, Math.min(y + 4 * s, cy), s, 1);
+        }
+      }
+      g.globalAlpha = 1;
+    }
+
+    const frame = FRAMES[name] || {};
+    const a = this.actor ||= { id: 961, type: 3, face: 1, ground: true, vx: 0, vy: 0, attack: 0, act: null, wounds: {}, severed: [], broken: {}, embedded: [], char: 0, hurt: 0 };
+    a.form = form;
+    const f = { frame, expr, name };
+    const chains = this.r.secondaryFor('jumaHero').update(a, frame, t, dt);
+    const sp = figureSprite(a, f, '', chains);
+    let body = sp.s, overlay = sp.overlay;
+    if (flash) { body = tintOf(body, flash); if (overlay) overlay = tintOf(overlay, flash); }
+
+    // The fury: an aura around her silhouette, building through each change, smouldering after.
+    const aura = t < J_LAND ? 0 : t < J_BEAST ? (t - J_LAND) / (J_BEAST - J_LAND) : t < J_BEAST + 0.4 ? 0.6 : t < J_TITAN ? 0.3 + (t - J_BEAST - 0.4) / (J_TITAN - J_BEAST - 0.4) * 0.7 : 0.45 + Math.sin(t * 6) * 0.15 + (pound >= 0 ? 0.3 : 0);
+    if (aura > 0.05) {
+      const col = aura > 0.85 ? '#ffe2a0' : form === 'titan' ? '#ff5a1a' : '#ff8a3a';
+      const tb = tintOf(body, col), to = overlay && tintOf(overlay, col);
+      g.globalAlpha = clamp01(aura) * (0.55 + 0.35 * Math.abs(Math.sin(t * 9)));
+      for (const [dx, dy] of [[-s, 0], [s, 0], [0, -s], [0, s]]) { if (to) drawFigure(g, to, fx + dx, fy + dy, face, s); drawFigure(g, tb, fx + dx, fy + dy, face, s); }
+      g.globalAlpha = 1;
+    }
+    if (overlay) drawFigure(g, overlay, fx, fy, face, s);
+    drawFigure(g, body, fx, fy, face, s);
+
+    // Burning eyes, and steam on her breath.
+    const ch = castFor(3, form), e = ch.eye || EYE;
+    if (form) {
+      const eye = figurePoint(frame, 'head', e[0], e[1], fx, fy, face, s, ch);
+      g.globalAlpha = clamp01(0.7 + Math.sin(t * 5) * 0.3);
+      dot(g, '#ffffff', eye.x, eye.y, s, s);
+      dot(g, form === 'titan' ? '#ffe08a' : '#ffc040', eye.x - s, eye.y, s, s); dot(g, form === 'titan' ? '#ffe08a' : '#ffc040', eye.x + s, eye.y, s, s);
+      g.globalAlpha = 1;
+    }
+    if (t > J_POSE) for (let i = 0; i < 6; i++) {
+      const ph = ((t * 0.8 + i / 6) % 1);
+      g.globalAlpha = (1 - ph) * 0.35;
+      dot(g, '#e8e4f0', fx + (22 + ph * 14) * s, fy - (30 + ph * 10 + Math.sin(t * 3 + i) * 2) * s, 2 * s, 2 * s);
+    }
+    g.globalAlpha = 1;
+
+    // Steam and embers pouring off her while she changes; stones lifting into the titan.
+    const changing = (t > J_LAND && t < J_BEAST) || (t > J_BEAST + 0.5 && t < J_TITAN);
+    if (changing) for (let i = 0; i < 10; i++) {
+      const ph = (t * 1.6 + i / 10) % 1;
+      g.globalAlpha = (1 - ph) * 0.8;
+      dot(g, i % 3 ? EMBER[1 + (i % 3)] : '#e8e4f0', x + Math.sin(i * 2.7) * 12 * s, y - 4 * s - ph * 30 * s, s, i % 3 ? s : 2 * s);
+      if (t > J_BEAST + 0.5 && i < 6) { g.globalAlpha = 1 - ph; dot(g, ROCK[i % 3], x + (i - 2.5) * 9 * s, y - ph * 22 * s, 2 * s, 2 * s); }
+    }
+    g.globalAlpha = 1;
+
+    // Landing dust, the pops, the pounds: rings and rocks along the floor.
+    const burst = (t0, R, n, col) => {
+      const k = (t - t0) / 0.5;
+      if (k < 0 || k >= 1) return;
+      g.globalAlpha = 1 - k;
+      for (let i = 0; i < 48; i++) { const an = (i / 48) * Math.PI * 2; dot(g, col, x + Math.cos(an) * R * ease(k) * s, y - 14 * s + Math.sin(an) * R * ease(k) * 0.6 * s); }
+      const r3 = seeded(Math.round(t0 * 100));
+      for (let i = 0; i < n; i++) { const vx = (r3() - 0.5) * 3, vy = -1.5 - r3() * 3; dot(g, ROCK[i % 3], x + vx * k * 30 * s, y - 2 + (vy * k * 30 + k * k * 60) * s, 2 * s, 2 * s); }
+      g.globalAlpha = 1;
+    };
+    burst(J_LAND, 18, 4, '#c8b8d8');
+    burst(J_BEAST, 40, 8, '#ffb070');
+    burst(J_TITAN, 70, 16, '#ff5a1a');
+    if (pound >= 0) burst(t - pound, 46, 10, '#ffe2a0');
+
+    // The fury bar on the front of the pedestal: filling, draining at each change, molten at the end.
+    const fill = t < J_LAND ? 0 : t < J_BEAST ? (t - J_LAND) / (J_BEAST - J_LAND - 0.08) : t < J_BEAST + 0.3 ? 1 - (t - J_BEAST) / 0.3 : t < J_TITAN ? (t - J_BEAST - 0.3) / (J_TITAN - J_BEAST - 0.38) : 1;
+    const stage = t < J_BEAST ? 'small' : t < J_TITAN ? 'beast' : 'titan', c = RAGE_COLORS[stage], bw = 52, bx = x - bw / 2, by = y + 4;
+    dot(g, '#0b0812', bx - 1, by - 1, bw + 2, 4);
+    dot(g, c.back, bx, by, bw, 2);
+    const fw = Math.round(bw * clamp01(fill));
+    for (let i = 0; i < fw; i++) dot(g, ((i - Math.floor(t * 26)) % 6 + 6) % 6 < 2 ? c.light : c.base, bx + i, by, 1, 2);
+    if (fw > 0 && fw < bw) dot(g, '#ffffff', bx + fw - 1, by, 1, 2);
   }
 }

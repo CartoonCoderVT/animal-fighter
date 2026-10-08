@@ -19,10 +19,10 @@ export const FIGHTERS = [
     detail: 'J chuta rápido; o terceiro é um chute-foguete que lança. S+J: coice duplo que empurra muito. K: pisão do céu.'
   },
   {
-    id: 'ocelot', name: 'Juma', species: 'A JAGUATIRICA', role: 'FÚRIA / FERA', word: 'GRRR.', color: '#e6ba67',
-    desc: 'Pequena, rápida e sem paciência nenhuma. Quando perde a calma, vira a FERA.',
-    ability: 'Fera', icon: '!', stats: [5, 4, 5], hp: 150, speed: 5.3, weight: 0.95, cooldown: 9,
-    detail: 'J: fúria de garras; lado+J: bote; S+J: mordida. K: vira a FERA, lenta e blindada, e o chão treme. Na FERA, K é o salto sísmico.'
+    id: 'ocelot', name: 'Juma', species: 'A JAGUATIRICA', role: 'FÚRIA / FERA / TITÃ', word: 'GRRR.', color: '#e6ba67',
+    desc: 'Cada pancada que leva enche a barra de FÚRIA. Cheia, vira a FERA; cheia de novo, a TITÃ, que esmaga tudo.',
+    ability: 'Frenesi · Salto · Trovão', icon: '!', stats: [5, 4, 5], hp: 150, speed: 5.3, weight: 0.95, cooldown: 7,
+    detail: 'J: garras; lado+J: bote; S+J: mordida; K: frenesi. FERA: patadas, investida, terremoto; K salto. TITÃ: K agarra e esmaga ou bate palma-trovão.'
   },
   {
     id: 'bat', name: 'Nox', species: 'O MORCEGO BRANCO', role: 'VAMPIRO / HEMOMANCIA', word: 'SHHH.', color: '#9fb9ea',
@@ -31,6 +31,17 @@ export const FIGHTERS = [
     detail: 'J: garra, ceifa, ciclone, guilhotina, estacas. S+J no combo: rasteira. K: sangue perfurante; com 3 marcas: RÉQUIEM. Todo golpe rouba vida.'
   }
 ];
-// Juma's beast form is far heavier and slower than she is.
-export const weightOf = a => FIGHTERS[a.type].weight * (a.form === 'beast' ? 1.9 : 1);
-export const speedOf = a => FIGHTERS[a.type].speed * (a.form === 'beast' ? 0.66 : 1);
+// Juma's forms. Each one is heavier and slower than the last, takes blows on a thicker hide
+// (armor: the share of damage that gets through) and arrives with life of its own (hp: added to
+// her maximum and healed on the spot). rage: how much of the fury bar a point of damage taken fills.
+export const FORMS = {
+  null: { weight: 1, speed: 1, armor: 1, hp: 0, rage: 2.1 },
+  beast: { weight: 1.9, speed: 0.66, armor: 0.8, hp: 50, rage: 1.5 },
+  titan: { weight: 2.8, speed: 0.58, armor: 0.7, hp: 80, rage: 0 }
+};
+export const formOf = a => FORMS[a.form || null] || FORMS.null;
+export const weightOf = a => FIGHTERS[a.type].weight * formOf(a).weight;
+export const speedOf = a => FIGHTERS[a.type].speed * formOf(a).speed;
+// The fury bar: full at this much, and the form it turns her into.
+export const RAGE_MAX = 100;
+export const NEXT_FORM = { null: 'beast', beast: 'titan' };

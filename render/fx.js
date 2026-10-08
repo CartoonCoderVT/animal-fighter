@@ -271,35 +271,50 @@ export class FX {
         for (let i = 0; i < 3 + Math.min(4, p); i++) { let cx = x, cy = y; const d = i % 2 ? -1 : 1; for (let k = 0; k < 4 + p; k++) { cx += d * (1 + rnd() * 2); cy += Math.round(rnd() * 2 - 1) * 0.5; this.fg.fillRect(Math.round(cx), Math.round(Math.min(y + 1, cy)), 1, 1); } }
         break;
       }
-      // The roar rolls out from her jaws in arcs.
+      // The roar rolls out from her jaws in arcs; the titan's fills the room.
       case 'roar': {
-        const f = e.face || 1;
-        for (let i = 0; i < 4; i++) this.rings.push({ x, y, life: 0.35 + i * 0.12, max: 0.35 + i * 0.12, r: 26 + i * 20, color: i % 2 ? '#ffffff' : '#ffb070', dir: f > 0 ? 0 : Math.PI, arc: 1.1 });
-        this.rings.push({ x, y, life: 0.55, max: 0.55, r: 80, color: '#ffe2a0' });
-        this.burst('spark', x, y, 10, { a: f > 0 ? 0 : Math.PI, spread: 1.2, s: 3, life: 0.35, colors: ['#ffffff', '#ffe2a0'], g: 0, em: true, rnd });
+        const f = e.face || 1, k = e.titan ? 1.7 : 1;
+        for (let i = 0; i < (e.titan ? 6 : 4); i++) this.rings.push({ x, y, life: 0.35 + i * 0.12, max: 0.35 + i * 0.12, r: (26 + i * 20) * k, color: i % 2 ? '#ffffff' : e.titan ? '#ff7a3a' : '#ffb070', dir: f > 0 ? 0 : Math.PI, arc: e.titan ? 1.5 : 1.1 });
+        this.rings.push({ x, y, life: 0.55, max: 0.55, r: 80 * k, color: '#ffe2a0' });
+        this.burst('spark', x, y, e.titan ? 22 : 10, { a: f > 0 ? 0 : Math.PI, spread: e.titan ? 2 : 1.2, s: 3 * k, life: 0.35, colors: ['#ffffff', '#ffe2a0'], g: 0, em: true, rnd });
         break;
       }
       case 'morphStart':
-        this.rings.push({ x, y: y + 4, life: 0.4, max: 0.4, r: 16, color: '#ffb070' });
-        this.burst('steam', x, y + 8, 6, { a: -Math.PI / 2, spread: 2.4, s: 0.9, life: 0.8, colors: STEAM, em: true, g: -0.04, drag: 0.94, size: 2, grow: 0.05, rnd });
+        this.rings.push({ x, y: y + 4, life: 0.4, max: 0.4, r: e.titan ? 28 : 16, color: e.titan ? '#ff6a2a' : '#ffb070' });
+        this.burst('steam', x, y + 8, e.titan ? 12 : 6, { a: -Math.PI / 2, spread: 2.4, s: 0.9, life: 0.8, colors: STEAM, em: true, g: -0.04, drag: 0.94, size: 2, grow: 0.05, rnd });
         break;
-      // The pop: a burst of light and steam, rocks thrown up from the floor under her.
+      // The pop: a burst of light and steam, rocks thrown up from the floor under her. The titan's
+      // splits the floor open and showers the room with rocks.
       case 'morphPop': {
-        const fy = y + X(16);
-        this.flashes.push({ x, y: y - 4, life: 0.22, max: 0.22, kind: 'star', p: 5, a: Math.PI / 4, seed: e.id || 1, color: '#ffe2a0' });
-        this.rings.push({ x, y, life: 0.45, max: 0.45, r: 56, color: '#ffffff' });
-        this.rings.push({ x, y, life: 0.65, max: 0.65, r: 96, color: '#ff9a3a' });
-        this.burst('spark', x, y, 28, { spread: 6.3, s: 3.6, life: 0.6, colors: EMBER, g: 0.05, drag: 0.95, em: true, rnd });
-        this.burst('steam', x, y + 4, 16, { a: -Math.PI / 2, spread: 3.2, s: 1.6, life: 1, colors: STEAM, em: true, g: -0.04, drag: 0.93, size: 2, grow: 0.06, rnd });
-        this.burst('debris', x, fy - 1, 10, { a: -Math.PI / 2, spread: 2.2, s: 3, life: 1.3, colors: ROCK, g: 0.2, b: 0.3, size: 2, rnd });
-        this.hemo.push({ k: 'crack', x, y: fy, t: 0, life: 0.7, max: 0.7, seed: (e.id || 1) + 3 });
+        const fy = y + X(16), k = e.titan ? 1.6 : 1;
+        this.flashes.push({ x, y: y - 4, life: 0.22 * k, max: 0.22 * k, kind: 'star', p: 5 * k, a: Math.PI / 4, seed: e.id || 1, color: '#ffe2a0' });
+        this.rings.push({ x, y, life: 0.45, max: 0.45, r: 56 * k, color: '#ffffff' });
+        this.rings.push({ x, y, life: 0.65, max: 0.65, r: 96 * k, color: e.titan ? '#ff5a1a' : '#ff9a3a' });
+        if (e.titan) this.rings.push({ x, y, life: 0.85, max: 0.85, r: 200, color: '#ffe2a0' });
+        this.burst('spark', x, y, Math.round(28 * k), { spread: 6.3, s: 3.6 * k, life: 0.6, colors: EMBER, g: 0.05, drag: 0.95, em: true, rnd });
+        this.burst('steam', x, y + 4, Math.round(16 * k), { a: -Math.PI / 2, spread: 3.2, s: 1.6 * k, life: 1, colors: STEAM, em: true, g: -0.04, drag: 0.93, size: 2, grow: 0.06, rnd });
+        this.burst('debris', x, fy - 1, Math.round(10 * k * k), { a: -Math.PI / 2, spread: 2.2, s: 3 * k, life: 1.3, colors: ROCK, g: 0.2, b: 0.3, size: 2, rnd });
+        this.hemo.push({ k: 'crack', x, y: fy, t: 0, life: 0.7 * k, max: 0.7 * k, seed: (e.id || 1) + 3 });
         break;
       }
-      case 'unmorphPop':
-        this.rings.push({ x, y, life: 0.3, max: 0.3, r: 20, color: '#ffffff' });
-        this.flashes.push({ x, y, life: 0.1, max: 0.1, kind: 'star', p: 2, a: 0, seed: e.id || 1, color: '#ffe2a0' });
-        this.burst('steam', x, y, 14, { spread: 6.3, s: 1.4, life: 0.9, colors: STEAM, em: true, g: -0.03, drag: 0.92, size: 2, grow: 0.06, rnd });
-        this.burst('spark', x, y, 8, { spread: 6.3, s: 2, life: 0.4, colors: EMBER, g: 0.04, em: true, rnd });
+      // The titan's thunderclap: a flash between her paws, a cone of shock arcs rolling ahead, the
+      // air rippling and the floor ahead kicking up a wave of dust.
+      case 'thunderclap': {
+        const f = e.face || 1, R = X(e.r || 230), dir = f > 0 ? 0 : Math.PI;
+        this.flashes.push({ x, y, life: 0.2, max: 0.2, kind: 'star', p: 6, a: 0, seed: e.id || 1, color: '#ffffff' });
+        for (let i = 0; i < 6; i++) this.rings.push({ x, y, life: 0.3 + i * 0.07, max: 0.3 + i * 0.07, r: R * (0.25 + i * 0.16), color: i % 2 ? '#ffffff' : '#ffe2a0', dir, arc: 0.45 + i * 0.04 });
+        this.rings.push({ x, y, life: 0.25, max: 0.25, r: 30, color: '#ffffff' });
+        this.burst('spark', x, y, 26, { a: dir, spread: 0.9, s: 5, life: 0.4, colors: ['#ffffff', '#ffe2a0', '#ffb070'], g: 0, drag: 0.94, em: true, rnd });
+        const fy = y + X(24);
+        for (let i = 1; i <= 8; i++) this.burst('dust', x + f * i * (R / 8), fy - 1, 3, { a: -Math.PI / 2 + f * 0.3, spread: 0.6, s: 1.6 + (8 - i) * 0.15, life: 0.6, colors: DUST, g: -0.02, drag: 0.9, size: 2, rnd });
+        break;
+      }
+      // The beast's paws clapped together: a ring of force and a burst of light.
+      case 'clap':
+        this.flashes.push({ x, y, life: 0.12, max: 0.12, kind: 'star', p: 3, a: Math.PI / 4, seed: e.id || 1, color: '#ffe2a0' });
+        this.rings.push({ x, y, life: 0.3, max: 0.3, r: 30, color: '#ffffff' });
+        this.rings.push({ x, y, life: 0.42, max: 0.42, r: 48, color: '#ffb070' });
+        this.burst('spark', x, y, 10, { spread: 6.3, s: 2.6, life: 0.3, colors: ['#ffffff', '#ffe2a0'], g: 0, em: true, rnd });
         break;
       // A rival crushed into the wall by the charge: a flash, flying scrap and a dent that stays.
       case 'wallSplat': {

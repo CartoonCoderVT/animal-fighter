@@ -15,6 +15,8 @@ Briga de animais em pixel art com física, ragdolls e partidas online direto no 
 A/D mover · W/Espaço pular · S agachar · J ataque · K especial · Shift parry/esquiva · E pegar · L revoada (Nox) · Esc pausa.
 Também funciona com controle e toque.
 
+**Juma** não tem botão de transformação: cada pancada que ela leva enche a barra de **FÚRIA**. Cheia, ela vira a **FERA**; a barra zera, enche de novo e ela vira a **TITÃ**, enorme, com muita vida e que destrói tudo pelo caminho. Cada forma tem seus combos (lado+J, S+J, no ar) e seu K: frenesi, salto sísmico, e agarrar-e-esmagar ou palma-trovão.
+
 ## Créditos
 
 Física: [Matter.js](https://brm.io/matter-js/) (MIT) · Rede: [PeerJS](https://peerjs.com/) (MIT). Licenças em `vendor/`.

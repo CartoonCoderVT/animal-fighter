@@ -16,7 +16,7 @@ import { seeded } from '../engine/const.js';
 import { frameFor } from './anim.js';
 import { Secondary } from './secondary.js';
 import { drawBloodArt, drawMarks } from './blood-art.js';
-import { NoxHero } from './hero.js';
+import { NoxHero, JumaHero } from './hero.js';
 import { MOVES, COMBOS, comboOf } from '../sim/moves.js';
 import { castFor } from './pixel-data.js';
 import { isMelee, WEAPON_INFO } from '../sim/weapons.js';
@@ -25,21 +25,30 @@ const mk = (w, h) => { const c = document.createElement('canvas'); c.width = w; 
 const X = v => Math.round(v * S);
 const PART_ORDER = { armB: 0, footB: 1, body: 2, footF: 3, head: 4, armF: 5 };
 // Each live fighter is painted into a small canvas with its feet at (FIG_X, FIG_Y).
-const FIG_W = 72, FIG_H = 64, FIG_X = 36, FIG_Y = 50;
+const FIG_W = 96, FIG_H = 80, FIG_X = 48, FIG_Y = 62;
 const WEAPON_SCALE = 0.7;
 // Nox's eye in head cells from the head pivot; the hand at the tip of the near arm.
 const EYE = [2, -6], HAND = [0, 3];
 const DEMO_ACT = ['pounce', 'ball', 'sky', 'morph', 'beam'];
-// The instant of Juma's transformation: the figure burns white just before and after the pop.
+// Juma's transformations, timed by the form she is turning into: when she swells, when she pops.
+const titanMorph = a => a.act === 'morph' && a.morphTo === 'titan';
+const MORPH_T = { beast: { swell: 0.12, pop: 0.6, end: 1.0 }, titan: { swell: 0.15, pop: 1.15, end: 1.7 } };
+const morphT = a => MORPH_T[titanMorph(a) ? 'titan' : 'beast'];
+// The instant of the transformation: the figure burns white just before and after the pop.
 function morphFlash(a) {
-  const t = a.actT ?? 0;
-  if (a.act === 'morph' && t >= 0.5 && t < 0.66) return Math.floor(t * 40) % 2 ? '#ffffff' : '#ffe2a0';
-  if (a.act === 'unmorph' && t >= 0.27 && t < 0.38) return Math.floor(t * 40) % 2 ? '#ffffff' : '#ffe2a0';
+  if (a.act !== 'morph') return null;
+  const t = a.actT ?? 0, m = morphT(a);
+  if (t >= m.pop - 0.1 && t < m.pop + 0.07) return Math.floor(t * 40) % 2 ? '#ffffff' : '#ffe2a0';
   return null;
 }
-// Shivering as she swells: the whole figure jitters a pixel either way.
-const morphJitter = (a, time) => (a.act === 'morph' && (a.actT ?? 0) > 0.12 && (a.actT ?? 0) < 0.6 ? (Math.floor(time * 34) % 2 ? 1 : -1) : 0);
-const JUMA_TRAIL = { null: '#ffd27a', beast: '#ff7a2a' };
+// Shivering as she swells: the whole figure jitters, harder the closer the pop (two pixels for the titan).
+function morphJitter(a, time) {
+  if (a.act !== 'morph') return 0;
+  const t = a.actT ?? 0, m = morphT(a);
+  if (t <= m.swell || t >= m.pop) return 0;
+  return (Math.floor(time * 34) % 2 ? 1 : -1) * (titanMorph(a) && t > m.pop * 0.6 ? 2 : 1);
+}
+const JUMA_TRAIL = { null: '#ffd27a', beast: '#ff7a2a', titan: '#ff4a1a' };
 // Specials the menu preview carries forward across the pedestal.
 const DEMO_MOVES = ['pounce', 'ball', 'sky', 'bite'];
 
@@ -256,16 +265,16 @@ export class Renderer {
   hype(e, settings) {
     const c = this.cam, p = e.p || 1, x = X(e.x ?? 0), y = X(e.y ?? 0);
     // Nox's big moments shake and punch in too: the burst, the requiem, the bounce, the beam.
-    const PUNCH = { supernova: 0.05, requiemBurst: 0.07, groundBounce: 0.025, bloodBeam: 0.03, morphPop: 0.07, wallSplat: 0.05, quake: p >= 6 ? 0.03 : 0 };
+    const PUNCH = { supernova: 0.05, requiemBurst: 0.07, groundBounce: 0.025, bloodBeam: 0.03, morphPop: e.titan ? 0.1 : 0.07, wallSplat: 0.05, quake: p >= 6 ? 0.03 : 0, thunderclap: 0.07, clap: 0.025 };
     if (PUNCH[e.fx] && this.visible(x, y, 20)) {
       c.punch = Math.max(c.punch, PUNCH[e.fx]);
-      if ((e.fx === 'requiemBurst' || e.fx === 'morphPop') && settings.shake !== false) {
+      if ((e.fx === 'requiemBurst' || e.fx === 'morphPop' || e.fx === 'thunderclap') && settings.shake !== false) {
         this.lastImpact = this.time;
         this.focusLines.push({ x, y, life: 0.3, max: 0.3, seed: (e.id || 1) * 7, p: 3 });
-        this.impact = { x, y, frames: e.fx === 'morphPop' ? 3 : 4, n: 0, seed: e.id || 1, clash: e.fx === 'requiemBurst' };
+        this.impact = { x, y, frames: e.fx === 'requiemBurst' || e.titan ? 4 : 3, n: 0, seed: e.id || 1, clash: e.fx === 'requiemBurst' };
       }
     }
-    const TRAUMA = { quake: 0.03 * p, morphPop: 0.45, wallSplat: 0.32, roar: 0.12, armor: 0.03, supernova: 0.35, requiemBurst: 0.5, groundBounce: 0.16, bloodBeam: 0.2, bloodSpikes: 0.07, requiemCut: 0.03, shadowX: 0.05, hit: 0.035 + 0.035 * p, impact: e.ko ? 0.4 : 0.12 + 0.06 * p, explosion: 0.5, clang: e.big ? 0.12 : 0.05, clash: 0.18, land: p >= 0.9 ? 0.08 : 0, parry: 0.12 };
+    const TRAUMA = { quake: 0.03 * p, morphPop: e.titan ? 0.7 : 0.45, thunderclap: 0.55, clap: 0.15, wallSplat: 0.32, roar: 0.12, armor: 0.03, supernova: 0.35, requiemBurst: 0.5, groundBounce: 0.16, bloodBeam: 0.2, bloodSpikes: 0.07, requiemCut: 0.03, shadowX: 0.05, hit: 0.035 + 0.035 * p, impact: e.ko ? 0.4 : 0.12 + 0.06 * p, explosion: 0.5, clang: e.big ? 0.12 : 0.05, clash: 0.18, land: p >= 0.9 ? 0.08 : 0, parry: 0.12 };
     const t = TRAUMA[e.fx];
     if (!t) return;
     const seen = this.visible(x, y, e.fx === 'explosion' ? 60 : 4);
@@ -324,18 +333,18 @@ export class Renderer {
   keyFx(f) {
     const a = f.a, name = f.info.name || '', last = this.keyPose.get(a.id);
     const hand = f.info.hand, face = a.face || 1;
-    // Juma's smears and glints are amber, the beast's a hot orange; Nox's are blood.
-    const juma = a.type === 3, beast = juma && a.form === 'beast';
-    const c = juma ? (beast ? { c1: '#ffb070', c2: '#ff6a2a' } : { c1: '#fff1c8', c2: '#ffd27a' }) : {};
+    // Juma's smears and glints are amber, the beast's a hot orange, the titan's molten; Nox's are blood.
+    const juma = a.type === 3, beast = juma && !!a.form, titan = juma && a.form === 'titan';
+    const c = juma ? (titan ? { c1: '#ffe08a', c2: '#ff4a1a' } : beast ? { c1: '#ffb070', c2: '#ff6a2a' } : { c1: '#fff1c8', c2: '#ffd27a' }) : {};
     if (last && last.name !== name && this.simDt > 0) {
       const dust = (x, dir, n) => this.fx.burst('dust', x, f.hy - 1, n, { a: dir > 0 ? -0.35 : Math.PI + 0.35, spread: 0.7, s: beast ? 2 : 1.5, life: beast ? 0.6 : 0.45, colors: ['#8a7f95', '#6a6078', '#a89cb8'], g: -0.02, drag: 0.9, size: 2 });
       if (/X2?$/.test(name)) {
-        this.fx.hemo.push({ k: 'whoosh', x: last.hx, y: last.hy, x2: hand.x, y2: hand.y, cx: f.hx, cy: f.hy - 12, t: 0, life: beast ? 0.14 : 0.1, max: beast ? 0.14 : 0.1, ...c, wide: beast ? 2 : 0 });
-        if (a.ground) dust(f.hx - face * 7, -face, beast ? 6 : 4);
-      } else if (/I2?$/.test(name) && a.ground) dust(f.hx + face * 6, face, beast ? 5 : 2);
+        this.fx.hemo.push({ k: 'whoosh', x: last.hx, y: last.hy, x2: hand.x, y2: hand.y, cx: f.hx, cy: f.hy - (titan ? 18 : 12), t: 0, life: beast ? 0.14 : 0.1, max: beast ? 0.14 : 0.1, ...c, wide: titan ? 3 : beast ? 2 : 0 });
+        if (a.ground) dust(f.hx - face * 7, -face, titan ? 9 : beast ? 6 : 4);
+      } else if (/I2?$/.test(name) && a.ground) dust(f.hx + face * 6, face, titan ? 8 : beast ? 5 : 2);
       else if (/A2$/.test(name)) this.fx.hemo.push({ k: 'glint', x: f.info.eye.x, y: f.info.eye.y, t: 0, life: 0.14, max: 0.14, ...c });
-      // Every footfall of the beast at a run lands with a thud.
-      else if (beast && a.ground && (name === 'run1' || name === 'run2')) { dust(f.hx + (name === 'run1' ? face : -face) * 3, -face, 3); this.trauma = Math.min(1, this.trauma + 0.03); }
+      // Every footfall of the beast at a run lands with a thud; the titan's shake the screen.
+      else if (beast && a.ground && ['run1', 'run2', 'tRun1', 'tRun2'].includes(name)) { dust(f.hx + (name.endsWith('1') ? face : -face) * 3, -face, titan ? 5 : 3); this.trauma = Math.min(1, this.trauma + (titan ? 0.07 : 0.03)); }
     }
     this.keyPose.set(a.id, { name, hx: hand.x, hy: hand.y });
   }
@@ -343,10 +352,10 @@ export class Renderer {
   // Afterimages: a few fading copies of the sprite itself, left only by the fastest moves
   // (dodges, dash strikes, chases, pounces, spikes) and by a perfect dodge.
   updateTrails(figures, dt) {
-    const FAST = ['pounce', 'kickoff', 'slam', 'chase', 'stomp', 'requiem', 'charge', 'leap', 'meteor', 'bite'];
+    const FAST = ['pounce', 'kickoff', 'slam', 'chase', 'stomp', 'requiem', 'charge', 'leap', 'meteor', 'bite', 'frenzy'];
     for (const f of figures) {
       const a = f.a, list = this.trails.get(a.id) || [];
-      const fast = FAST.includes(a.act) || a.dodge > 0 || a.perfectT > 0 || (a.attack > 0 && ['dashAtk', 'spike', 'shadowCut', 'nAirScythe', 'nAirVortex', 'scytheGuillotine', 'scytheSpin', 'scytheReap', 'jBolt', 'jRake', 'jPounceUp', 'jFlurry', 'jAirSpin', 'jAirDive', 'bHammer', 'bUpper', 'bAirSmash'].includes(a.attackKind));
+      const fast = FAST.includes(a.act) || a.dodge > 0 || a.perfectT > 0 || (a.attack > 0 && ['dashAtk', 'spike', 'shadowCut', 'nAirScythe', 'nAirVortex', 'scytheGuillotine', 'scytheSpin', 'scytheReap', 'jBolt', 'jRake', 'jPounceUp', 'jFlurry', 'jAirSpin', 'jAirDive', 'jCross', 'bHammer', 'bUpper', 'bAirSmash', 'bClap', 'bAirClaw', 'tHook', 'tUpper', 'tAirClaw', 'tAirSmash'].includes(a.attackKind));
       f.trail = list;
       if (fast && dt > 0 && (list.stepT = (list.stepT || 0) + dt) > 0.05) {
         list.stepT = 0;
@@ -775,7 +784,7 @@ export class Renderer {
       lg.drawImage(sh, Math.round(X(x) - sh.width / 2) + ox, X(top) - 2 + oy);
       lg.globalAlpha = 1;
     };
-    for (const a of state.actors) if (!a.dead && !a.knocked && a.act !== 'swarm') put(a.x, a.y + FOOT, a.act === 'ball' ? 16 : 11);
+    for (const a of state.actors) if (!a.dead && !a.knocked && a.act !== 'swarm') put(a.x, a.y + FOOT, a.act === 'ball' ? 16 : a.form === 'titan' ? 24 : a.form === 'beast' ? 15 : 11);
     for (const p of state.props) if (p.kind !== 'glass' && p.kind !== 'cargo') put(p.x, p.y + p.h / 2, X(p.w) + 2);
   }
 
@@ -915,8 +924,9 @@ export class Renderer {
     }
     for (const f of figures) if (f.a.type === 3) {
       const k = this.jumaGlow(f.a, t);
-      if (f.a.form === 'beast' && f.info?.eye && !(f.a.severed || []).includes('head')) add({ x: f.info.eye.x, y: f.info.eye.y, r: 10, color: '#ffc040', i: 0.7, noRim: true });
-      if (k > 0.05) add({ x: f.hx, y: f.hy - 12, r: 26 + k * 46, color: k > 0.8 ? '#ffe2a0' : '#ff8a3a', i: k * 1.3 });
+      const titan = f.a.form === 'titan';
+      if (f.a.form && f.info?.eye && !(f.a.severed || []).includes('head')) add({ x: f.info.eye.x, y: f.info.eye.y, r: titan ? 14 : 10, color: titan ? '#fff2a0' : '#ffc040', i: titan ? 0.9 : 0.7, noRim: true });
+      if (k > 0.05) add({ x: f.hx, y: f.hy - (titan ? 18 : 12), r: (titan ? 36 : 26) + k * 46, color: k > 0.8 ? '#ffe2a0' : titan ? '#ff5a1a' : '#ff8a3a', i: k * 1.3 });
     }
     for (const f of figures) if (f.a.type === 4 && f.info?.eye) {
       add({ x: f.info.eye.x, y: f.info.eye.y, r: 10, color: '#ff4f6e', i: 0.7, noRim: true });
@@ -986,13 +996,18 @@ export class Renderer {
     this.fx.drawEmissive(eg, ox, oy, t);
   }
 
-  // How strongly Juma glows: swelling through the transformation, a smoulder as the beast.
+  // How strongly Juma glows: swelling through the transformation, a smoulder as the beast, a
+  // blaze as the titan; and as the fury bar nears full, she starts to burn.
   jumaGlow(a, t) {
     const at = a.actT ?? 0;
-    if (a.act === 'morph') return at < 0.12 ? (at / 0.12) * 0.3 : at < 0.6 ? 0.3 + ((at - 0.12) / 0.48) * 0.7 : Math.max(0, 1 - (at - 0.6) / 0.3);
-    if (a.act === 'unmorph') return at < 0.38 ? 0.45 : 0;
-    if (a.form === 'beast') return 0.16 + 0.06 * Math.sin(t * 6) + (a.attack > 0 ? 0.12 : 0);
-    return 0;
+    if (a.act === 'morph') {
+      const m = morphT(a);
+      return at < m.swell ? (at / m.swell) * 0.3 : at < m.pop ? 0.3 + ((at - m.swell) / (m.pop - m.swell)) * 0.7 : Math.max(0, 1 - (at - m.pop) / 0.3);
+    }
+    if (a.form === 'titan') return 0.3 + 0.08 * Math.sin(t * 7) + (a.attack > 0 || a.act ? 0.15 : 0);
+    const fury = Math.max(0, ((a.rage || 0) / 100 - 0.7) / 0.3) * (0.18 + 0.1 * Math.sin(t * 14));
+    if (a.form === 'beast') return Math.max(fury, 0.16 + 0.06 * Math.sin(t * 6) + (a.attack > 0 ? 0.12 : 0));
+    return fury;
   }
 
   // Juma over the lighting: an aura around her silhouette that pulses outward as she swells (and
@@ -1003,7 +1018,8 @@ export class Renderer {
       const ag = this.ag, face = a.face || 1, hot = k > 0.75, r = k > 0.55 ? 2 : 1;
       ag.globalCompositeOperation = 'source-over';
       ag.clearRect(0, 0, FIG_W, FIG_H);
-      const tint = tintOf(f.info.sprite, hot ? '#ffe2a0' : '#ff8a3a'), tov = f.info.overlay && tintOf(f.info.overlay, hot ? '#ffe2a0' : '#ff8a3a');
+      const col = hot ? '#ffe2a0' : a.form === 'titan' ? '#ff5a1a' : '#ff8a3a';
+      const tint = tintOf(f.info.sprite, col), tov = f.info.overlay && tintOf(f.info.overlay, col);
       for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
         if (!dx && !dy) continue;
         if (tov) drawFigure(ag, tov, FIG_X + dx + morphJitter(a, t), FIG_Y + dy, face);
@@ -1012,12 +1028,12 @@ export class Renderer {
       ag.globalCompositeOperation = 'destination-out';
       ag.drawImage(f.fc.body.c, 0, 0);
       ag.globalCompositeOperation = 'source-over';
-      eg.globalAlpha = Math.min(1, k * 1.2) * (0.65 + 0.35 * Math.abs(Math.sin(t * (a.act === 'morph' ? 22 : 5))));
+      eg.globalAlpha = Math.min(1, k * 1.2) * (0.65 + 0.35 * Math.abs(Math.sin(t * (a.act === 'morph' ? 22 : a.form === 'titan' ? 8 : 5))));
       eg.drawImage(this.aura, f.x, f.y);
       eg.globalAlpha = 1;
     }
     const trail = this.eyeTrail.get(a.id) || [];
-    if (a.form === 'beast' && f.info.eye && !(a.severed || []).includes('head')) {
+    if (a.form && f.info.eye && !(a.severed || []).includes('head')) {
       const ex = Math.round(f.info.eye.x), ey = Math.round(f.info.eye.y);
       if (this.simDt > 0) { trail.push({ x: ex, y: ey }); if (trail.length > 7) trail.shift(); }
       for (let i = 1; i < trail.length; i++) {
@@ -1036,20 +1052,32 @@ export class Renderer {
 
   spawnAmbientFx(state, hz, dt) {
     const fx = this.fx;
-    // Juma: steam and embers pour off her as she transforms; the beast smoulders and breathes steam.
+    // Juma: steam and embers pour off her as she transforms; the beast smoulders and breathes steam;
+    // the titan burns, sheds embers and rocks crumble off the floor under her. A nearly full fury
+    // bar has her smoking.
     const STEAM = ['#e8e4f0', '#c8c0d8', '#a8a0c0'], EMBER = ['#ffe2a0', '#ffb040', '#ff6a2a'];
     for (const a of state.actors) {
       if (a.dead || a.knocked || a.type !== 3) continue;
-      const x = X(a.x), y = X(a.y), at = a.actT ?? 0;
-      if (a.act === 'morph' && at > 0.08 && at < 0.62) {
-        if (Math.random() < 0.7) fx.burst('steam', x + rnd(-6, 6), y + rnd(-6, 8), 1, { a: -Math.PI / 2, spread: 0.8, s: 0.9, life: 0.7, colors: STEAM, em: true, g: -0.05, drag: 0.94, size: 2, grow: 0.05 });
-        if (Math.random() < 0.6) fx.burst('spark', x + rnd(-8, 8), y + rnd(-8, 10), 1, { a: -Math.PI / 2, spread: 0.9, s: 1.2, life: 0.6, colors: EMBER, g: -0.03, drag: 0.96, em: true });
-      } else if (a.act === 'unmorph' && at < 0.4 && Math.random() < 0.6) fx.burst('steam', x + rnd(-6, 6), y + rnd(-6, 6), 1, { a: -Math.PI / 2, spread: 0.9, s: 0.8, life: 0.8, colors: STEAM, em: true, g: -0.04, drag: 0.94, size: 2, grow: 0.05 });
-      else if (a.form === 'beast') {
+      const x = X(a.x), y = X(a.y), at = a.actT ?? 0, titan = a.form === 'titan';
+      const m = morphT(a);
+      if (a.act === 'morph' && at > m.swell * 0.6 && at < m.pop + 0.02) {
+        const n = titanMorph(a) ? 2 : 1;
+        for (let i = 0; i < n; i++) {
+          if (Math.random() < 0.7) fx.burst('steam', x + rnd(-6, 6) * n, y + rnd(-6, 8), 1, { a: -Math.PI / 2, spread: 0.8, s: 0.9, life: 0.7, colors: STEAM, em: true, g: -0.05, drag: 0.94, size: 2, grow: 0.05 });
+          if (Math.random() < 0.6) fx.burst('spark', x + rnd(-8, 8) * n, y + rnd(-8, 10), 1, { a: -Math.PI / 2, spread: 0.9, s: 1.2, life: 0.6, colors: EMBER, g: -0.03, drag: 0.96, em: true });
+        }
+        // Swelling into the titan, stones lift off the floor around her.
+        if (titanMorph(a) && Math.random() < 0.5) fx.burst('debris', x + rnd(-24, 24), y + X(16) - 1, 1, { a: -Math.PI / 2, spread: 0.3, s: 1 + rnd(0, 1), life: 0.9, colors: ['#5a5068', '#7a6e88', '#3e3648'], g: 0.02, drag: 0.97, size: 2 });
+      } else if (titan) {
+        if (Math.random() < dt * 12) fx.burst('spark', x + rnd(-11, 11), y + rnd(-18, 8), 1, { a: -Math.PI / 2, spread: 0.8, s: 0.8, life: 0.8, colors: EMBER, g: -0.025, drag: 0.97, em: true });
+        if (Math.random() < dt * 4) fx.burst('steam', x + rnd(-10, 10), y - 14, 1, { a: -Math.PI / 2, spread: 0.6, s: 0.6, life: 0.9, colors: ['#5a5060', '#3a3440'], g: -0.03, drag: 0.95, size: 2, grow: 0.06 });
+        if (!a.attack && Math.random() < dt * 1.2) fx.burst('steam', x + (a.face || 1) * 15, y - 10, 4, { a: (a.face || 1) > 0 ? -0.3 : Math.PI + 0.3, spread: 0.6, s: 0.9, life: 0.7, colors: STEAM, em: true, g: -0.03, drag: 0.94, size: 2, grow: 0.05 });
+      } else if (a.form === 'beast') {
         if (Math.random() < dt * 5) fx.burst('spark', x + rnd(-7, 7), y + rnd(-10, 6), 1, { a: -Math.PI / 2, spread: 0.8, s: 0.7, life: 0.7, colors: EMBER, g: -0.025, drag: 0.97, em: true });
         // A breath of steam from the jaws every so often.
         if (!a.attack && Math.random() < dt * 0.9) fx.burst('steam', x + (a.face || 1) * 9, y - 6, 3, { a: (a.face || 1) > 0 ? -0.3 : Math.PI + 0.3, spread: 0.6, s: 0.7, life: 0.6, colors: STEAM, em: true, g: -0.03, drag: 0.94, size: 1, grow: 0.04 });
       }
+      if (!a.act && (a.rage || 0) > 70 && Math.random() < dt * ((a.rage - 70) / 4)) fx.burst('steam', x + rnd(-5, 5), y - 4, 1, { a: -Math.PI / 2, spread: 0.7, s: 0.8, life: 0.7, colors: ['#ff8a3a', '#e8e4f0', '#c8c0d8'], em: true, g: -0.05, drag: 0.94, size: 2, grow: 0.05 });
     }
     for (const f of state.fires || []) if (Math.random() < 0.9) fx.burst('fire', X(f.x) + rnd(-12, 12), X(f.y) - 2, 2, { a: -Math.PI / 2, spread: 0.7, s: 0.9, life: 0.6, colors: [P.fire0, P.fire1, P.fire2], g: -0.04, drag: 0.96, size: 2, em: true });
     for (const a of state.actors) {
@@ -1091,28 +1119,31 @@ export class Renderer {
     return this.menuSec.get(key);
   }
 
-  // A fighter's entrance and hero pose on the select screen (t: seconds since picked). Nox has his
-  // own; the others play their moves.
+  // A fighter's entrance and hero pose on the select screen (t: seconds since picked). Nox and Juma
+  // have their own; the others play their moves.
   drawHero(g, type, x, y, t, { density = 2, dt = 1 / 60, key = 'hero' + type } = {}) {
     if (type === 4) { (this.noxHero ||= new NoxHero(this)).draw(g, x, y, t, { density, dt, gore: this.fx.gore }); return; }
+    if (type === 3) { (this.jumaHero ||= new JumaHero(this)).draw(g, x, y, t, { density, dt }); return; }
     this.drawPreview(g, type, x, y, { density, mode: 'demo', key, face: 1, dt });
   }
 
-  // Juma on the select screen: her claws, the transformation, the beast's blows, and back again.
+  // Juma in the menus: her claws, the change into the beast, its blows, the change into the titan,
+  // the titan's blows, and small again.
   jumaDemo(p) {
     const a = p.a;
-    if (a.act) {
-      a.actT = (p.t - p.actAt);
-      if (a.act === 'morph' && a.actT >= 0.6) a.form = 'beast';
-      if (a.act === 'unmorph' && a.actT >= 0.32) a.form = null;
-      if (a.actT >= (a.act === 'morph' ? 1.0 : 0.7)) { a.act = null; p.next = p.t + 0.7; }
+    if (a.act === 'morph') {
+      a.actT = p.t - p.actAt;
+      const m = MORPH_T[a.morphTo];
+      if (a.actT >= m.pop) a.form = a.morphTo;
+      if (a.actT >= m.end) { a.act = null; p.next = p.t + 0.5; }
       return;
     }
     if (p.t < p.next || a.attack > 0) return;
     const list = comboOf(a);
     p.step++;
     if (p.step < list.length) { a.attackKind = list[p.step]; a.attack = MOVES[a.attackKind].dur; p.next = p.t + MOVES[a.attackKind].dur + (a.form ? 0.3 : 0.12); }
-    else { a.act = a.form ? 'unmorph' : 'morph'; a.actT = 0; p.actAt = p.t; p.step = -1; }
+    else if (a.form !== 'titan') { a.act = 'morph'; a.morphTo = a.form ? 'titan' : 'beast'; a.actT = 0; p.actAt = p.t; p.step = -1; }
+    else { a.form = null; p.step = -1; p.next = p.t + 1.2; }
   }
 
   drawPreview(g, type, x, y, { density = 2, face = 1, mode = 'idle', key = 'p' + type, dt = 1 / 60, dim = 0, form = null } = {}) {

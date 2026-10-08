@@ -12,8 +12,9 @@ const SPECIAL_RANGE = [
   (dx, dy) => Math.abs(dx) > 30 && Math.abs(dx) < 150 && Math.abs(dy) < 40,
   (dx, dy) => Math.abs(dx) < 220 && Math.abs(dy) < 24,
   (dx, dy) => Math.abs(dx) < 90 && Math.abs(dy) < 60,
-  // Juma: small, she turns into the beast when the fight is close; the beast leaps at rivals a little away.
-  (dx, dy, a) => (a.form === 'beast' ? Math.abs(dx) > 50 && Math.abs(dx) < 220 && Math.abs(dy) < 90 : Math.abs(dx) < 140 && Math.abs(dy) < 60),
+  // Juma: small, the frenzy at a rival a few steps ahead; the beast leaps at rivals a little away;
+  // the titan grabs whoever is in arm's reach, or claps at whoever is in front.
+  (dx, dy, a) => (a.form === 'titan' ? Math.abs(dx) < 200 && Math.abs(dy) < 40 : a.form === 'beast' ? Math.abs(dx) > 50 && Math.abs(dx) < 220 && Math.abs(dy) < 90 : Math.abs(dx) > 16 && Math.abs(dx) < 110 && Math.abs(dy) < 24),
   // The blood beam: level along the floor, or down and ahead (about 30 degrees) from the air.
   (dx, dy, a, t, g) => t && t.bloodMark >= 3 && g.time - (t.markT ?? -9) < 5 ? Math.abs(dx) < 70 && Math.abs(dy) < 40 : a.ground ? Math.abs(dx) > 30 && Math.abs(dx) < 320 && Math.abs(dy) < 16 : Math.abs(dx) < 300 && Math.abs(dy - Math.abs(dx) * 0.61) < 18
 ];
@@ -162,7 +163,8 @@ export function think(g, a, dt) {
   if (ai.stuck > 0.35 && ai.wait <= 0) { input.jump = true; ai.wait = rnd(0.25, 0.6); ai.airborne = false; }
   if (ai.stuck > 2.5) { ai.path = null; ai.stuck = 0; }
 
-  // Combat
+  // Combat. aimed: a direction held on purpose with an attack (a directional move).
+  let aimed = false;
   {
     const natural = MOVES[comboOf(a)[0]].range + 4;
     const armed = isMelee(a.weapon);
@@ -171,7 +173,7 @@ export function think(g, a, dt) {
     input.attack = ranged ? Math.abs(dy) < 230 && Math.abs(dx) < 650 : Math.abs(dy) < 24 && Math.abs(dx) < meleeRange && facing && !target.knocked;
     input.power = armed ? Math.abs(dy) < 26 && Math.abs(dx) < meleeRange + 10 && facing && Math.random() < 0.06 : a.abilityCd <= 0 && !a.act && !target.knocked && facing && SPECIAL_RANGE[a.type](dx, dy, a, target, g);
     // With a weapon, mix in the directional lights now and then: side to lunge in, down to lift.
-    if (armed && input.attack && a.ground && Math.random() < 0.25) { if (Math.abs(dx) > meleeRange * 0.6) { input.right = dx > 0; input.left = dx < 0; } else input.down = Math.random() < 0.4; }
+    if (armed && input.attack && a.ground && Math.random() < 0.25) { aimed = true; if (Math.abs(dx) > meleeRange * 0.6) { input.right = dx > 0; input.left = dx < 0; } else input.down = Math.random() < 0.4; }
     // Follow a launched rival into the air and keep the combo going.
     if (!target.ground && !target.knocked && (target.stun > 0 || target.hitstun > 0) && Math.abs(dx) < 40 && dy < -6 && dy > -90) {
       if (a.ground) input.jump = true;
@@ -180,16 +182,18 @@ export function think(g, a, dt) {
     // Nox closes long gaps as a swarm of bats.
     if (a.type === 4 && !a.act && !(a.batCd > 0) && Math.hypot(dx, dy) > 110 && Math.hypot(dx, dy) < 320 && Math.random() < 0.015) input.bats = true;
     // Nox opens with the shadow cut from a few steps away.
-    if (a.type === 4 && a.ground && !a.act && !a.weapon && Math.abs(dx) > 28 && Math.abs(dx) < 64 && Math.abs(dy) < 16 && Math.random() < 0.05) { input.attack = !a.lastInput.attack; input.right = dx > 0; input.left = dx < 0; }
+    if (a.type === 4 && a.ground && !a.act && !a.weapon && Math.abs(dx) > 28 && Math.abs(dx) < 64 && Math.abs(dy) < 16 && Math.random() < 0.05) { aimed = true; input.attack = !a.lastInput.attack; input.right = dx > 0; input.left = dx < 0; }
     // Juma, small: the lightning pounce from a few steps away, the bite up close.
     // The beast: the charge from further off, the earthquake when rivals crowd her.
     if (a.type === 3 && a.ground && !a.act && !a.weapon && Math.abs(dy) < 18 && !target.knocked) {
       const crowd = g.enemies(a).filter(b => !b.dead && !b.knocked && Math.abs(b.x - a.x) < 90 && Math.abs(b.y - a.y) < 30).length;
-      if (a.form === 'beast') {
-        if (!(a.chargeCd > 0) && Math.abs(dx) > 50 && Math.abs(dx) < 140 && Math.random() < 0.03) { input.attack = !a.lastInput.attack; input.right = dx > 0; input.left = dx < 0; }
-        else if ((crowd >= 2 || Math.abs(dx) < 40) && a.comboTimer <= 0 && Math.random() < 0.03) { input.attack = !a.lastInput.attack; input.down = true; }
-      } else if (Math.abs(dx) > 30 && Math.abs(dx) < 66 && Math.random() < 0.05) { input.attack = !a.lastInput.attack; input.right = dx > 0; input.left = dx < 0; }
-      else if (Math.abs(dx) < 28 && !(a.biteCd > 0) && a.comboTimer <= 0 && Math.random() < 0.03) { input.attack = !a.lastInput.attack; input.down = true; }
+      if (a.form) {
+        if (!(a.chargeCd > 0) && Math.abs(dx) > 50 && Math.abs(dx) < (a.form === 'titan' ? 200 : 140) && Math.random() < 0.03) { aimed = true; input.attack = !a.lastInput.attack; input.right = dx > 0; input.left = dx < 0; }
+        else if ((crowd >= 2 || Math.abs(dx) < 40) && a.comboTimer <= 0 && Math.random() < 0.03) { aimed = true; input.attack = !a.lastInput.attack; input.down = true; }
+      } else if (Math.abs(dx) > 30 && Math.abs(dx) < 66 && Math.random() < 0.05) { aimed = true; input.attack = !a.lastInput.attack; input.right = dx > 0; input.left = dx < 0; }
+      else if (Math.abs(dx) < 28 && !(a.biteCd > 0) && a.comboTimer <= 0 && Math.random() < 0.03) { aimed = true; input.attack = !a.lastInput.attack; input.down = true; }
+      // Small Juma, mid-string: a fresh tap toward the rival for the cross now and then.
+      else if (a.comboTimer > 0 && Math.abs(dx) < 50 && Math.random() < 0.06) { aimed = true; input.attack = !a.lastInput.attack; if (!a.lastInput.left && !a.lastInput.right) { input.right = dx > 0; input.left = dx < 0; } }
     }
     // Close the gap with a roll that turns into a dashing strike.
     if (a.ground && !a.act && !a.weapon && a.dodgeCd <= 0 && Math.abs(dx) > 44 && Math.abs(dx) < 95 && Math.abs(dy) < 20 && Math.random() < 0.03 && safeRoll(g, a, Math.sign(dx))) {
@@ -197,7 +201,9 @@ export function think(g, a, dt) {
     }
     if (a.dodge > 0 && a.dodgeKind === 'roll' && Math.abs(dx) < 50) input.attack = !a.lastInput.attack;
     // Stomp on heads from above.
-    if (!a.ground && !a.act && Math.abs(dx) < 12 && dy > 12 && dy < 120 && a.vy > -2) { input.down = true; input.attack = true; }
+    if (!a.ground && !a.act && Math.abs(dx) < 12 && dy > 12 && dy < 120 && a.vy > -2) { aimed = true; input.down = true; input.attack = true; }
+    // The titan hammers a downed rival into the floor.
+    if (a.type === 3 && a.form === 'titan' && a.ground && !a.act && target.knocked && Math.abs(dx) < 44 && Math.abs(dy) < 40 && Math.random() < 0.1) { aimed = true; input.attack = !a.lastInput.attack; input.down = true; }
     // Pick up a downed rival and throw them.
     if (a.act === 'carry') {
       ai.carryT = (ai.carryT || 0) + dt;
@@ -226,6 +232,8 @@ export function think(g, a, dt) {
     const threat = g.bullets.find(b => b.team !== a.team && Math.hypot(b.x - a.x, b.y - a.y) < 70 && Math.sign(b.vx) === Math.sign(a.x - b.x));
     if (threat) input.dodge = safeRoll(g, a, input.right ? 1 : input.left ? -1 : a.face);
   }
+  // A plain blow is thrown planted: a held direction or down would turn it into another move.
+  if (input.attack && !aimed && !ranged && a.ground && !a.climbing && Math.abs(dx) < 70) { input.left = false; input.right = false; if (!input.jump) input.down = false; }
   if (input.aimX === null) { input.aimX = target.x; input.aimY = target.y; }
   if (!input.left && !input.right) a.face = dx >= 0 ? 1 : -1;
   return input;
