@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#05030a">
+<meta name="description" content="Animal Fighter: briga de animais em pixel art com física, ragdolls e partidas online no navegador.">
+<title>Animal Fighter</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23f57c61'/%3E%3Cpath d='M6 7h5v5h10V7h5v17H6z' fill='%2314141e'/%3E%3Cpath d='M10 16h3v3h-3zm9 0h3v3h-3z' fill='%23fff2d9'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="game" tabindex="0" aria-label="Animal Fighter. Use o teclado, o mouse, um controle ou o toque para jogar."></canvas>
+<input id="text-input" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-hidden="true" tabindex="-1">
+<div id="live" class="sr-only" role="status" aria-live="polite"></div>
+<noscript><p class="noscript">Animal Fighter precisa de JavaScript para rodar.</p></noscript>
+<script src="vendor/matter.min.js"></script>
+<script src="vendor/peerjs.min.js"></script>
+<script type="module" src="main.js"></script>
+</body>
+</html>
