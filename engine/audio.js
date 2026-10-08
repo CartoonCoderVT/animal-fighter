@@ -46,6 +46,10 @@ const SFX = {
   blood: { wave: 'sine', f0: 150, f1: 55, dur: 0.12, noise: N(650, 0.16, 'bandpass', 220), vol: 0.75 },
   charge: { wave: 'sine', f0: 140, f1: 880, dur: 0.34, noise: N(400, 0.34, 'bandpass', 2400), vol: 0.5 },
   beam: { wave: 'sawtooth', f0: 900, f1: 110, dur: 0.32, noise: N(3200, 0.3, 'highpass', 900), vol: 0.8 },
+  // Juma: the growl as she starts to change, the pop of the change, the floor rumbling under the beast.
+  growl: { wave: 'sawtooth', f0: 120, f1: 70, dur: 0.5, noise: N(300, 0.45, 'bandpass', 160), vol: 0.6 },
+  pop: { wave: 'sine', f0: 220, f1: 520, dur: 0.12, noise: N(1200, 0.2, 'bandpass', 400), vol: 0.5 },
+  quake: { wave: 'sine', f0: 52, f1: 24, dur: 0.6, noise: N(200, 0.6, 'lowpass', 60), vol: 1 },
   // A flurry of wings and squeaks.
   bats: { wave: 'square', f0: 2600, f1: 1500, dur: 0.12, noise: N(1800, 0.3, 'bandpass', 600), vol: 0.45 }
 };

@@ -17,7 +17,8 @@ import { frameFor } from './anim.js';
 import { Secondary } from './secondary.js';
 import { drawBloodArt, drawMarks } from './blood-art.js';
 import { NoxHero } from './hero.js';
-import { MOVES, COMBOS } from '../sim/moves.js';
+import { MOVES, COMBOS, comboOf } from '../sim/moves.js';
+import { castFor } from './pixel-data.js';
 import { isMelee, WEAPON_INFO } from '../sim/weapons.js';
 
 const mk = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
@@ -28,7 +29,17 @@ const FIG_W = 72, FIG_H = 64, FIG_X = 36, FIG_Y = 50;
 const WEAPON_SCALE = 0.7;
 // Nox's eye in head cells from the head pivot; the hand at the tip of the near arm.
 const EYE = [2, -6], HAND = [0, 3];
-const DEMO_ACT = ['pounce', 'ball', 'sky', 'bite', 'beam'];
+const DEMO_ACT = ['pounce', 'ball', 'sky', 'morph', 'beam'];
+// The instant of Juma's transformation: the figure burns white just before and after the pop.
+function morphFlash(a) {
+  const t = a.actT ?? 0;
+  if (a.act === 'morph' && t >= 0.5 && t < 0.66) return Math.floor(t * 40) % 2 ? '#ffffff' : '#ffe2a0';
+  if (a.act === 'unmorph' && t >= 0.27 && t < 0.38) return Math.floor(t * 40) % 2 ? '#ffffff' : '#ffe2a0';
+  return null;
+}
+// Shivering as she swells: the whole figure jitters a pixel either way.
+const morphJitter = (a, time) => (a.act === 'morph' && (a.actT ?? 0) > 0.12 && (a.actT ?? 0) < 0.6 ? (Math.floor(time * 34) % 2 ? 1 : -1) : 0);
+const JUMA_TRAIL = { null: '#ffd27a', beast: '#ff7a2a' };
 // Specials the menu preview carries forward across the pedestal.
 const DEMO_MOVES = ['pounce', 'ball', 'sky', 'bite'];
 
@@ -91,6 +102,8 @@ export class Renderer {
     this.scythes = new Map();
     this.scythePresence = new Map();
     this.swarmPos = new Map();
+    this.eyeTrail = new Map();
+    this.aura = mk(FIG_W, FIG_H); this.ag = this.aura.getContext('2d');
     this.worldDrawn = false;
     this.impact = null;
     this.focusLines = [];
@@ -243,16 +256,16 @@ export class Renderer {
   hype(e, settings) {
     const c = this.cam, p = e.p || 1, x = X(e.x ?? 0), y = X(e.y ?? 0);
     // Nox's big moments shake and punch in too: the burst, the requiem, the bounce, the beam.
-    const PUNCH = { supernova: 0.05, requiemBurst: 0.07, groundBounce: 0.025, bloodBeam: 0.03 };
+    const PUNCH = { supernova: 0.05, requiemBurst: 0.07, groundBounce: 0.025, bloodBeam: 0.03, morphPop: 0.07, wallSplat: 0.05, quake: p >= 6 ? 0.03 : 0 };
     if (PUNCH[e.fx] && this.visible(x, y, 20)) {
       c.punch = Math.max(c.punch, PUNCH[e.fx]);
-      if (e.fx === 'requiemBurst' && settings.shake !== false) {
+      if ((e.fx === 'requiemBurst' || e.fx === 'morphPop') && settings.shake !== false) {
         this.lastImpact = this.time;
         this.focusLines.push({ x, y, life: 0.3, max: 0.3, seed: (e.id || 1) * 7, p: 3 });
-        this.impact = { x, y, frames: 4, n: 0, seed: e.id || 1, clash: true };
+        this.impact = { x, y, frames: e.fx === 'morphPop' ? 3 : 4, n: 0, seed: e.id || 1, clash: e.fx === 'requiemBurst' };
       }
     }
-    const TRAUMA = { supernova: 0.35, requiemBurst: 0.5, groundBounce: 0.16, bloodBeam: 0.2, bloodSpikes: 0.07, requiemCut: 0.03, shadowX: 0.05, hit: 0.035 + 0.035 * p, impact: e.ko ? 0.4 : 0.12 + 0.06 * p, explosion: 0.5, clang: e.big ? 0.12 : 0.05, clash: 0.18, land: p >= 0.9 ? 0.08 : 0, parry: 0.12 };
+    const TRAUMA = { quake: 0.03 * p, morphPop: 0.45, wallSplat: 0.32, roar: 0.12, armor: 0.03, supernova: 0.35, requiemBurst: 0.5, groundBounce: 0.16, bloodBeam: 0.2, bloodSpikes: 0.07, requiemCut: 0.03, shadowX: 0.05, hit: 0.035 + 0.035 * p, impact: e.ko ? 0.4 : 0.12 + 0.06 * p, explosion: 0.5, clang: e.big ? 0.12 : 0.05, clash: 0.18, land: p >= 0.9 ? 0.08 : 0, parry: 0.12 };
     const t = TRAUMA[e.fx];
     if (!t) return;
     const seen = this.visible(x, y, e.fx === 'explosion' ? 60 : 4);
@@ -311,13 +324,18 @@ export class Renderer {
   keyFx(f) {
     const a = f.a, name = f.info.name || '', last = this.keyPose.get(a.id);
     const hand = f.info.hand, face = a.face || 1;
+    // Juma's smears and glints are amber, the beast's a hot orange; Nox's are blood.
+    const juma = a.type === 3, beast = juma && a.form === 'beast';
+    const c = juma ? (beast ? { c1: '#ffb070', c2: '#ff6a2a' } : { c1: '#fff1c8', c2: '#ffd27a' }) : {};
     if (last && last.name !== name && this.simDt > 0) {
-      const dust = (x, dir, n) => this.fx.burst('dust', x, f.hy - 1, n, { a: dir > 0 ? -0.35 : Math.PI + 0.35, spread: 0.7, s: 1.5, life: 0.45, colors: ['#8a7f95', '#6a6078', '#a89cb8'], g: -0.02, drag: 0.9, size: 2 });
+      const dust = (x, dir, n) => this.fx.burst('dust', x, f.hy - 1, n, { a: dir > 0 ? -0.35 : Math.PI + 0.35, spread: 0.7, s: beast ? 2 : 1.5, life: beast ? 0.6 : 0.45, colors: ['#8a7f95', '#6a6078', '#a89cb8'], g: -0.02, drag: 0.9, size: 2 });
       if (/X2?$/.test(name)) {
-        this.fx.hemo.push({ k: 'whoosh', x: last.hx, y: last.hy, x2: hand.x, y2: hand.y, cx: f.hx, cy: f.hy - 12, t: 0, life: 0.1, max: 0.1 });
-        if (a.ground) dust(f.hx - face * 7, -face, 4);
-      } else if (/I2?$/.test(name) && a.ground) dust(f.hx + face * 6, face, 2);
-      else if (/A2$/.test(name)) this.fx.hemo.push({ k: 'glint', x: f.info.eye.x, y: f.info.eye.y, t: 0, life: 0.14, max: 0.14 });
+        this.fx.hemo.push({ k: 'whoosh', x: last.hx, y: last.hy, x2: hand.x, y2: hand.y, cx: f.hx, cy: f.hy - 12, t: 0, life: beast ? 0.14 : 0.1, max: beast ? 0.14 : 0.1, ...c, wide: beast ? 2 : 0 });
+        if (a.ground) dust(f.hx - face * 7, -face, beast ? 6 : 4);
+      } else if (/I2?$/.test(name) && a.ground) dust(f.hx + face * 6, face, beast ? 5 : 2);
+      else if (/A2$/.test(name)) this.fx.hemo.push({ k: 'glint', x: f.info.eye.x, y: f.info.eye.y, t: 0, life: 0.14, max: 0.14, ...c });
+      // Every footfall of the beast at a run lands with a thud.
+      else if (beast && a.ground && (name === 'run1' || name === 'run2')) { dust(f.hx + (name === 'run1' ? face : -face) * 3, -face, 3); this.trauma = Math.min(1, this.trauma + 0.03); }
     }
     this.keyPose.set(a.id, { name, hx: hand.x, hy: hand.y });
   }
@@ -325,14 +343,14 @@ export class Renderer {
   // Afterimages: a few fading copies of the sprite itself, left only by the fastest moves
   // (dodges, dash strikes, chases, pounces, spikes) and by a perfect dodge.
   updateTrails(figures, dt) {
-    const FAST = ['pounce', 'kickoff', 'slam', 'chase', 'stomp', 'requiem'];
+    const FAST = ['pounce', 'kickoff', 'slam', 'chase', 'stomp', 'requiem', 'charge', 'leap', 'meteor', 'bite'];
     for (const f of figures) {
       const a = f.a, list = this.trails.get(a.id) || [];
-      const fast = FAST.includes(a.act) || a.dodge > 0 || a.perfectT > 0 || (a.attack > 0 && ['dashAtk', 'spike', 'shadowCut', 'nAirScythe', 'nAirVortex', 'scytheGuillotine', 'scytheSpin', 'scytheReap'].includes(a.attackKind));
+      const fast = FAST.includes(a.act) || a.dodge > 0 || a.perfectT > 0 || (a.attack > 0 && ['dashAtk', 'spike', 'shadowCut', 'nAirScythe', 'nAirVortex', 'scytheGuillotine', 'scytheSpin', 'scytheReap', 'jBolt', 'jRake', 'jPounceUp', 'jFlurry', 'jAirSpin', 'jAirDive', 'bHammer', 'bUpper', 'bAirSmash'].includes(a.attackKind));
       f.trail = list;
       if (fast && dt > 0 && (list.stepT = (list.stepT || 0) + dt) > 0.05) {
         list.stepT = 0;
-        list.push({ s: f.info.sprite, o: f.info.overlay, x: f.hx, y: f.hy, face: a.face || 1, life: 0.2, tint: a.perfectT > 0 ? '#bfe8ff' : a.type === 4 ? '#e2445c' : null });
+        list.push({ s: f.info.sprite, o: f.info.overlay, x: f.hx, y: f.hy, face: a.face || 1, life: 0.2, tint: a.perfectT > 0 ? '#bfe8ff' : a.type === 4 ? '#e2445c' : a.type === 3 ? JUMA_TRAIL[a.form || null] : null });
       }
       for (const g of list) g.life -= dt;
       while (list.length && list[0].life <= 0) list.shift();
@@ -437,7 +455,7 @@ export class Renderer {
       figures.push({ a, hx: fx, hy: fy, cx: fx, cy: fy - 10, info, fc, x: fx - FIG_X + ox, y: fy - FIG_Y + oy });
     }
     this.updateTrails(figures, this.simDt);
-    for (const f of figures) if (f.a.type === 4) this.keyFx(f);
+    for (const f of figures) if (f.a.type === 4 || f.a.type === 3) this.keyFx(f);
 
     // Lights are gathered up front: rims and wall shadows need them.
     const L = this.light;
@@ -561,11 +579,14 @@ export class Renderer {
     const face = a.face || 1;
     // Frozen in the hitlag of a blow it took: the body shivers along the hit.
     if (a.hitlag > 0 && a.hitstun > 0) fx += (Math.floor(time * 60) % 2 ? 1 : -1) * (a.hitHeavy ? 2 : 1) * scale;
+    fx += morphJitter(a, time) * scale;
     const f = frameFor(a, time), frame = f.frame;
     const chains = this.secondary.update(a, frame, time, this.simDt);
-    const { s, overlay } = figureSprite(a, f, variantOf(a, this.time), chains);
+    const sprites = figureSprite(a, f, variantOf(a, this.time), chains), flash = morphFlash(a);
+    const s = flash ? tintOf(sprites.s, flash) : sprites.s, overlay = sprites.overlay && flash ? tintOf(sprites.overlay, flash) : sprites.overlay;
     const severed = a.severed || [];
-    const hand = figurePoint(frame, 'armF', HAND[0], HAND[1], fx, fy, face, scale);
+    const ch = castFor(a.type, a.form), eye = ch.eye || EYE;
+    const hand = figurePoint(frame, 'armF', HAND[0], HAND[1], fx, fy, face, scale, ch);
     const behind = a.weapon === 'extinguisher', bats = a.act === 'swarm';
     if (behind && !severed.includes('armF')) this.drawWeapon(g, a, frame, hand, face, scale);
     if (overlay && !bats) drawFigure(g, overlay, fx, fy, face, scale);
@@ -580,7 +601,7 @@ export class Renderer {
     if (f.ball) this.drawBall(g, fx, fy, scale, time);
     // Weapon smears are drawn later, over the lighting, so they read as bright streaks.
     const smear = f.smear && isMelee(a.weapon) && !severed.includes('armF') ? { sm: f.smear, frame } : null;
-    return { eye: figurePoint(frame, 'head', EYE[0], EYE[1], fx, fy, face, scale), hand, sprite: s, overlay, smear, frame, name: f.name };
+    return { eye: figurePoint(frame, 'head', eye[0], eye[1], fx, fy, face, scale, ch), hand, sprite: s, overlay, smear, frame, name: f.name };
   }
 
   // Thick pixel line along points (the electric cable).
@@ -892,6 +913,11 @@ export class Renderer {
       if (Math.random() < 0.6) add({ x: X(end[0]), y: X(end[1]), r: 30, color: '#8af0ff', i: 0.5 + Math.random() * 0.4 });
       if (hz.puddle.live) add({ x: X((MAP.puddle.x0 + MAP.puddle.x1) / 2), y: X(MAP.puddle.y) - 4, r: 60, color: '#6ad8ff', i: 0.8 * Math.random() + 0.2 });
     }
+    for (const f of figures) if (f.a.type === 3) {
+      const k = this.jumaGlow(f.a, t);
+      if (f.a.form === 'beast' && f.info?.eye && !(f.a.severed || []).includes('head')) add({ x: f.info.eye.x, y: f.info.eye.y, r: 10, color: '#ffc040', i: 0.7, noRim: true });
+      if (k > 0.05) add({ x: f.hx, y: f.hy - 12, r: 26 + k * 46, color: k > 0.8 ? '#ffe2a0' : '#ff8a3a', i: k * 1.3 });
+    }
     for (const f of figures) if (f.a.type === 4 && f.info?.eye) {
       add({ x: f.info.eye.x, y: f.info.eye.y, r: 10, color: '#ff4f6e', i: 0.7, noRim: true });
       // The blood orb lights the claw up as it condenses.
@@ -937,6 +963,7 @@ export class Renderer {
     }
     for (const f of figures) if (f.a.type === 4 && f.info?.eye && !(f.a.severed || []).includes('head')) { eg.fillStyle = '#ff6f86'; eg.fillRect(Math.round(f.info.eye.x) + ox, Math.round(f.info.eye.y) + oy, 1, 1); }
     const st = state.time ?? t;
+    for (const f of figures) if (f.a.type === 3) this.drawJuma(eg, f, ox, oy, st);
     for (const f of figures) {
       if (f.a.type === 4 && f.a.act === 'swarm') this.drawSwarm(eg, f, ox, oy, st);
       if (f.a.type === 4) {
@@ -959,8 +986,71 @@ export class Renderer {
     this.fx.drawEmissive(eg, ox, oy, t);
   }
 
+  // How strongly Juma glows: swelling through the transformation, a smoulder as the beast.
+  jumaGlow(a, t) {
+    const at = a.actT ?? 0;
+    if (a.act === 'morph') return at < 0.12 ? (at / 0.12) * 0.3 : at < 0.6 ? 0.3 + ((at - 0.12) / 0.48) * 0.7 : Math.max(0, 1 - (at - 0.6) / 0.3);
+    if (a.act === 'unmorph') return at < 0.38 ? 0.45 : 0;
+    if (a.form === 'beast') return 0.16 + 0.06 * Math.sin(t * 6) + (a.attack > 0 ? 0.12 : 0);
+    return 0;
+  }
+
+  // Juma over the lighting: an aura around her silhouette that pulses outward as she swells (and
+  // smoulders around the beast), and the beast's burning eyes leaving a streak when she moves fast.
+  drawJuma(eg, f, ox, oy, t) {
+    const a = f.a, k = this.jumaGlow(a, t);
+    if (k > 0.03 && f.info.sprite) {
+      const ag = this.ag, face = a.face || 1, hot = k > 0.75, r = k > 0.55 ? 2 : 1;
+      ag.globalCompositeOperation = 'source-over';
+      ag.clearRect(0, 0, FIG_W, FIG_H);
+      const tint = tintOf(f.info.sprite, hot ? '#ffe2a0' : '#ff8a3a'), tov = f.info.overlay && tintOf(f.info.overlay, hot ? '#ffe2a0' : '#ff8a3a');
+      for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+        if (!dx && !dy) continue;
+        if (tov) drawFigure(ag, tov, FIG_X + dx + morphJitter(a, t), FIG_Y + dy, face);
+        drawFigure(ag, tint, FIG_X + dx + morphJitter(a, t), FIG_Y + dy, face);
+      }
+      ag.globalCompositeOperation = 'destination-out';
+      ag.drawImage(f.fc.body.c, 0, 0);
+      ag.globalCompositeOperation = 'source-over';
+      eg.globalAlpha = Math.min(1, k * 1.2) * (0.65 + 0.35 * Math.abs(Math.sin(t * (a.act === 'morph' ? 22 : 5))));
+      eg.drawImage(this.aura, f.x, f.y);
+      eg.globalAlpha = 1;
+    }
+    const trail = this.eyeTrail.get(a.id) || [];
+    if (a.form === 'beast' && f.info.eye && !(a.severed || []).includes('head')) {
+      const ex = Math.round(f.info.eye.x), ey = Math.round(f.info.eye.y);
+      if (this.simDt > 0) { trail.push({ x: ex, y: ey }); if (trail.length > 7) trail.shift(); }
+      for (let i = 1; i < trail.length; i++) {
+        const p = trail[i - 1], q = trail[i], n = Math.max(Math.abs(q.x - p.x), Math.abs(q.y - p.y));
+        if (n < 2) continue;
+        eg.globalAlpha = (i / trail.length) * 0.8;
+        eg.fillStyle = i > trail.length - 3 ? '#ffe04a' : '#ff8a2a';
+        for (let s = 0; s <= n; s++) eg.fillRect(Math.round(p.x + (q.x - p.x) * (s / n)) + ox, Math.round(p.y + (q.y - p.y) * (s / n)) + oy, 1, 1);
+      }
+      eg.globalAlpha = 1;
+      eg.fillStyle = '#fff4a0';
+      eg.fillRect(ex + ox, ey + oy, 1, 1);
+    } else trail.length = 0;
+    this.eyeTrail.set(a.id, trail);
+  }
+
   spawnAmbientFx(state, hz, dt) {
     const fx = this.fx;
+    // Juma: steam and embers pour off her as she transforms; the beast smoulders and breathes steam.
+    const STEAM = ['#e8e4f0', '#c8c0d8', '#a8a0c0'], EMBER = ['#ffe2a0', '#ffb040', '#ff6a2a'];
+    for (const a of state.actors) {
+      if (a.dead || a.knocked || a.type !== 3) continue;
+      const x = X(a.x), y = X(a.y), at = a.actT ?? 0;
+      if (a.act === 'morph' && at > 0.08 && at < 0.62) {
+        if (Math.random() < 0.7) fx.burst('steam', x + rnd(-6, 6), y + rnd(-6, 8), 1, { a: -Math.PI / 2, spread: 0.8, s: 0.9, life: 0.7, colors: STEAM, em: true, g: -0.05, drag: 0.94, size: 2, grow: 0.05 });
+        if (Math.random() < 0.6) fx.burst('spark', x + rnd(-8, 8), y + rnd(-8, 10), 1, { a: -Math.PI / 2, spread: 0.9, s: 1.2, life: 0.6, colors: EMBER, g: -0.03, drag: 0.96, em: true });
+      } else if (a.act === 'unmorph' && at < 0.4 && Math.random() < 0.6) fx.burst('steam', x + rnd(-6, 6), y + rnd(-6, 6), 1, { a: -Math.PI / 2, spread: 0.9, s: 0.8, life: 0.8, colors: STEAM, em: true, g: -0.04, drag: 0.94, size: 2, grow: 0.05 });
+      else if (a.form === 'beast') {
+        if (Math.random() < dt * 5) fx.burst('spark', x + rnd(-7, 7), y + rnd(-10, 6), 1, { a: -Math.PI / 2, spread: 0.8, s: 0.7, life: 0.7, colors: EMBER, g: -0.025, drag: 0.97, em: true });
+        // A breath of steam from the jaws every so often.
+        if (!a.attack && Math.random() < dt * 0.9) fx.burst('steam', x + (a.face || 1) * 9, y - 6, 3, { a: (a.face || 1) > 0 ? -0.3 : Math.PI + 0.3, spread: 0.6, s: 0.7, life: 0.6, colors: STEAM, em: true, g: -0.03, drag: 0.94, size: 1, grow: 0.04 });
+      }
+    }
     for (const f of state.fires || []) if (Math.random() < 0.9) fx.burst('fire', X(f.x) + rnd(-12, 12), X(f.y) - 2, 2, { a: -Math.PI / 2, spread: 0.7, s: 0.9, life: 0.6, colors: [P.fire0, P.fire1, P.fire2], g: -0.04, drag: 0.96, size: 2, em: true });
     for (const a of state.actors) {
       if (a.dead) continue;
@@ -1008,7 +1098,24 @@ export class Renderer {
     this.drawPreview(g, type, x, y, { density, mode: 'demo', key, face: 1, dt });
   }
 
-  drawPreview(g, type, x, y, { density = 2, face = 1, mode = 'idle', key = 'p' + type, dt = 1 / 60, dim = 0 } = {}) {
+  // Juma on the select screen: her claws, the transformation, the beast's blows, and back again.
+  jumaDemo(p) {
+    const a = p.a;
+    if (a.act) {
+      a.actT = (p.t - p.actAt);
+      if (a.act === 'morph' && a.actT >= 0.6) a.form = 'beast';
+      if (a.act === 'unmorph' && a.actT >= 0.32) a.form = null;
+      if (a.actT >= (a.act === 'morph' ? 1.0 : 0.7)) { a.act = null; p.next = p.t + 0.7; }
+      return;
+    }
+    if (p.t < p.next || a.attack > 0) return;
+    const list = comboOf(a);
+    p.step++;
+    if (p.step < list.length) { a.attackKind = list[p.step]; a.attack = MOVES[a.attackKind].dur; p.next = p.t + MOVES[a.attackKind].dur + (a.form ? 0.3 : 0.12); }
+    else { a.act = a.form ? 'unmorph' : 'morph'; a.actT = 0; p.actAt = p.t; p.step = -1; }
+  }
+
+  drawPreview(g, type, x, y, { density = 2, face = 1, mode = 'idle', key = 'p' + type, dt = 1 / 60, dim = 0, form = null } = {}) {
     let p = this.previews.get(key);
     if (!p || p.type !== type) {
       p = { type, a: { id: 900 + type, type, x: 0, y: 0, face, ground: true, vx: 0, vy: 0, attack: 0, attackKind: null, act: null, wounds: {}, severed: [], broken: {}, embedded: [], char: 0, hurt: 0 }, t: 0, next: 1.2, step: -1, actT: 0, sec: new Secondary() };
@@ -1019,7 +1126,8 @@ export class Renderer {
     p.t += dt;
     a.attack = Math.max(0, a.attack - dt);
     if (p.actT > 0) { p.actT -= dt; a.actT = 0.8 - p.actT; if (DEMO_MOVES.includes(a.act)) a.x += face * dt * 60; if (p.actT <= 0) { a.act = null; a.x = 0; } }
-    if (mode !== 'demo') { a.attack = 0; a.act = null; }
+    if (mode !== 'demo') { a.attack = 0; a.act = null; a.form = form; }
+    else if (type === 3) this.jumaDemo(p);
     else if (p.t > p.next && !a.act) {
       const list = COMBOS[type];
       p.step = (p.step + 1) % (list.length + 1);
@@ -1029,7 +1137,9 @@ export class Renderer {
     }
     const f = frameFor(a, p.t);
     const chains = p.sec.update(a, f.frame, p.t, dt);
-    const { s, overlay } = figureSprite(a, f, '', chains);
+    const sprites = figureSprite(a, f, '', chains), flash = morphFlash(a);
+    const s = flash ? tintOf(sprites.s, flash) : sprites.s, overlay = sprites.overlay && flash ? tintOf(sprites.overlay, flash) : sprites.overlay;
+    x += morphJitter(a, p.t) * density;
     if (overlay) drawFigure(g, overlay, x, y, face, density);
     drawFigure(g, s, x, y, face, density);
     if (f.ball) this.drawBall(g, x, y, density, p.t);

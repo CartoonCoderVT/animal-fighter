@@ -2,7 +2,7 @@ import { EMPTY_INPUT } from '../engine/input.js';
 import { MAP, pathTo } from './map.js';
 import { rnd, dist, clamp } from '../engine/const.js';
 import { FOOT } from '../render/rig.js';
-import { MOVES, COMBOS } from './moves.js';
+import { MOVES, comboOf } from './moves.js';
 import { MELEE, isMelee } from './weapons.js';
 
 const RANGED = a => a.weapon === 'pistol' || a.weapon === 'shotgun';
@@ -12,7 +12,8 @@ const SPECIAL_RANGE = [
   (dx, dy) => Math.abs(dx) > 30 && Math.abs(dx) < 150 && Math.abs(dy) < 40,
   (dx, dy) => Math.abs(dx) < 220 && Math.abs(dy) < 24,
   (dx, dy) => Math.abs(dx) < 90 && Math.abs(dy) < 60,
-  (dx, dy) => Math.abs(dx) < 34 && Math.abs(dy) < 24,
+  // Juma: small, she turns into the beast when the fight is close; the beast leaps at rivals a little away.
+  (dx, dy, a) => (a.form === 'beast' ? Math.abs(dx) > 50 && Math.abs(dx) < 220 && Math.abs(dy) < 90 : Math.abs(dx) < 140 && Math.abs(dy) < 60),
   // The blood beam: level along the floor, or down and ahead (about 30 degrees) from the air.
   (dx, dy, a, t, g) => t && t.bloodMark >= 3 && g.time - (t.markT ?? -9) < 5 ? Math.abs(dx) < 70 && Math.abs(dy) < 40 : a.ground ? Math.abs(dx) > 30 && Math.abs(dx) < 320 && Math.abs(dy) < 16 : Math.abs(dx) < 300 && Math.abs(dy - Math.abs(dx) * 0.61) < 18
 ];
@@ -163,7 +164,7 @@ export function think(g, a, dt) {
 
   // Combat
   {
-    const natural = MOVES[COMBOS[a.type][0]].range + 4;
+    const natural = MOVES[comboOf(a)[0]].range + 4;
     const armed = isMelee(a.weapon);
     const meleeRange = a.weapon === 'extinguisher' ? 110 : armed ? MOVES[a.weapon + ':nLight'].range + 4 : natural;
     const facing = dx * a.face >= -4;
@@ -180,6 +181,16 @@ export function think(g, a, dt) {
     if (a.type === 4 && !a.act && !(a.batCd > 0) && Math.hypot(dx, dy) > 110 && Math.hypot(dx, dy) < 320 && Math.random() < 0.015) input.bats = true;
     // Nox opens with the shadow cut from a few steps away.
     if (a.type === 4 && a.ground && !a.act && !a.weapon && Math.abs(dx) > 28 && Math.abs(dx) < 64 && Math.abs(dy) < 16 && Math.random() < 0.05) { input.attack = !a.lastInput.attack; input.right = dx > 0; input.left = dx < 0; }
+    // Juma, small: the lightning pounce from a few steps away, the bite up close.
+    // The beast: the charge from further off, the earthquake when rivals crowd her.
+    if (a.type === 3 && a.ground && !a.act && !a.weapon && Math.abs(dy) < 18 && !target.knocked) {
+      const crowd = g.enemies(a).filter(b => !b.dead && !b.knocked && Math.abs(b.x - a.x) < 90 && Math.abs(b.y - a.y) < 30).length;
+      if (a.form === 'beast') {
+        if (!(a.chargeCd > 0) && Math.abs(dx) > 50 && Math.abs(dx) < 140 && Math.random() < 0.03) { input.attack = !a.lastInput.attack; input.right = dx > 0; input.left = dx < 0; }
+        else if ((crowd >= 2 || Math.abs(dx) < 40) && a.comboTimer <= 0 && Math.random() < 0.03) { input.attack = !a.lastInput.attack; input.down = true; }
+      } else if (Math.abs(dx) > 30 && Math.abs(dx) < 66 && Math.random() < 0.05) { input.attack = !a.lastInput.attack; input.right = dx > 0; input.left = dx < 0; }
+      else if (Math.abs(dx) < 28 && !(a.biteCd > 0) && a.comboTimer <= 0 && Math.random() < 0.03) { input.attack = !a.lastInput.attack; input.down = true; }
+    }
     // Close the gap with a roll that turns into a dashing strike.
     if (a.ground && !a.act && !a.weapon && a.dodgeCd <= 0 && Math.abs(dx) > 44 && Math.abs(dx) < 95 && Math.abs(dy) < 20 && Math.random() < 0.03 && safeRoll(g, a, Math.sign(dx))) {
       input.dodge = true; input.right = dx > 0; input.left = dx < 0;

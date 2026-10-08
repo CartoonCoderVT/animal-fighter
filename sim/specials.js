@@ -1,7 +1,8 @@
 // Specials (K) and the moves everyone shares: aerial stomp and carrying a downed fighter.
 // A running special lives in a.act; stepSpecial runs it each step and may lock movement.
 import { Body, Composite } from './physics.js';
-import { SPECIALS, NOX_AIR } from './moves.js';
+import { SPECIALS, NOX_AIR, JUMA_AIR } from './moves.js';
+import { FIGHTERS } from './fighters.js';
 import { damage, startMove, landPlunge, markOf, drama } from './combat.js';
 import { MOVES } from './moves.js';
 import { knockdown, pushActor, ragdollOf, breakJoint } from './ragdoll.js';
@@ -31,6 +32,7 @@ export function endAct(g, a) {
 }
 
 export function startSpecial(g, a) {
+  if (a.type === 3) { jumaSpecial(g, a); return; }
   const sp = SPECIALS[a.type];
   const v = a.body.velocity;
   a.powerSeq = (a.powerSeq || 0) + 1;
@@ -61,10 +63,6 @@ export function startSpecial(g, a) {
     g.fx('ring', { x: a.x, y: a.y + 16, size: 26, color: '#ffd6e4' });
     g.text(a.x, a.y - 30, 'PISÃO DO CÉU!', '#ffa6bc');
     g.sound('jump', a.x);
-  } else if (sp.id === 'bite') {
-    setAct(a, 'bite', sp.dur);
-    Body.setVelocity(a.body, { x: a.face * 7, y: Math.min(v.y, a.ground ? -1.5 : v.y) });
-    g.sound('swing', a.x);
   } else if (sp.id === 'beam') {
     // Close to a rival carrying three blood marks, K is the requiem instead of the beam.
     const prey = g.enemies(a).find(b => !b.dead && !b.knocked && markOf(g, b) >= 3 && Math.abs(b.x - a.x) < 80 && Math.abs(b.y - a.y) < 50);
@@ -78,10 +76,12 @@ export function startSpecial(g, a) {
 }
 
 // After a launcher: leap straight at the airborne target, then open the air combo on arrival.
-export function startChase(g, a, prey) {
-  if (a.type === 4) { startSwarm(g, a, { prey, then: NOX_AIR[0] }); return; }
+// then: the move to throw on arrival (small Juma pouncing after a rival her string knocked away).
+export function startChase(g, a, prey, then = null) {
+  if (a.type === 4) { startSwarm(g, a, { prey, then: then || NOX_AIR[0] }); return; }
   setAct(a, 'chase', 0.42);
   a.chaseId = prey.id;
+  a.chaseThen = then;
   a.ground = false;
   g.fx('dash', { x: a.x, y: a.y, face: prey.x >= a.x ? 1 : -1 });
   g.sound('jump', a.x);
@@ -94,6 +94,15 @@ export function startPlunge(g, a) {
 }
 
 export function startStomp(g, a) {
+  // The beast drops like a meteor and the floor jumps where she lands.
+  if (a.type === 3 && a.form === 'beast') {
+    setAct(a, 'meteor', 1.6);
+    a.slamHit = {};
+    a.attackCd = 0.4;
+    Body.setVelocity(a.body, { x: a.body.velocity.x * 0.3, y: 16 });
+    g.sound('whoosh', a.x);
+    return;
+  }
   setAct(a, 'stomp', 1.6);
   a.slamHit = {};
   a.attackCd = 0.3;
@@ -193,11 +202,16 @@ export function stepSpecial(g, a, input, pressed, dt) {
       a.face = b.x >= a.x ? 1 : -1;
       if (d < 10 || a.actT > a.actMax) {
         endAct(g, a);
-        a.ground = false;
-        Body.setVelocity(b.body, { x: 0, y: -1 });
-        b.float = 0.6;
-        Body.setVelocity(a.body, { x: 0, y: -0.5 });
-        startMove(g, a, a.type === 4 ? NOX_AIR[0] : 'airA');
+        const then = a.chaseThen || (a.type === 4 ? NOX_AIR[0] : a.type === 3 ? (a.form === 'beast' ? 'bAirSmash' : JUMA_AIR[0]) : 'airA');
+        a.chaseThen = null;
+        if (b.ground) Body.setVelocity(a.body, { x: a.face, y: 0 });
+        else {
+          a.ground = false;
+          Body.setVelocity(b.body, { x: 0, y: -1 });
+          b.float = 0.6;
+          Body.setVelocity(a.body, { x: 0, y: -0.5 });
+        }
+        startMove(g, a, then);
         return LOCK;
       }
       return { lock: true, vx: (dx / d) * 12, vy: (dy / d) * 12 };
@@ -291,6 +305,44 @@ export function stepSpecial(g, a, input, pressed, dt) {
     case 'toss':
       if (a.actT > a.actMax) endAct(g, a);
       return null;
+    case 'morph': {
+      // Hunched and shivering, swelling, then the pop into the beast and the roar.
+      if (!a.form && a.actT >= SPECIALS[3].pop) becomeBeast(g, a);
+      if (a.actT > a.actMax) { endAct(g, a); return null; }
+      return { lock: true, vx: v.x * 0.8, vy: a.ground ? v.y : Math.min(v.y, 0.6) };
+    }
+    case 'unmorph': {
+      // The beast runs out of breath, a puff of steam, and she is small again.
+      if (a.form && a.actT >= 0.32) { a.form = null; a.formT = 0; g.fx('unmorphPop', { x: a.x, y: a.y, face: a.face }); g.sound('pop', a.x); }
+      if (a.actT > a.actMax) { endAct(g, a); return null; }
+      return { lock: true, vx: v.x * 0.8, vy: v.y };
+    }
+    case 'charge': return stepCharge(g, a, v);
+    case 'chargeEnd':
+    case 'slamLand':
+      if (a.actT > a.actMax) endAct(g, a);
+      return { lock: true, vx: v.x * 0.85, vy: v.y };
+    case 'leap': {
+      // Up, a beat at the top, then straight down onto whoever is under her.
+      for (const b of enemiesNear(g, a, b => !a.slamHit[b.id] && !b.knocked && v.y > 0 && Math.abs(b.x - a.x) < 16 && b.y - a.y > 6 && b.y - a.y < 40)) {
+        a.slamHit[b.id] = true;
+        damage(g, b, 12, { x: b.x, y: b.y - 12 }, a.id, 'slam', { kb: { x: 0, y: 4 }, part: 'head', knock: true, lag: 1.4 });
+      }
+      // She comes down on the level of whoever she jumped at, through any catwalk on the way.
+      MAP.oneway.forEach((p, i) => { if (p.y < (a.leapTo ?? 0) - 4) a.drop[i] = 0.1; });
+      if (a.ground && a.actT > 0.12) { shockwave(g, a, 130, true); setAct(a, 'slamLand', 0.36); return LOCK; }
+      if (a.actT > a.actMax) endAct(g, a);
+      return { lock: true, vx: v.x, vy: v.y < -1.5 ? v.y : clamp(v.y, 15, 17) };
+    }
+    case 'meteor': {
+      for (const b of enemiesNear(g, a, b => !a.slamHit[b.id] && !b.knocked && Math.abs(b.x - a.x) < 18 && b.y - a.y > 6 && b.y - a.y < 44)) {
+        a.slamHit[b.id] = true;
+        damage(g, b, 14, { x: b.x, y: b.y - 12 }, a.id, 'slam', { kb: { x: 0, y: 6 }, part: 'head', knock: true, lag: 1.5 });
+      }
+      if (a.ground || a.climbing) { shockwave(g, a, 80, true); setAct(a, 'slamLand', 0.3); return LOCK; }
+      if (a.actT > a.actMax) endAct(g, a);
+      return { lock: true, vx: v.x * 0.97, vy: clamp(v.y, 16, 17) };
+    }
     case 'requiem': return stepRequiem(g, a, v);
     case 'swarm': return stepSwarm(g, a);
     case 'beam': {
@@ -346,6 +398,18 @@ function biteTarget(g, a) {
   return limb ? { limb } : null;
 }
 
+// Small Juma's S+J: the lunging bite that seizes, shakes and throws.
+const BITE = { dur: 0.3, shake: 1.0 };
+export function startBite(g, a) {
+  a.biteCd = 2.4;
+  a.attack = 0; a.hits = null;
+  a.attackSeq = (a.attackSeq || 0) + 1;
+  a.attackCd = 0.3;
+  setAct(a, 'bite', BITE.dur);
+  Body.setVelocity(a.body, { x: a.face * 7, y: a.ground ? Math.min(a.body.velocity.y, -1.5) : a.body.velocity.y });
+  g.sound('swing', a.x);
+}
+
 function seize(g, a, { actor, limb }) {
   if (actor) {
     knockdown(g, actor, { velocity: { x: a.face * 1, y: -2 }, time: 2.6 });
@@ -355,21 +419,21 @@ function seize(g, a, { actor, limb }) {
   }
   const core = limb.ragdoll && limb.ragdoll.limbs.body ? limb.ragdoll.limbs.body : limb;
   a.holdingLimb = core.id;
-  setAct(a, 'shake', SPECIALS[3].shake);
+  setAct(a, 'shake', BITE.shake);
   a.shakeTick = 0.1;
   g.text(a.x, a.y - 30, 'MORDIDA!', '#ffd36c');
   g.sound('squish', a.x);
 }
 
-// Lola lands: everything near the impact is knocked away.
-function shockwave(g, a) {
-  const R = 120, x = a.x, y = a.y + 16;
+// Lola lands, or the beast: everything near the impact is knocked away.
+function shockwave(g, a, R = 120, beast = false) {
+  const x = a.x, y = a.y + 16;
   for (const b of g.enemies(a)) {
     if (b.dead) continue;
     const dx = b.x - x, d = Math.abs(dx);
     if (d > R || Math.abs(b.y + 16 - y) > 50) continue;
     const f = 1 - d / R, s = Math.sign(dx) || a.face;
-    damage(g, b, 6 + 14 * f, { x: b.x - s * 4, y: b.y + 12 }, a.id, 'slam', { kb: { x: s * (3 + 8 * f), y: -4 - 4 * f }, knock: f > 0.25 });
+    damage(g, b, (beast ? 8 : 6) + 14 * f, { x: b.x - s * 4, y: b.y + 12 }, a.id, 'slam', { kb: { x: s * (3 + 8 * f), y: -4 - 4 * f }, knock: f > 0.25, lag: beast ? 1.4 : 1 });
   }
   for (const l of g.limbs) {
     const d = Math.abs(l.x - x);
@@ -382,13 +446,146 @@ function shockwave(g, a) {
     if (p.kind === 'glass' && d < 60) { damageProp(g, p, 60, a.id); continue; }
     Body.setVelocity(p.body, { x: p.body.velocity.x + Math.sign(p.x - x) * 5 * (1 - d / R), y: p.body.velocity.y - 6 * (1 - d / R) });
   }
-  g.fx('ring', { x, y, size: R, color: '#ffd6e4' });
+  g.fx('ring', { x, y, size: R, color: beast ? '#ffb070' : '#ffd6e4' });
   g.fx('ring', { x, y, size: R * 0.6, color: '#ffffff' });
   g.fx('land', { x, y, p: 1 });
   g.fx('dust', { x, y, n: 10 });
-  g.shake = Math.max(g.shake, 9);
+  if (beast) { g.fx('quake', { x, y, p: R > 100 ? 9 : 6, face: a.face, both: 1 }); g.sound('quake', x); }
+  g.shake = Math.max(g.shake, beast ? 12 : 9);
   g.flash = Math.max(g.flash, 0.2);
   g.sound('thud', x);
+}
+
+// ---- Juma's forms ------------------------------------------------------------------------
+// K: small, she turns into the beast; as the beast, the seismic leap.
+function jumaSpecial(g, a) {
+  a.powerSeq = (a.powerSeq || 0) + 1;
+  a.attack = 0;
+  a.hits = null;
+  if (a.form === 'beast') { startLeap(g, a); return; }
+  a.abilityCd = SPECIALS[3].cd;
+  setAct(a, 'morph', SPECIALS[3].dur);
+  Body.setVelocity(a.body, { x: a.body.velocity.x * 0.3, y: Math.min(a.body.velocity.y, 0) });
+  g.fx('morphStart', { x: a.x, y: a.y, face: a.face });
+  g.text(a.x, a.y - 30, 'GRRRR...', '#ffb763');
+  a.growlText = g.effects[g.effects.length - 1];
+  g.sound('growl', a.x);
+}
+
+function becomeBeast(g, a) {
+  // The growl gives way to the name.
+  const said = g.effects.indexOf(a.growlText);
+  if (said >= 0) g.effects.splice(said, 1);
+  a.form = 'beast';
+  a.formT = SPECIALS[3].form;
+  a.abilityCd = 0.8;
+  // The roar: everyone close is blown back and reels.
+  const x = a.x, y = a.y, R = 84;
+  for (const b of enemiesNear(g, a, b => !b.knocked && Math.abs(b.x - x) < R && Math.abs(b.y - y) < 50)) {
+    const s = Math.sign(b.x - x) || a.face, f = 1 - Math.abs(b.x - x) / R;
+    damage(g, b, 4 + 4 * f, { x: b.x - s * 4, y: b.y }, a.id, 'roar', { kb: { x: s * (4 + 5 * f), y: -3 - 2 * f } });
+    if (!b.dead && !b.knocked) { b.hitstun = Math.max(b.hitstun || 0, 0.5); b.hitstunMax = Math.max(b.hitstunMax || 0, b.hitstun); }
+  }
+  for (const l of g.limbs) if (Math.abs(l.x - x) < R + 10 && Math.abs(l.y - y) < 60) Body.setVelocity(l.body, { x: l.body.velocity.x + Math.sign(l.x - x) * 4, y: l.body.velocity.y - 3 });
+  for (const p of g.props) if (!p.held && !p.fixed && !p.body.isStatic && Math.abs(p.x - x) < R + 10 && Math.abs(p.y - y) < 60) Body.setVelocity(p.body, { x: p.body.velocity.x + Math.sign(p.x - x) * 3, y: p.body.velocity.y - 3 });
+  g.fx('morphPop', { x, y, face: a.face });
+  g.fx('roar', { x: x + a.face * 8, y: y - 10, face: a.face });
+  g.shake = Math.max(g.shake, 8);
+  g.flash = Math.max(g.flash, 0.15);
+  g.text(x, y - 36, 'FERA!', '#ff9a3a');
+  g.sound('roar', x);
+  drama(g, 0.3, a);
+}
+
+export function startUnmorph(g, a) {
+  setAct(a, 'unmorph', 0.7);
+  a.abilityCd = SPECIALS[3].cd;
+  a.attack = 0;
+  a.hits = null;
+  g.fx('steam', { x: a.x, y: a.y - 6, n: 10 });
+  g.text(a.x, a.y - 30, 'UFA...', '#e8d0b0');
+}
+
+// The beast lasts while its timer runs; it turns back at the first free moment after.
+export function tickForm(g, a, dt) {
+  if (a.form !== 'beast' || a.act === 'morph' || a.act === 'unmorph') return;
+  a.formT = Math.max(0, (a.formT || 0) - dt);
+  if (a.formT <= 0 && !a.act && !(a.attack > 0) && !a.knocked && !(a.hitstun > 0) && !(a.frozen > 0)) startUnmorph(g, a);
+}
+
+// The beast's side+J: digs in, then a charge that scoops up whoever is in the way and carries them
+// into the wall (crushed against it), the pit's edge, or to the end of the run.
+export function startCharge(g, a) {
+  a.chargeCd = 2.4;
+  a.attack = 0;
+  a.hits = null;
+  a.attackSeq = (a.attackSeq || 0) + 1;
+  a.attackCd = 0.3;
+  setAct(a, 'charge', 0.95);
+  a.carry = [];
+  a.chargeHit = {};
+  a.chargeGo = false;
+  g.sound('growl', a.x);
+}
+
+const CHARGE_WIND = 0.2, CHARGE_V = 7.5;
+function stepCharge(g, a, v) {
+  if (a.actT < CHARGE_WIND) return { lock: true, vx: v.x * 0.6, vy: v.y };
+  const face = a.face;
+  if (!a.chargeGo) { a.chargeGo = true; g.fx('dash', { x: a.x, y: a.y, face }); g.fx('quake', { x: a.x - face * 6, y: a.y + 16, p: 1, face }); g.sound('whoosh', a.x); }
+  for (const b of enemiesNear(g, a, b => !b.knocked && !a.chargeHit[b.id] && (b.x - a.x) * face > -4 && (b.x - a.x) * face < 26 && Math.abs(b.y - a.y) < 26)) {
+    a.chargeHit[b.id] = true;
+    if (!damage(g, b, 6, { x: b.x - face * 4, y: b.y }, a.id, 'paw', { kb: { x: 0, y: 0 }, lag: 1.2 }) || b.dead || b.knocked) continue;
+    a.carry.push(b.id);
+    g.text(b.x, b.y - 34, 'INVESTIDA!', '#ff9a3a');
+  }
+  // Whoever she hit rides on her shoulder.
+  const held = a.carry.map(id => g.actor(id)).filter(b => b && !b.dead && !b.knocked);
+  for (const b of held) {
+    // Pinned on her shoulder, lifted off their feet, far enough out that both read.
+    Body.setPosition(b.body, { x: a.body.position.x + face * 26, y: Math.min(b.body.position.y, a.body.position.y - 6) });
+    Body.setVelocity(b.body, { x: face * CHARGE_V, y: 0 });
+    b.lagPos = null;
+    b.hitstun = Math.max(b.hitstun || 0, 0.3); b.hitstunMax = Math.max(b.hitstunMax || 0, b.hitstun);
+  }
+  const ahead = a.x + face * (held.length ? 38 : 12);
+  const wall = inside(ahead, a.y);
+  const pit = a.ground && ahead > MAP.pit.x0 && ahead < MAP.pit.x1;
+  if (wall || pit || a.actT > a.actMax) { chargeSlam(g, a, held, wall); return LOCK; }
+  if (a.ground && Math.random() < 0.5) g.fx('dust', { x: a.x - face * 6, y: a.y + 16, n: 1 });
+  return { lock: true, vx: face * CHARGE_V, vy: v.y };
+}
+
+function chargeSlam(g, a, held, wall) {
+  const face = a.face;
+  setAct(a, 'chargeEnd', 0.34);
+  for (const b of held) {
+    if (wall) {
+      damage(g, b, 18, { x: b.x + face * 6, y: b.y }, a.id, 'slam', { kb: { x: -face * 3, y: -4 }, knock: true, lag: 1.8 });
+      g.fx('wallSplat', { x: b.x + face * 8, y: b.y, face });
+      g.text(b.x, b.y - 38, 'ESMAGOU!', '#ff9a3a');
+    } else damage(g, b, 12, { x: b.x - face * 4, y: b.y }, a.id, 'paw', { kb: { x: face * 9, y: -5 }, knock: true, lag: 1.5 });
+  }
+  a.carry = [];
+  if (wall) { g.fx('quake', { x: a.x + face * 20, y: a.y + 16, p: 3, face }); g.sound('thud', a.x); }
+  g.shake = Math.max(g.shake, wall ? 10 : held.length ? 6 : 3);
+  Body.setVelocity(a.body, { x: wall ? -face * 2 : face * 2, y: a.body.velocity.y });
+}
+
+// The beast's K: the seismic leap. A huge jump at the nearest rival and a landing that throws
+// everyone around off their feet.
+function startLeap(g, a) {
+  a.abilityCd = 3.6;
+  const b = g.enemies(a).filter(b => !b.dead && !b.knocked && Math.abs(b.x - a.x) < 260 && Math.abs(b.y - a.y) < 160).sort((p, q) => Math.abs(p.x - a.x) - Math.abs(q.x - a.x))[0];
+  if (b) a.face = b.x >= a.x ? 1 : -1;
+  setAct(a, 'leap', 1.8);
+  a.slamHit = {};
+  a.leapTo = (b || a).body.position.y + HALF_H;
+  Body.setVelocity(a.body, { x: b ? clamp((b.x - a.x) / 32, -6.5, 6.5) : a.face * 3, y: -12.5 });
+  a.ground = false;
+  g.fx('quake', { x: a.x, y: a.y + 16, p: 2, face: a.face });
+  g.text(a.x, a.y - 30, 'SALTO SÍSMICO!', '#ff9a3a');
+  g.sound('jump', a.x);
 }
 
 // Standing on a floor is not inside it: two units of give at the feet and the head.

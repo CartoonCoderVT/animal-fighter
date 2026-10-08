@@ -5,12 +5,13 @@ import { drawText, measure } from '../engine/font.js';
 import { FIGHTERS } from '../sim/fighters.js';
 import { TOUCH_BUTTONS } from '../engine/input.js';
 import { WEAPON_INFO } from '../sim/weapons.js';
+import { SPECIALS } from '../sim/moves.js';
 
 const X = v => Math.round(v * S);
 const DEATH_TAG = {
   shatter: 'GELO', grind: 'FOSSO', crush: 'PRENSA', explosion: 'BUM', fire: 'FOGO', shock: 'CHOQUE', fall: 'QUEDA', decap: 'CABEÇA', bleed: 'SANGUE',
   impact: 'ARREMESSO', bullet: 'TIRO', pellet: 'TIRO', thrown: 'LÂMINA', claw: 'GARRAS', whip: 'RABADA', kick: 'COICE', paw: 'PATADA',
-  fang: 'MORDIDA', bite: 'MORDIDA', sonic: 'GRITO', blood: 'HEMOMANCIA', hemo: 'PERFURANTE', scythe: 'FOICE', stomp: 'PISÃO', slam: 'PISÃO DO CÉU',
+  fang: 'MORDIDA', bite: 'MORDIDA', roar: 'RUGIDO', sonic: 'GRITO', blood: 'HEMOMANCIA', hemo: 'PERFURANTE', scythe: 'FOICE', stomp: 'PISÃO', slam: 'PISÃO DO CÉU',
   blade: 'FACA', katana: 'KATANA', spear: 'LANÇA', pipe: 'CANO', axe: 'MACHADO', hammer: 'MARRETA'
 };
 
@@ -92,13 +93,14 @@ export class HUD {
       panel(g, cx, 6, cw, 26, { accent: f.color, fill: local ? '#1d1430e6' : '#120d1ed9', edge: local ? '#6a5490' : '#3b3052' });
       g.save();
       g.beginPath(); g.rect(cx + 3, 8, 22, 22); g.clip();
-      this.r.drawPreview(g, a.type, cx + 13, 34, { density: 1, key: 'hud' + a.id, dt: 0 });
+      this.r.drawPreview(g, a.type, cx + 13, 34, { density: 1, key: 'hud' + a.id, dt: 0, form: a.form || null });
       g.restore();
       if (a.dead) { g.fillStyle = 'rgba(10,6,16,0.6)'; g.fillRect(cx + 3, 8, 22, 22); drawText(g, Math.max(1, Math.ceil(a.respawn)) + '', cx + 14, 14, { color: '#f0d2b0', align: 'center', outline: '#0b0812' }); }
       drawText(g, a.name, cx + 29, 9, { color: local ? '#fff1c8' : '#d8cde8' });
       bar(g, cx + 29, 21, 58, 3, a.hp / a.maxHp, a.hp < a.maxHp * 0.3 ? '#ee6b6b' : '#8fd694');
-      const cd = clamp(1 - a.abilityCd / f.cooldown, 0, 1);
-      bar(g, cx + 29, 27, 58, 1, cd, cd >= 1 ? '#f2c35b' : '#8a7aa8');
+      // As the beast, Juma's bar is the time she has left in that form.
+      const beast = a.form === 'beast', cd = beast ? clamp((a.formT || 0) / SPECIALS[3].form, 0, 1) : clamp(1 - a.abilityCd / f.cooldown, 0, 1);
+      bar(g, cx + 29, 27, 58, 1, cd, beast ? '#ff8a3a' : cd >= 1 ? '#f2c35b' : '#8a7aa8');
       if (mode !== 'sandbox' && mode !== 'attract') {
         for (let k = 0; k < killsToWin; k++) {
           g.fillStyle = k < a.kills ? f.color : '#2a2036';

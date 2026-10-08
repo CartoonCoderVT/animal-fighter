@@ -2,7 +2,7 @@
 // Six physical parts: the body carries the head, both arms and both feet. Tails and
 // scarves are cosmetic and ride on the body or head.
 import { S } from '../engine/const.js';
-import { CAST, SLOTS, ANCHOR, JOINT, PARENT, partCenter, partSize, snapDeg } from './pixel-data.js';
+import { CAST, SLOTS, ANCHOR, JOINT, PARENT, partCenter, partSize, snapDeg, castFor } from './pixel-data.js';
 import { frameFor } from './anim.js';
 
 // The physics box is 16x34 world units; its center is the actor anchor and the soles sit FOOT below.
@@ -20,8 +20,8 @@ export function subtree(name) {
 }
 
 // Physical box of a part in world units: a little inside the drawn pixels.
-export function partBox(type, slot) {
-  const [w, h] = partSize(CAST[type], slot);
+export function partBox(type, slot, form = null) {
+  const [w, h] = partSize(castFor(type, form), slot);
   const k = slot === 'head' ? [0.8, 0.72] : slot === 'body' ? [0.85, 0.8] : [1, 1];
   return [Math.max(3, w * k[0]) / S, Math.max(3, h * k[1]) / S];
 }
@@ -29,8 +29,8 @@ export function partBox(type, slot) {
 const toWorld = (x, y) => [x / S, y / S + FOOT];
 
 // Part centers and joint pivots in world units relative to the actor anchor, facing right.
-export function poseFromFrame(type, frame) {
-  const ch = CAST[type];
+export function poseFromFrame(type, frame, form = null) {
+  const ch = castFor(type, form), AN = ch.anchor || ANCHOR, JT = ch.joint || JOINT;
   const spin = (((frame.spin || 0) % 4) + 4) % 4;
   const turn = (x, y) => {
     let px = x, py = y + 7;
@@ -38,13 +38,13 @@ export function poseFromFrame(type, frame) {
     return [px, py - 7];
   };
   return SLOTS.map(name => {
-    const [ax, ay] = ANCHOR[name];
+    const [ax, ay] = AN[name];
     const [dx = 0, dy = 0, deg = 0] = frame[name] || [];
     const a = (snapDeg(deg) * Math.PI) / 180, c = Math.cos(a), s = Math.sin(a);
     const [cx, cy] = partCenter(ch, name);
     const vx = cx - ax, vy = cy - ay;
     const center = turn(ax + dx + vx * c - vy * s, ay + dy + vx * s + vy * c);
-    const [jx, jy] = JOINT[name] || [ax, ay];
+    const [jx, jy] = JT[name] || [ax, ay];
     const joint = turn(ax + dx + (jx - ax) * c - (jy - ay) * s, ay + dy + (jx - ax) * s + (jy - ay) * c);
     const [x, y] = toWorld(...center), [px, py] = toWorld(...joint);
     return { name, x, y, angle: a + (spin * Math.PI) / 2, w: 1, px, py };
@@ -52,7 +52,7 @@ export function poseFromFrame(type, frame) {
 }
 
 export function pose(a, time = 0) {
-  return poseFromFrame(a.type, frameFor(a, time).frame);
+  return poseFromFrame(a.type, frameFor(a, time).frame, a.form);
 }
 
 // Offset from a part's center to its matrix pivot, in pixels, per fighter type (wounds are stored from the pivot).

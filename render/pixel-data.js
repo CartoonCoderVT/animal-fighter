@@ -14,6 +14,8 @@ const PALETTES = {
   rat: { o: '#2b2238', 1: '#cec7dc', 2: '#a89fbc', 3: '#7b7192', 4: '#efe7f0', 5: '#d4c8d8', 6: '#ffb8ca', 7: '#ee7a9a', e: '#1e1420', w: '#ffffff', r: '#ffa0b6' },
   rabbit: { o: '#5a2638', 1: '#ffffff', 2: '#fde3ea', 3: '#eab2c4', 4: '#ffffff', 5: '#f6d0dc', 6: '#ffa6bc', 7: '#e8708e', e: '#2a1420', w: '#ffffff', r: '#ff9cb2' },
   ocelot: { o: '#3a2010', 1: '#ffd36c', 2: '#eca83e', 3: '#bf7a26', 4: '#fff2cf', 5: '#f0d39a', 6: '#e0a070', 7: '#d0605e', 8: '#5a2e18', 9: '#8a5028', e: '#1e1420', w: '#ffffff', r: '#ffa08a' },
+  // Juma's beast form: deeper fur, near-black rosettes, ivory fangs and claws, burning eyes.
+  ocelotBeast: { o: '#220c04', 1: '#f2a848', 2: '#c86c20', 3: '#8a4214', 4: '#f6e2b8', 5: '#d6ad78', 6: '#e09070', 7: '#b8343a', 8: '#2e1408', 9: '#62300f', e: '#140806', w: '#ffffff', r: '#ff7a5a', f: '#fff6e0', g: '#ffd23a', m: '#4a0a10' },
   bat: { o: '#2a2038', 1: '#ffffff', 2: '#e8e2f0', 3: '#bdb2d2', 4: '#ffffff', 5: '#e0d6ea', 6: '#ffb0c6', 7: '#e46e92', 8: '#4e3a6a', 9: '#6e5890', e: '#1e1420', w: '#ffffff', r: '#ffa0b8', x: '#e2445c', y: '#a82840' }
 };
 export const OVERLAY = { B: '#b4243a', K: '#5c1020', F: '#e8868a', O: '#f4ead2', U: '#7a4874', C: '#2a1a1c', D: '#4a2a22', I: '#c8f2ff', J: '#7fd0f0' };
@@ -31,7 +33,8 @@ export const TAILS = {
   cat: { width: 3, colors: ['2', '1', '3'], stripe: '8', every: 2.5, shape: [[1, 0], [-2, 0], [-5, -1], [-7, -3], [-8, -6], [-8, -9], [-6, -11]] },
   ocelot: { width: 3, colors: ['2', '1', '3'], stripe: '8', every: 2.5, tip: '8', shape: [[1, 0], [-2, 0], [-5, -1], [-7, -3], [-8, -6], [-8, -9], [-6, -11]] },
   rat: { width: 1, colors: ['6', '6', '7'], shape: [[0, 0], [-3, 1], [-6, 0], [-8, -2], [-9, -5], [-8, -8]] },
-  rabbit: { blob: true }
+  rabbit: { blob: true },
+  ocelotBeast: { width: 4, colors: ['2', '1', '3'], stripe: '8', every: 2.5, tip: '8', shape: [[1, 0], [-3, 0], [-7, -1], [-10, -3], [-12, -7], [-12, -11], [-10, -14]] }
 };
 // Nox's scarf: a knot in the matrix and two loose ends drawn as chains from the back of the knot.
 export const SCARF = {
@@ -39,7 +42,19 @@ export const SCARF = {
   strands: [[[0, 0], [-2, 0], [-4, 1], [-6, 2], [-8, 2], [-10, 3]], [[0, 0], [-1, 1], [-3, 2], [-4, 4], [-5, 5]]]
 };
 
-export const CAST = Object.keys(PARTS).map(id => ({ id, palette: PALETTES[id], parts: PARTS[id], tail: TAILS[id] || null, scarf: id === 'bat' ? SCARF : null }));
+const castOf = id => ({ id, palette: PALETTES[id], parts: PARTS[id], tail: TAILS[id] || null, scarf: id === 'bat' ? SCARF : null });
+// The fighters, by type. Alternate forms are casts of their own with their own anchors.
+export const CAST = Object.keys(PARTS).filter(id => id !== 'ocelotBeast').map(castOf);
+// Juma's beast form is bigger: a taller chest carries the head higher and the shoulders wider.
+export const BEAST = {
+  ...castOf('ocelotBeast'),
+  anchor: { head: [2, -12], body: [0, -2], armF: [5, -10], armB: [1, -11], footF: [3, -1], footB: [-3, -1], tail: [-6, -7], scarf: [0, -9] },
+  joint: { head: [2, -12], armF: [5, -10], armB: [1, -11], footF: [3, -2], footB: [-3, -2] },
+  eye: [2, -8]
+};
+export const castFor = (type, form) => (form === 'beast' && CAST[type]?.id === 'ocelot' ? BEAST : CAST[type]);
+const anchorsOf = ch => ch?.anchor || ANCHOR;
+const jointsOf = ch => ch?.joint || JOINT;
 
 // Figure slots and the matrix each one uses. Anchors are in character space (x right, y up to 0
 // at the ground, facing right): where each part's pivot sits in the rest pose.
@@ -249,7 +264,7 @@ const BLOB_TAIL = ['.11.', '1112', '1122', '.22.'];
 // Tail points for a frame: the default shape swayed by tailDeg, or the frame's own curve.
 export function tailPoints(ch, frame = {}) {
   if (!ch.tail || ch.tail.blob) return null;
-  const [tx, ty] = ANCHOR.tail;
+  const [tx, ty] = anchorsOf(ch).tail;
   const [bdx = 0, bdy = 0] = frame.body || [];
   const shape = frame.tail || ch.tail.shape;
   const a = ((frame.tailDeg || 0) * Math.PI) / 180, c = Math.cos(a), s = Math.sin(a);
@@ -263,7 +278,7 @@ export function placeSlot(ch, slot, frame = {}, opts = {}) {
   const mname = MATRIX[slot];
   let m0 = slot === 'head' ? ch.parts[opts.expr ? 'head' + opts.expr : 'head'] || ch.parts.head : ch.parts[mname];
   if (!m0) return null;
-  const [ax, ay] = ANCHOR[slot];
+  const [ax, ay] = anchorsOf(ch)[slot];
   const [dx = 0, dy = 0, deg = 0] = transformOf(frame, slot);
   const piv0 = pivotOf(mname, m0);
   const extra = [...(opts.wounds?.[slot] || []), ...(opts.stumps?.[slot] || [])];
@@ -273,21 +288,21 @@ export function placeSlot(ch, slot, frame = {}, opts = {}) {
 }
 
 // Maps a point given in a slot's unrotated matrix space (cells from its pivot) to character space.
-export function slotPoint(slot, frame, u, v) {
-  const [ax, ay] = ANCHOR[slot];
+export function slotPoint(slot, frame, u, v, ch = null) {
+  const [ax, ay] = anchorsOf(ch)[slot];
   const [dx = 0, dy = 0, deg = 0] = transformOf(frame, slot);
   const a = (snapDeg(deg) * Math.PI) / 180, c = Math.cos(a), s = Math.sin(a);
   return [ax + dx + u * c - v * s, ay + dy + u * s + v * c];
 }
 
 // Stumps: a severed child leaves a raw end where it hinged on its parent.
-function stumpsFor(severed) {
+function stumpsFor(severed, ch) {
   if (!severed?.length) return null;
   const out = {};
   for (const slot of severed) {
     const parent = PARENT[slot];
     if (!parent || severed.includes(parent)) continue;
-    const [jx, jy] = JOINT[slot], [ax, ay] = ANCHOR[parent];
+    const [jx, jy] = jointsOf(ch)[slot], [ax, ay] = anchorsOf(ch)[parent];
     (out[parent] ||= []).push({ u: jx - ax, v: jy - ay + (slot === 'head' ? 1 : 0), t: 'stump', s: 2 });
   }
   return out;
@@ -313,7 +328,7 @@ export function composeTubes(ch, chains) {
 export function composeChars(ch, frame = {}, opts = {}) {
   const g = new Grid();
   const severed = opts.severed || [];
-  const stumps = stumpsFor(severed);
+  const stumps = stumpsFor(severed, ch);
   const want = slot => !severed.includes(RIDES[slot] || slot) && (!opts.only || opts.only.includes(RIDES[slot] || slot));
   const bodyOn = want('body');
   const order = frame.front ? DRAW.filter(s => s !== frame.front).concat(frame.front) : DRAW;
@@ -324,7 +339,7 @@ export function composeChars(ch, frame = {}, opts = {}) {
       continue;
     }
     if (step === 'blob') {
-      if (bodyOn && ch.tail?.blob) { const [bdx = 0, bdy = 0] = frame.body || []; g.stamp(BLOB_TAIL, ANCHOR.tail[0] + bdx - 3, ANCHOR.tail[1] + bdy - 2); }
+      if (bodyOn && ch.tail?.blob) { const [bdx = 0, bdy = 0] = frame.body || []; g.stamp(BLOB_TAIL, anchorsOf(ch).tail[0] + bdx - 3, ANCHOR.tail[1] + bdy - 2); }
       continue;
     }
     if (!want(step) || (step === 'scarf' && !ch.parts.scarf)) continue;
@@ -393,7 +408,7 @@ export function composePose(ch, frame = {}, opts = {}) {
 // Center of a slot's matrix in character space (rest pose) and its size in pixels.
 export function partCenter(ch, slot) {
   const m = ch.parts[MATRIX[slot]];
-  const [px, py] = pivotOf(MATRIX[slot], m), [ax, ay] = ANCHOR[slot];
+  const [px, py] = pivotOf(MATRIX[slot], m), [ax, ay] = anchorsOf(ch)[slot];
   return [ax - px + m[0].length / 2, ay - py + m.length / 2];
 }
 export function partSize(ch, slot) {

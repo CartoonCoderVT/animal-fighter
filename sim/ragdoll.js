@@ -7,14 +7,14 @@ let groupSeq = 1;
 const RAG_LIFT = 3;
 
 export function makeLimb(g, a, b, { velocity = { x: 0, y: 0 }, group = 0, life = 26, spin = 0.12, lift = 0 } = {}) {
-  const [w, h] = partBox(a.type, b.name);
+  const [w, h] = partBox(a.type, b.name, a.form);
   const x = a.x + b.x * a.face, y = a.y + b.y - lift, angle = b.angle * a.face;
   const body = Bodies.rectangle(x, y, w, h, {
     angle, density: (MASS[b.name] * 0.4) / (w * h), friction: 0.7, frictionAir: 0.012, restitution: 0.12,
     chamfer: { radius: Math.min(w, h) * 0.3 }, collisionFilter: { category: CAT.limb, mask: MASK.limb, group }, label: 'limb'
   });
   const limb = {
-    id: g.nextId++, body, type: a.type, part: b.name, actor: a.id, face: a.face, scale: 1,
+    id: g.nextId++, body, type: a.type, form: a.form || null, part: b.name, actor: a.id, face: a.face, scale: 1,
     wounds: (a.wounds[b.name] || []).map(w => ({ ...w })), char: a.char || 0, frozen: a.frozen > 0, life, maxLife: life,
     attached: false, ragdoll: null, owner: null, throwTime: 0, hp: 30, x, y, angle, bleed: 0,
     cut: b.name === 'body' ? a.severed.filter(n => n !== 'body') : []

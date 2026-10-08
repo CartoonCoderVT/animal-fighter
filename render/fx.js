@@ -13,6 +13,8 @@ const TOPS = [
   ...MAP.oneway.map(p => ({ x0: X(p.x0), x1: X(p.x1), y: X(p.y) }))
 ];
 const BLOOD = [P.blood1, P.blood2, P.blood3, P.blood2, P.blood0];
+const ROCK = ['#5a5068', '#7a6e88', '#3e3648', '#9a8eaa'], STEAM = ['#e8e4f0', '#c8c0d8', '#a8a0c0'], EMBER = ['#ffffff', '#ffe2a0', '#ffb040', '#ff6a2a'];
+const DUST = ['#6a6078', '#8a7f95', '#4f475e'];
 const FIRE = [P.fire0, P.fire1, P.fire2, P.fire3, P.fire4];
 const DEBRIS = {
   wood: ['#b07b4f', '#87553c', '#d6a46c'], glass: ['#bfe8f2', '#8cc0dc', '#ffffff'], metal: ['#8a87a2', '#5a5276', '#c4c0d8'],
@@ -256,6 +258,65 @@ export class FX {
         for (let i = 0; i < 4; i++) { let cx = x, cy = y; const d = i < 2 ? -1 : 1; for (let k = 0; k < 6; k++) { cx += d * (1 + rnd() * 2); cy += Math.round(rnd() * 2 - 1) * 0.5; this.fg.fillRect(Math.round(cx), Math.round(Math.min(y + 1, cy)), 1, 1); } }
         break;
       }
+      // Juma's beast. Where a blow lands the floor cracks and throws up rocks and dust; the biggest
+      // ones raise a wall of dust out along the floor.
+      case 'quake': {
+        const p = e.p || 1, f = e.face || 1;
+        this.hemo.push({ k: 'crack', x, y, t: 0, life: 0.5 + p * 0.04, max: 0.5 + p * 0.04, seed: e.id || 1 });
+        this.rings.push({ x, y, life: 0.3, max: 0.3, r: 10 + p * 5, color: '#ffe6c8' });
+        for (const d of e.both || p >= 6 ? [-1, 1] : [f]) this.burst('debris', x + d * 3, y - 1, 2 + Math.round(p * 0.8), { a: -Math.PI / 2 + d * 0.55, spread: 1.1, s: 1.6 + p * 0.25, life: 1.2, colors: ROCK, g: 0.2, b: 0.3, size: 2, rnd });
+        this.burst('dust', x, y - 1, 4 + p, { a: -Math.PI / 2, spread: 2.8, s: 0.8 + p * 0.12, life: 0.7, colors: DUST, g: -0.01, drag: 0.92, size: 2, rnd });
+        if (p >= 5) for (let i = 1; i <= 5; i++) for (const d of [-1, 1]) this.burst('dust', x + d * i * 8, y - 1, 2, { a: -Math.PI / 2, spread: 0.4, s: 1.2 + (5 - i) * 0.2, life: 0.55, colors: ['#8a7f95', '#a89cb8'], g: -0.02, drag: 0.9, size: 2, rnd });
+        this.fg.fillStyle = 'rgba(14,10,18,0.8)';
+        for (let i = 0; i < 3 + Math.min(4, p); i++) { let cx = x, cy = y; const d = i % 2 ? -1 : 1; for (let k = 0; k < 4 + p; k++) { cx += d * (1 + rnd() * 2); cy += Math.round(rnd() * 2 - 1) * 0.5; this.fg.fillRect(Math.round(cx), Math.round(Math.min(y + 1, cy)), 1, 1); } }
+        break;
+      }
+      // The roar rolls out from her jaws in arcs.
+      case 'roar': {
+        const f = e.face || 1;
+        for (let i = 0; i < 4; i++) this.rings.push({ x, y, life: 0.35 + i * 0.12, max: 0.35 + i * 0.12, r: 26 + i * 20, color: i % 2 ? '#ffffff' : '#ffb070', dir: f > 0 ? 0 : Math.PI, arc: 1.1 });
+        this.rings.push({ x, y, life: 0.55, max: 0.55, r: 80, color: '#ffe2a0' });
+        this.burst('spark', x, y, 10, { a: f > 0 ? 0 : Math.PI, spread: 1.2, s: 3, life: 0.35, colors: ['#ffffff', '#ffe2a0'], g: 0, em: true, rnd });
+        break;
+      }
+      case 'morphStart':
+        this.rings.push({ x, y: y + 4, life: 0.4, max: 0.4, r: 16, color: '#ffb070' });
+        this.burst('steam', x, y + 8, 6, { a: -Math.PI / 2, spread: 2.4, s: 0.9, life: 0.8, colors: STEAM, em: true, g: -0.04, drag: 0.94, size: 2, grow: 0.05, rnd });
+        break;
+      // The pop: a burst of light and steam, rocks thrown up from the floor under her.
+      case 'morphPop': {
+        const fy = y + X(16);
+        this.flashes.push({ x, y: y - 4, life: 0.22, max: 0.22, kind: 'star', p: 5, a: Math.PI / 4, seed: e.id || 1, color: '#ffe2a0' });
+        this.rings.push({ x, y, life: 0.45, max: 0.45, r: 56, color: '#ffffff' });
+        this.rings.push({ x, y, life: 0.65, max: 0.65, r: 96, color: '#ff9a3a' });
+        this.burst('spark', x, y, 28, { spread: 6.3, s: 3.6, life: 0.6, colors: EMBER, g: 0.05, drag: 0.95, em: true, rnd });
+        this.burst('steam', x, y + 4, 16, { a: -Math.PI / 2, spread: 3.2, s: 1.6, life: 1, colors: STEAM, em: true, g: -0.04, drag: 0.93, size: 2, grow: 0.06, rnd });
+        this.burst('debris', x, fy - 1, 10, { a: -Math.PI / 2, spread: 2.2, s: 3, life: 1.3, colors: ROCK, g: 0.2, b: 0.3, size: 2, rnd });
+        this.hemo.push({ k: 'crack', x, y: fy, t: 0, life: 0.7, max: 0.7, seed: (e.id || 1) + 3 });
+        break;
+      }
+      case 'unmorphPop':
+        this.rings.push({ x, y, life: 0.3, max: 0.3, r: 20, color: '#ffffff' });
+        this.flashes.push({ x, y, life: 0.1, max: 0.1, kind: 'star', p: 2, a: 0, seed: e.id || 1, color: '#ffe2a0' });
+        this.burst('steam', x, y, 14, { spread: 6.3, s: 1.4, life: 0.9, colors: STEAM, em: true, g: -0.03, drag: 0.92, size: 2, grow: 0.06, rnd });
+        this.burst('spark', x, y, 8, { spread: 6.3, s: 2, life: 0.4, colors: EMBER, g: 0.04, em: true, rnd });
+        break;
+      // A rival crushed into the wall by the charge: a flash, flying scrap and a dent that stays.
+      case 'wallSplat': {
+        const f = e.face || 1;
+        this.flashes.push({ x, y, life: 0.14, max: 0.14, kind: 'star', p: 4, a: f > 0 ? Math.PI : 0, seed: e.id || 1 });
+        this.rings.push({ x, y, life: 0.3, max: 0.3, r: 26, color: '#ffe6c8' });
+        this.burst('debris', x, y, 12, { a: f > 0 ? Math.PI : 0, spread: 1.6, s: 3, life: 1.2, colors: DEBRIS.metal, g: 0.18, b: 0.3, size: 2, rnd });
+        this.burst('dust', x, y, 8, { spread: 6.3, s: 1, life: 0.7, colors: DUST, g: 0, drag: 0.92, size: 2, rnd });
+        this.wg.fillStyle = 'rgba(14,10,18,0.7)';
+        for (let i = 0; i < 6; i++) { let cx = x, cy = y; const a = rnd() * Math.PI * 2; for (let k = 0; k < 6; k++) { cx += Math.cos(a) * 1.4; cy += Math.sin(a) * 1.4; this.wg.fillRect(Math.round(cx), Math.round(cy), 1, 1); } }
+        break;
+      }
+      // A blow that the beast's hide shrugs off: a dull orange spark, no flinch.
+      case 'armor':
+        this.flashes.push({ x, y, life: 0.08, max: 0.08, kind: 'star', p: 1.4, a: e.a || 0, seed: e.id || 1, color: '#ffb070' });
+        this.rings.push({ x, y, life: 0.2, max: 0.2, r: 12, color: '#ffb070' });
+        break;
       case 'requiemStart': this.hemo.push({ k: 'bubble', x, y, owner: e.owner, t: 0, life: 1.6, max: 1.6 }); break;
       case 'requiemCut': {
         const P = this.pal();
@@ -396,14 +457,16 @@ export class FX {
         for (let u = 0; u <= 1; u += 0.04) {
           const a = 1 - u, x = a * a * h.x + 2 * a * u * qx + u * u * h.x2, y = a * a * h.y + 2 * a * u * qy + u * u * h.y2;
           const w = Math.max(1, Math.round(u * 3 * (1 - k)));
-          dot(u > 0.7 ? '#ffffff' : u > 0.35 ? P.glint : P.light, x - w / 2, y - w / 2, w);
+          const ww = w + (h.wide && u > 0.3 ? h.wide : 0);
+          dot(u > 0.7 ? '#ffffff' : u > 0.35 ? h.c1 || P.glint : h.c2 || P.light, x - ww / 2, y - ww / 2, ww);
         }
         g.globalAlpha = 1;
       } else if (h.k === 'glint') {
         // A star of light in the eye just before the blow.
         const k = h.t / h.max, r = Math.round(3 * Math.sin(k * Math.PI));
         dot('#ffffff', h.x, h.y);
-        for (let i = 1; i <= r; i++) { dot(i === r ? P.light : '#ffffff', h.x + i, h.y); dot(i === r ? P.light : '#ffffff', h.x - i, h.y); dot(i === r ? P.light : '#ffffff', h.x, h.y + i); dot(i === r ? P.light : '#ffffff', h.x, h.y - i); }
+        const tip = h.c2 || P.light;
+        for (let i = 1; i <= r; i++) { dot(i === r ? tip : '#ffffff', h.x + i, h.y); dot(i === r ? tip : '#ffffff', h.x - i, h.y); dot(i === r ? tip : '#ffffff', h.x, h.y + i); dot(i === r ? tip : '#ffffff', h.x, h.y - i); }
       } else if (h.k === 'bat') {
         // Little bats flapping out from the blink, or in toward it.
         const k = h.t / h.max, e = h.arrive ? 1 - k : k, d = 4 + e * 26;
@@ -577,7 +640,13 @@ export class FX {
         g.fillRect(Math.round(p.x - p.vx * 0.6 + ox), Math.round(p.y - p.vy * 0.6 + oy), 1, 1);
         g.globalAlpha = 1;
       } else if (p.k === 'glyph') continue;
-      else { g.fillStyle = p.c; g.fillRect(Math.round(p.x + ox), Math.round(p.y + oy), Math.max(1, Math.round(p.s)), Math.max(1, Math.round(p.s))); }
+      else if (p.k === 'steam') {
+        g.globalAlpha = 0.32 * Math.min(1, k * 1.6);
+        g.fillStyle = p.c;
+        const sz = Math.max(1, Math.round(p.s));
+        g.fillRect(Math.round(p.x + ox - sz / 2), Math.round(p.y + oy - sz / 2), sz, sz);
+        g.globalAlpha = 1;
+      } else { g.fillStyle = p.c; g.fillRect(Math.round(p.x + ox), Math.round(p.y + oy), Math.max(1, Math.round(p.s)), Math.max(1, Math.round(p.s))); }
     }
     for (const f of this.flashes) {
       const x = Math.round(f.x + ox), y = Math.round(f.y + oy);

@@ -19,10 +19,10 @@ export const FIGHTERS = [
     detail: 'J chuta rápido; o terceiro é um chute-foguete que lança. S+J: coice duplo que empurra muito. K: pisão do céu.'
   },
   {
-    id: 'ocelot', name: 'Juma', species: 'A JAGUATIRICA', role: 'PESO / AGARRÃO', word: 'GRRR.', color: '#e6ba67',
-    desc: 'Pequena só no tamanho. Patada pesada e uma mordida que não larga.',
-    ability: 'Mordida', icon: '!', stats: [5, 2, 5], hp: 160, speed: 4.4, weight: 1.35, cooldown: 8,
-    detail: 'J dá patadas pesadas; a terceira sobe lançando. S+J esmaga, derruba e quebra ossos. K morde, sacode e arremessa.'
+    id: 'ocelot', name: 'Juma', species: 'A JAGUATIRICA', role: 'FÚRIA / FERA', word: 'GRRR.', color: '#e6ba67',
+    desc: 'Pequena, rápida e sem paciência nenhuma. Quando perde a calma, vira a FERA.',
+    ability: 'Fera', icon: '!', stats: [5, 4, 5], hp: 150, speed: 5.3, weight: 0.95, cooldown: 9,
+    detail: 'J: fúria de garras; lado+J: bote; S+J: mordida. K: vira a FERA, lenta e blindada, e o chão treme. Na FERA, K é o salto sísmico.'
   },
   {
     id: 'bat', name: 'Nox', species: 'O MORCEGO BRANCO', role: 'VAMPIRO / HEMOMANCIA', word: 'SHHH.', color: '#9fb9ea',
@@ -31,3 +31,6 @@ export const FIGHTERS = [
     detail: 'J: garra, ceifa, ciclone, guilhotina, estacas. S+J no combo: rasteira. K: sangue perfurante; com 3 marcas: RÉQUIEM. Todo golpe rouba vida.'
   }
 ];
+// Juma's beast form is far heavier and slower than she is.
+export const weightOf = a => FIGHTERS[a.type].weight * (a.form === 'beast' ? 1.9 : 1);
+export const speedOf = a => FIGHTERS[a.type].speed * (a.form === 'beast' ? 0.66 : 1);

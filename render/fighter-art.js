@@ -1,6 +1,6 @@
 // Turns pixel-matrix fighters into cached canvases: whole figures for live fighters and
 // RotSprite-rotated single parts for ragdolls.
-import { CAST, composeChars, composePart, composeTubes, paletteFor, rotate, mirror, snapDeg, slotPoint } from './pixel-data.js';
+import { CAST, composeChars, composePart, composeTubes, paletteFor, rotate, mirror, snapDeg, slotPoint, castFor } from './pixel-data.js';
 import { hexToRgb } from '../engine/palette.js';
 
 // Sprite canvases stay in CPU memory: they are composited into the fighter's CPU canvas every
@@ -52,8 +52,8 @@ export function variantOf(a, time) {
 export function figureSprite(a, f, variant = '', chains = null) {
   const severed = a.severed || [];
   const frame = chains ? { ...f.frame, tail: false, scarf: false } : f.frame;
-  const key = a.type + '|' + JSON.stringify(frame) + '|' + f.expr + '|' + variant + '|' + severed.join(',') + '|' + woundKey(a.wounds);
-  const ch = CAST[a.type];
+  const key = a.type + (a.form || '') + '|' + JSON.stringify(frame) + '|' + f.expr + '|' + variant + '|' + severed.join(',') + '|' + woundKey(a.wounds);
+  const ch = castFor(a.type, a.form);
   let s = figures.get(key);
   if (!s) {
     const out = composeChars(ch, frame, { expr: f.expr, wounds: a.wounds, severed });
@@ -64,7 +64,7 @@ export function figureSprite(a, f, variant = '', chains = null) {
   if (chains && !severed.includes('body')) {
     const out = composeTubes(ch, chains);
     if (out) {
-      const okey = a.type + variant + '|' + out.x0 + ',' + out.y0 + '|' + out.rows.join('/');
+      const okey = a.type + (a.form || '') + variant + '|' + out.x0 + ',' + out.y0 + '|' + out.rows.join('/');
       overlay = overlays.get(okey);
       if (!overlay) { overlay = { canvas: toCanvas(out.rows, paletteFor(ch, variant)), flipped: null, x0: out.x0, y0: out.y0, w: out.w, h: out.h }; overlays.set(okey, overlay); }
     }
@@ -88,8 +88,8 @@ export function drawFigure(g, s, fx, fy, face = 1, scale = 1) {
 }
 
 // A point on a slot (cells from its pivot) in canvas pixels for a drawn figure.
-export function figurePoint(frame, slot, u, v, fx, fy, face = 1, scale = 1) {
-  const [x, y] = slotPoint(slot, frame, u, v);
+export function figurePoint(frame, slot, u, v, fx, fy, face = 1, scale = 1, ch = null) {
+  const [x, y] = slotPoint(slot, frame, u, v, ch);
   return { x: fx + x * face * scale, y: fy + y * scale };
 }
 
@@ -97,10 +97,10 @@ export function figurePoint(frame, slot, u, v, fx, fy, face = 1, scale = 1) {
 export function partSprite(l, variant = '', expr = '') {
   const face = l.face || 1;
   const deg = snapDeg((l.angle * 180) / Math.PI) * face;
-  const key = l.type + '|' + l.part + '|' + deg + '|' + face + '|' + variant + '|' + expr + '|' + (l.cut || []).join(',') + '|' + woundKey(l.wounds);
+  const key = l.type + (l.form || '') + '|' + l.part + '|' + deg + '|' + face + '|' + variant + '|' + expr + '|' + (l.cut || []).join(',') + '|' + woundKey(l.wounds);
   let s = parts.get(key);
   if (!s) {
-    const ch = CAST[l.type];
+    const ch = castFor(l.type, l.form);
     const base = composePart(ch, l.part, { expr, wounds: { [l.part]: l.wounds }, severed: l.cut || [] });
     if (!base) return null;
     let { m, piv } = rotate(base.rows, base.piv, deg);

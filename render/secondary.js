@@ -1,6 +1,6 @@
 // Secondary motion for tails and scarf ends: short verlet chains in character space (pixels,
 // facing right) that keep their drawn shape, wag, and lag behind the body's motion.
-import { CAST, ANCHOR, TAILS, SCARF } from './pixel-data.js';
+import { CAST, ANCHOR, TAILS, SCARF, BEAST, castFor } from './pixel-data.js';
 import { S } from '../engine/const.js';
 
 // stiff: pull toward the drawn shape at the root (tip uses stiff * tip); grav: px/frame²;
@@ -8,6 +8,7 @@ import { S } from '../engine/const.js';
 const SPECS = {
   cat: [{ root: ANCHOR.tail, shape: TAILS.cat.shape, tube: TAILS.cat, stiff: 0.2, tip: 0.3, grav: 0.05, drag: 0.32, inertia: 0.7, wag: [2.1, 9] }],
   ocelot: [{ root: ANCHOR.tail, shape: TAILS.ocelot.shape, tube: TAILS.ocelot, stiff: 0.2, tip: 0.3, grav: 0.05, drag: 0.32, inertia: 0.7, wag: [1.5, 7] }],
+  ocelotBeast: [{ root: BEAST.anchor.tail, shape: TAILS.ocelotBeast.shape, tube: TAILS.ocelotBeast, stiff: 0.28, tip: 0.3, grav: 0.06, drag: 0.3, inertia: 0.8, wag: [1.1, 9] }],
   rat: [{ root: ANCHOR.tail, shape: TAILS.rat.shape, tube: TAILS.rat, stiff: 0.12, tip: 0.3, grav: 0.08, drag: 0.32, inertia: 0.9, wag: [1.4, 14] }],
   bat: SCARF.strands.map((shape, i) => ({ root: SCARF.root, shape, tube: SCARF, stiff: 0.05, tip: 0.2, grav: 0.12, drag: 0.85, inertia: 1, wag: [1.7 + i * 0.4, 6], flutter: 0.35 + i * 0.15 }))
 };
@@ -63,7 +64,7 @@ export class Secondary {
 
   // Returns [{ pts, spec }] for the actor's loose chains this frame, or null to draw them static.
   update(a, frame, time, dt) {
-    const id = CAST[a.type].id, specs = SPECS[id];
+    const id = castFor(a.type, a.form).id, specs = SPECS[id];
     if (!specs || frame.spin) { this.map.delete(a.id); return null; }
     let st = this.map.get(a.id);
     const [bdx = 0, bdy = 0] = frame.body || [];

@@ -1,17 +1,17 @@
 import { Body, Query, MASK, CAT, onewayBit, GRAV, approach } from './physics.js';
 import { MOVES, NOX_AIR } from './moves.js';
 import { MAP } from './map.js';
-import { FIGHTERS } from './fighters.js';
+import { FIGHTERS, speedOf, weightOf } from './fighters.js';
 import { clamp } from '../engine/const.js';
 import { think } from './ai.js';
 import { attack, power, damage, breakBone, tickAttack } from './combat.js';
 import { interact, dropWeapon, detonateCharges, updateHolding } from './props.js';
 import { knockdown, recover, ragdollOf } from './ragdoll.js';
-import { stepSpecial, startSwarm } from './specials.js';
+import { stepSpecial, startSwarm, tickForm } from './specials.js';
 import { HALF_H, FOOT } from '../render/rig.js';
 
 export { HALF_H };
-const TIMERS = ['batCd', 'hitstun', 'attack', 'attackCd', 'abilityCd', 'float', 'bufA', 'bufP', 'parry', 'parryCd', 'parryLag', 'counter', 'perfectT', 'hurt', 'invincible', 'iframes', 'dodgeCd', 'dodge', 'jumpGrace', 'jumpBuffer', 'stun', 'getup', 'comboTimer', 'shock', 'skid', 'landT', 'climbCd'];
+const TIMERS = ['batCd', 'biteCd', 'chargeCd', 'hitstun', 'attack', 'attackCd', 'abilityCd', 'float', 'bufA', 'bufP', 'parry', 'parryCd', 'parryLag', 'counter', 'perfectT', 'hurt', 'invincible', 'iframes', 'dodgeCd', 'dodge', 'jumpGrace', 'jumpBuffer', 'stun', 'getup', 'comboTimer', 'shock', 'skid', 'landT', 'climbCd'];
 
 export function groundInfo(g, a) {
   const b = a.body, x = b.position.x, feet = b.position.y + HALF_H;
@@ -59,7 +59,7 @@ function groundBounce(g, a) {
   g.text(a.x, a.y - 30, 'QUICOU!', '#ffd36c');
   const by = g.actor(a.bounceBy);
   if (by && !by.dead) by.chase = { id: a.id, until: g.time + 1.2 };
-  return -8.5 / FIGHTERS[a.type].weight;
+  return -8.5 / weightOf(a);
 }
 
 function land(g, a, impact, height = 0) {
@@ -105,6 +105,7 @@ export function stepActor(g, a, dt) {
   if (a.turnT && g.time >= a.turnT) { const o = g.actor(a.turnTo); if (o && !o.dead) a.face = o.x >= a.x ? 1 : -1; a.turnT = 0; }
   for (const k of TIMERS) a[k] = Math.max(0, (a[k] || 0) - dt);
   for (const k in a.drop) a.drop[k] = Math.max(0, a.drop[k] - dt);
+  tickForm(g, a, dt);
   if (a.frozen > 0) {
     a.frozen -= dt;
     if (a.frozen <= 0) { a.frozen = 0; g.fx('shatter', { x: a.x, y: a.y, n: 6, small: true }); g.text(a.x, a.y - 28, 'DESCONGELOU', '#bdeeff'); }
@@ -179,7 +180,7 @@ export function stepActor(g, a, dt) {
 
   const reeling = a.stun > 0 || a.hitstun > 0;
   const control = reeling ? 0.12 : a.shock > 0 ? 0.2 : 1;
-  let speed = f.speed * (legs === 2 ? 1 : legs === 1 ? 0.62 : 0.32) * (1 - broken * 0.22);
+  let speed = speedOf(a) * (legs === 2 ? 1 : legs === 1 ? 0.62 : 0.32) * (1 - broken * 0.22);
   a.crouch = a.ground && input.down && !a.climbing;
   if (a.crouch) speed *= 0.45;
   const move = control > 0.5 && a.parryLag <= 0 ? (input.right ? 1 : 0) - (input.left ? 1 : 0) : 0;
@@ -216,7 +217,9 @@ export function stepActor(g, a, dt) {
 
   // Horizontal control
   if (!a.climbing) {
-    if (a.dodge > 0 && a.dodgeKind === 'roll') vx = a.dodgeDir * 8 + sv;
+    const bolt = a.attack > 0 ? MOVES[a.attackKind]?.bolt : 0;
+    if (bolt && a.attack > MOVES[a.attackKind].dur * 0.5) vx = a.face * bolt;
+    else if (a.dodge > 0 && a.dodgeKind === 'roll') vx = a.dodgeDir * 8 + sv;
     else if (a.dodge > 0.06 && a.dodgeKind === 'airdash') vx = a.dodgeDir * 8.5;
     else if (a.ground) {
       const target = move * speed + sv;
@@ -248,7 +251,7 @@ export function stepActor(g, a, dt) {
   if (!a.climbing && a.jumpBuffer > 0 && control >= 1 && (a.jumpGrace > 0 || (a.airJumps > 0 && pressed('jump')))) {
     const doubleJump = a.jumpGrace <= 0;
     if (doubleJump) { a.airJumps--; vy = -9.6; g.fx('ring', { x: a.x, y: a.y + 24, size: 16, color: '#b8c8f0' }); }
-    else { vy = -10.8 * (legs === 2 ? 1 : 0.8); g.fx('dust', { x: a.x, y: a.y + FOOT, n: 5 }); }
+    else { vy = -10.8 * (legs === 2 ? 1 : 0.8) * (a.form === 'beast' ? 0.9 : 1); g.fx('dust', { x: a.x, y: a.y + FOOT, n: 5 }); }
     vx += sv * 0.5;
     a.jumpBuffer = 0; a.jumpGrace = 0; a.jumpHeld = true; a.ground = false; a.jumpAt = g.time;
     g.sound('jump', a.x);
@@ -301,8 +304,11 @@ export function stepActor(g, a, dt) {
   // While reeling from a hit, presses are dropped rather than buffered: no mashing out of it.
   if (pressed('attack') && !(a.hitstun > 0)) a.bufA = 0.22;
   if (pressed('power') && !(a.hitstun > 0)) a.bufP = 0.22;
+  const was = [a.attackSeq, a.powerSeq, a.act];
   if ((input.attack || a.bufA > 0) && canAct) { const s = a.attackSeq; attack(g, a); if (a.attackSeq !== s) a.bufA = 0; }
   if (canAct && (a.bufP > 0 || (a.bot && input.power))) { const s = a.attackSeq, p = a.powerSeq; power(g, a); if (a.attackSeq !== s || a.powerSeq !== p) a.bufP = 0; }
+  // A move or special that just started set its own velocity (steps, lunges, leaps): keep it.
+  if (was[0] !== a.attackSeq || was[1] !== a.powerSeq || was[2] !== a.act) { vx = body.velocity.x; vy = body.velocity.y; }
   if (pressed('grab') && canAct) interact(g, a);
   if (pressed('bats') && canAct && a.type === 4 && !(a.batCd > 0) && !a.act && !a.climbing) startSwarm(g, a);
   if (pressed('drop')) dropWeapon(g, a);
@@ -316,7 +322,7 @@ export function stepActor(g, a, dt) {
   a.lastPreVy = vy;
 }
 
-const GHOST_ACTS = ['chase', 'ride', 'pounce', 'kickoff', 'plunge', 'requiem', 'swarm'];
+const GHOST_ACTS = ['chase', 'ride', 'pounce', 'kickoff', 'plunge', 'requiem', 'swarm', 'charge', 'leap', 'meteor'];
 function updateMask(g, a, vy) {
   const b = a.body;
   let mask = MASK.actor;
