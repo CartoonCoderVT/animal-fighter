@@ -10,11 +10,11 @@ export class OnlineScene {
     this.shell = shell; this.t = 0; this.status = '';
     this.name = new TextField({ label: 'SEU NOME', value: shell.settings.name || FIGHTERS[shell.selected].name, maxLength: 18, filter: /[\p{L}\p{N} _.\-]/u });
     this.code = new TextField({ label: 'CÓDIGO DA SALA', value: code, maxLength: 6, filter: /[A-Za-z2-9]/ });
-    this.items = ['name', 'create', 'code', 'join', 'back'];
+    this.items = ['name', 'create', 'code', 'join', 'fighter', 'back'];
     this.focus = code ? 3 : 1;
     this.busy = false;
     const x = VIEW_W / 2 - 150;
-    this.rects = { name: { x, y: 92, w: 300, h: 32 }, create: { x, y: 134, w: 300, h: 22 }, code: { x, y: 182, w: 200, h: 32 }, join: { x: x + 208, y: 194, w: 92, h: 20 }, back: { x, y: 268, w: 300, h: 18 } };
+    this.rects = { name: { x, y: 92, w: 300, h: 32 }, create: { x, y: 134, w: 300, h: 22 }, code: { x, y: 182, w: 200, h: 32 }, join: { x: x + 208, y: 194, w: 92, h: 20 }, fighter: { x, y: 244, w: 300, h: 18 }, back: { x, y: 268, w: 300, h: 18 } };
     this.name.onEnter = () => this.setFocus(1);
     this.code.onEnter = () => this.setFocus(3);
   }
@@ -50,6 +50,7 @@ export class OnlineScene {
     if (key === 'create') this.create();
     else if (key === 'join') this.join();
     else if (key === 'back') { this.shell.net.close(); goMenu(this.shell); }
+    else if (key === 'fighter') import('./select.js').then(m => this.shell.go(new m.SelectScene(this.shell, { next: 'online', code: this.code.value })));
     else this.setFocus(this.items.indexOf(key));
   }
   update(dt) {
@@ -73,7 +74,8 @@ export class OnlineScene {
     drawText(g, 'OU ENTRE NA SALA DE UM AMIGO', VIEW_W / 2, 166, { color: '#6a5e80', align: 'center' });
     this.code.draw(g, this.rects.code.x, this.rects.code.y, 200, dt);
     button(g, this.rects.join, 'ENTRAR', { hot: sel('join'), disabled: this.busy });
-    paragraph(g, `Você joga de ${FIGHTERS[this.shell.selected].name}. Até quatro pessoas; bots completam as vagas. O anfitrião mantém o jogo aberto.`, VIEW_W / 2 - 150, 222, 300, '#8a7f9c');
+    paragraph(g, 'Até quatro pessoas; bots completam as vagas. O anfitrião mantém o jogo aberto.', VIEW_W / 2 - 150, 222, 300, '#8a7f9c');
+    button(g, this.rects.fighter, `LUTADOR: ${FIGHTERS[this.shell.selected].name.toUpperCase()} · TROCAR`, { hot: sel('fighter'), color: FIGHTERS[this.shell.selected].color });
     button(g, this.rects.back, 'VOLTAR', { hot: sel('back') });
     if (this.status) paragraph(g, this.status, VIEW_W / 2 - 150, 296, 300, '#f2c35b');
   }
@@ -105,6 +107,10 @@ export class LobbyScene {
     if (i.nav('up') || i.nav('down')) { this.focus = 1 - this.focus; this.shell.sound.play('ui_move'); }
     if (i.pressed('KeyC') || hit(i, this.rects.code)) this.copy();
     if (hit(i, this.rects.start)) this.start();
+    // Your own fighter can still be changed while the room waits.
+    const me = this.shell.net.players.findIndex(p => p.id === this.shell.net.localId);
+    const step = i.nav('left') ? -1 : i.nav('right') ? 1 : me >= 0 && hit(i, { x: VIEW_W / 2 - 150, y: 122 + me * 30, w: 300, h: 26 }) ? 1 : 0;
+    if (step) { this.shell.pickFighter((this.shell.selected + step + 5) % 5); this.shell.sound.play('ui_move'); }
     if (hit(i, this.rects.leave)) this.leave();
     if (i.nav('ok')) { if (this.items[this.focus] === 'start') this.start(); else this.leave(); }
     if (i.nav('back')) this.leave();
@@ -127,6 +133,7 @@ export class LobbyScene {
         g.restore();
         drawText(g, p.name, VIEW_W / 2 - 118, y + 4, { color: '#fff1d6' });
         drawText(g, FIGHTERS[p.type].name + (p.id === 0 ? ' · ANFITRIÃO' : ''), VIEW_W / 2 - 118, y + 14, { color: '#8a7f9c' });
+        if (p.id === net.localId) drawText(g, '◀ ▶ TROCAR', VIEW_W / 2 + 144, y + 9, { color: FIGHTERS[p.type].color, align: 'right' });
       } else drawText(g, 'VAGA LIVRE · UM BOT JOGA SE NINGUÉM ENTRAR', VIEW_W / 2 - 140, y + 9, { color: '#5a4e68' });
     }
     button(g, this.rects.start, net.host ? 'COMEÇAR PARTIDA ▶' : 'AGUARDANDO ANFITRIÃO…', { hot: this.focus === 0 && net.host, disabled: !net.host, color: '#7bcbbb' });

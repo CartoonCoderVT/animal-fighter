@@ -12,6 +12,7 @@ import { dissolve } from './widgets.js';
 import { TitleScene, MenuScene } from './scenes/title.js';
 import { MatchScene } from './scenes/match.js';
 import { LobbyScene, OnlineScene } from './scenes/online.js';
+import { SelectScene } from './scenes/select.js';
 
 const DEFAULTS = { gore: 2, shake: true, camera: true, particles: true, volume: 0.35, music: 0.25, pixel: 'sharp', fps: false, name: '' };
 
@@ -32,7 +33,7 @@ export class Shell {
     this.renderer.fx.onSound = (n, x) => this.sound.play(n, x);
     this.hud = new HUD(this.renderer);
     this.net = new Multiplayer(e => this.networkEvent(e));
-    this.selected = 0;
+    this.selected = Number.isInteger(this.settings.fighter) ? clamp(this.settings.fighter, 0, FIGHTERS.length - 1) : 0;
     this.mode = 'solo';
     this.game = null; this.remote = null; this.remotePrev = null; this.lastRemote = 0; this.lastEvent = 0; this.latency = 0;
     this.localId = 0;
@@ -53,7 +54,8 @@ export class Shell {
       this.ticker.onmessage = () => { if (document.hidden || performance.now() - this.last > 120) this.simulate(performance.now(), true); };
     } catch {}
     const room = new URL(location.href).searchParams.get('sala');
-    if (room && /^[A-Z2-9]{6}$/i.test(room)) this.stack = [new OnlineScene(this, { code: room.toUpperCase() })];
+    // An invite opens the fighter select first, then the room with its code filled in.
+    if (room && /^[A-Z2-9]{6}$/i.test(room)) this.stack = [new SelectScene(this, { next: 'online', code: room.toUpperCase() })];
     else this.stack = [new TitleScene(this)];
     this.stack[0].enter?.();
     requestAnimationFrame(t => this.frame(t));
@@ -62,6 +64,14 @@ export class Shell {
   get scene() { return this.stack[this.stack.length - 1]; }
   get base() { return this.stack[0]; }
   get playing() { return this.base instanceof MatchScene; }
+
+  // Sets the fighter you play as and remembers it; in a room it is sent to the others.
+  pickFighter(type) {
+    this.selected = type;
+    this.settings.fighter = type;
+    this.saveSettings();
+    if (this.net.status === 'lobby') this.net.pick(type);
+  }
 
   saveSettings() {
     try { localStorage.setItem('af-settings', JSON.stringify(this.settings)); } catch {}

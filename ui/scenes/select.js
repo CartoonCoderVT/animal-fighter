@@ -32,17 +32,17 @@ function spotlight() {
 }
 
 export class SelectScene {
-  constructor(shell, { next = 'solo' } = {}) {
-    this.shell = shell; this.next = next; this.index = shell.selected; this.t = 0; this.selT = 0; this.selOf = this.index;
+  constructor(shell, { next = 'solo', code = '' } = {}) {
+    this.shell = shell; this.next = next; this.code = code; this.index = shell.selected; this.t = 0; this.selT = 0; this.selOf = this.index;
     this.confirmRect = { x: VIEW_W - 152, y: 12, w: 140, h: 20 };
   }
   enter() { this.shell.sound.music('menu'); }
   confirm() {
     const s = this.shell;
-    if (this.next === 'browse') { s.selected = this.index; import('./title.js').then(m => s.go(new m.MenuScene(s))); return; }
-    s.selected = this.index;
+    if (this.next === 'browse') { s.pickFighter(this.index); import('./title.js').then(m => s.go(new m.MenuScene(s))); return; }
+    s.pickFighter(this.index);
     s.sound.play('ui_ok');
-    if (this.next === 'online') import('./online.js').then(m => s.go(new m.OnlineScene(s)));
+    if (this.next === 'online') import('./online.js').then(m => s.go(new m.OnlineScene(s, { code: this.code })));
     else s.startMatch(undefined, { mode: this.next });
   }
   update(dt) {
@@ -63,7 +63,7 @@ export class SelectScene {
   draw(g, dt) {
     const r = this.shell.renderer;
     g.drawImage(stage(), 0, 0);
-    const label = { solo: 'JOGAR · SOLO', online: 'JOGAR · ONLINE', sandbox: 'LABORATÓRIO', browse: 'O CLUBE DO CAOS' }[this.next];
+    const label = this.code ? `CONVITE PARA A SALA ${this.code}` : { solo: 'JOGAR · SOLO', online: 'JOGAR · ONLINE', sandbox: 'LABORATÓRIO', browse: 'O CLUBE DO CAOS' }[this.next];
     drawText(g, label, 16, 12, { color: '#f68268' });
     drawText(g, 'ESCOLHA SEU LUTADOR', 16, 24, { color: '#fff1d6', scale: 2, shadow: '#3a2450' });
     for (let k = 0; k < 5; k++) {
