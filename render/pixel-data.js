@@ -63,7 +63,7 @@ export const TITAN = {
   ...castOf('ocelotTitan'),
   anchor: { head: [10, -18], body: [0, -2], armF: [5, -21], armB: [-3, -23], footF: [5, -1], footB: [-5, -1], tail: [-9, -9], scarf: [0, -9] },
   joint: { head: [10, -18], armF: [5, -21], armB: [-3, -23], footF: [5, -3], footB: [-5, -3] },
-  pivot: { arm: [3, 1] },
+  pivot: { arm: [5, 1] },
   eye: [5, -9]
 };
 export const castFor = (type, form) => (CAST[type]?.id === 'ocelot' && form ? (form === 'titan' ? TITAN : BEAST) : CAST[type]);
