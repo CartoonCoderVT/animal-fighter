@@ -35,6 +35,7 @@ export class SelectScene {
   constructor(shell, { next = 'solo', code = '' } = {}) {
     this.shell = shell; this.next = next; this.code = code; this.index = shell.selected; this.t = 0; this.selT = 0; this.selOf = this.index;
     this.confirmRect = { x: VIEW_W - 152, y: 12, w: 140, h: 20 };
+    this.botsRect = { x: VIEW_W - 152, y: 36, w: 140, h: 16 };
   }
   enter() { this.shell.sound.music('menu'); }
   confirm() {
@@ -57,6 +58,14 @@ export class SelectScene {
       for (let k = 0; k < 5; k++) if (Math.abs(c.x - SLOT(k)) < 52 && c.y > 110 && c.y < 236) { if (this.index === k) this.confirm(); else { this.index = k; snd.play('ui_move'); } }
     }
     if (hit(i, this.confirmRect)) this.confirm();
+    // Solo: one to three bots.
+    if (this.next === 'solo') {
+      const bots = s => { this.shell.settings.bots = s; this.shell.saveSettings(); snd.play('ui_move'); };
+      const n = Math.max(1, Math.min(3, this.shell.settings.bots ?? 3));
+      if (i.nav('up')) bots(Math.min(3, n + 1));
+      if (i.nav('down')) bots(Math.max(1, n - 1));
+      if (hit(i, this.botsRect)) bots(n % 3 + 1);
+    }
     if (i.nav('ok')) this.confirm();
     if (i.nav('back')) import('./title.js').then(m => this.shell.go(new m.MenuScene(this.shell)));
   }
@@ -97,6 +106,10 @@ export class SelectScene {
       for (let k = 0; k < 5; k++) { g.fillStyle = k < f.stats[j] ? f.color : '#2a2036'; g.fillRect(420 + k * 14, 320 + j * 10, 11, 4); }
     });
     if (this.next !== 'browse') button(g, this.confirmRect, this.next === 'online' ? 'CONTINUAR ▶' : 'LUTAR ▶', { hot: true, color: f.color });
-    drawText(g, '◀ ▶ TROCAR · ESC VOLTA', VIEW_W - 12, 38, { color: '#6a5e80', align: 'right' });
+    if (this.next === 'solo') {
+      const n = Math.max(1, Math.min(3, this.shell.settings.bots ?? 3));
+      button(g, this.botsRect, `BOTS: ${n} · ▲▼`, { color: '#8a7f9c' });
+    }
+    drawText(g, '◀ ▶ TROCAR · ESC VOLTA', VIEW_W - 12, this.next === 'solo' ? 58 : 38, { color: '#6a5e80', align: 'right' });
   }
 }

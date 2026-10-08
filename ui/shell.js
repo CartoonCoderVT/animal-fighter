@@ -118,7 +118,8 @@ export class Shell {
   // ---- matches --------------------------------------------------------------------------
   makePlayers() {
     const name = (this.settings.name || FIGHTERS[this.selected].name).slice(0, 18);
-    return [{ id: 0, type: this.selected, name, bot: false }, ...[1, 2, 3].map(id => ({ id, type: (this.selected + id) % 5, name: FIGHTERS[(this.selected + id) % 5].name, bot: true }))];
+    const bots = clamp(this.settings.bots ?? 3, 1, 3);
+    return [{ id: 0, type: this.selected, name, bot: false }, ...[1, 2, 3].slice(0, bots).map(id => ({ id, type: (this.selected + id) % 5, name: FIGHTERS[(this.selected + id) % 5].name, bot: true }))];
   }
 
   startMatch(players = this.makePlayers(), { mode = this.mode, isRemote = false, instant = false } = {}) {

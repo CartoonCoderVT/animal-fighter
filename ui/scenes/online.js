@@ -34,6 +34,7 @@ export class OnlineScene {
     this.busy = true;
     this.shell.settings.name = this.name.value.trim();
     this.shell.saveSettings();
+    this.shell.net.bots = Math.max(0, Math.min(3, this.shell.settings.bots ?? 3));
     try { await this.shell.net.create(this.name.value, this.shell.selected); } catch (e) { this.status = e.message; }
     this.busy = false;
   }
@@ -84,9 +85,9 @@ export class OnlineScene {
 export class LobbyScene {
   constructor(shell) {
     this.shell = shell; this.t = 0; this.copied = 0;
-    this.items = ['start', 'leave'];
-    this.focus = shell.net.host ? 0 : 1;
-    this.rects = { code: { x: VIEW_W / 2 - 150, y: 70, w: 300, h: 40 }, start: { x: VIEW_W / 2 - 150, y: 254, w: 300, h: 22 }, leave: { x: VIEW_W / 2 - 150, y: 282, w: 300, h: 18 } };
+    this.items = ['bots', 'start', 'leave'];
+    this.focus = shell.net.host ? 1 : 2;
+    this.rects = { code: { x: VIEW_W / 2 - 150, y: 70, w: 300, h: 40 }, bots: { x: VIEW_W / 2 - 150, y: 242, w: 300, h: 16 }, start: { x: VIEW_W / 2 - 150, y: 262, w: 300, h: 20 }, leave: { x: VIEW_W / 2 - 150, y: 286, w: 300, h: 16 } };
   }
   async copy() {
     const link = `${location.origin}${location.pathname}?sala=${this.shell.net.code}`;
@@ -97,30 +98,43 @@ export class LobbyScene {
     if (!net.host) return;
     const players = net.players.map(p => ({ ...p }));
     const used = new Set(players.map(p => p.id));
-    for (let id = 0; id < 4; id++) if (!used.has(id)) players.push({ id, type: (s.selected + id + 1) % 5, name: FIGHTERS[(s.selected + id + 1) % 5].name + ' BOT', bot: true });
+    // The chosen number of bots fills free places; with nobody else in the room one still comes.
+    let bots = Math.max(net.bots, players.length < 2 ? 1 : 0);
+    for (let id = 0; id < 4 && bots > 0; id++) if (!used.has(id)) { players.push({ id, type: (s.selected + id + 1) % 5, name: FIGHTERS[(s.selected + id + 1) % 5].name + ' BOT', bot: true }); bots--; }
     try { net.start(players); s.startMatch(players, { mode: 'online' }); } catch (e) { s.toast(e.message); }
+  }
+  // The host cycles the number of bots, 0 to 3, and it is remembered.
+  cycleBots() {
+    const s = this.shell;
+    if (!s.net.host) return;
+    s.settings.bots = (s.net.bots + 1) % 4;
+    s.saveSettings();
+    s.net.setBots(s.settings.bots);
+    s.sound.play('ui_move');
   }
   leave() { this.shell.net.close(); goMenu(this.shell); }
   update(dt) {
     this.t += dt; this.copied = Math.max(0, this.copied - dt);
     const i = this.shell.input;
-    if (i.nav('up') || i.nav('down')) { this.focus = 1 - this.focus; this.shell.sound.play('ui_move'); }
+    if (i.nav('up')) { this.focus = (this.focus + 2) % 3; this.shell.sound.play('ui_move'); }
+    if (i.nav('down')) { this.focus = (this.focus + 1) % 3; this.shell.sound.play('ui_move'); }
     if (i.pressed('KeyC') || hit(i, this.rects.code)) this.copy();
     if (hit(i, this.rects.start)) this.start();
+    if (hit(i, this.rects.bots)) this.cycleBots();
     // Your own fighter can still be changed while the room waits.
     const me = this.shell.net.players.findIndex(p => p.id === this.shell.net.localId);
     const step = i.nav('left') ? -1 : i.nav('right') ? 1 : me >= 0 && hit(i, { x: VIEW_W / 2 - 150, y: 122 + me * 30, w: 300, h: 26 }) ? 1 : 0;
     if (step) { this.shell.pickFighter((this.shell.selected + step + 5) % 5); this.shell.sound.play('ui_move'); }
     if (hit(i, this.rects.leave)) this.leave();
-    if (i.nav('ok')) { if (this.items[this.focus] === 'start') this.start(); else this.leave(); }
+    if (i.nav('ok')) { const k = this.items[this.focus]; if (k === 'start') this.start(); else if (k === 'bots') this.cycleBots(); else this.leave(); }
     if (i.nav('back')) this.leave();
   }
   draw(g) {
     const net = this.shell.net;
     g.fillStyle = '#0d0918'; g.fillRect(0, 0, VIEW_W, VIEW_H);
     panel(g, VIEW_W / 2 - 166, 30, 332, 290, { accent: '#7bcbbb' });
-    drawText(g, net.host ? 'SUA SALA ESTÁ ABERTA' : 'VOCÊ ESTÁ NA SALA', VIEW_W / 2 - 150, 42, { color: '#8a7f9c' });
-    drawText(g, 'JUNTA A GALERA.', VIEW_W / 2 - 150, 54, { color: '#fff1d6', scale: 2 });
+    drawText(g, net.host ? 'SUA SALA ESTÁ ABERTA' : 'VOCÊ ESTÁ NA SALA', VIEW_W / 2 - 150, 36, { color: '#8a7f9c' });
+    drawText(g, 'JUNTA A GALERA.', VIEW_W / 2 - 150, 47, { color: '#fff1d6', scale: 2 });
     panel(g, this.rects.code.x, this.rects.code.y, 300, 40, { fill: '#120d1e', edge: '#665665' });
     drawText(g, net.code, VIEW_W / 2 - 140, 80, { color: '#f68268', scale: 3, spacing: 2 });
     drawText(g, this.copied > 0 ? 'LINK COPIADO!' : 'C · COPIAR LINK', VIEW_W / 2 + 140, 86, { color: '#cbb6d8', align: 'right' });
@@ -129,15 +143,16 @@ export class LobbyScene {
       panel(g, VIEW_W / 2 - 150, y, 300, 26, { fill: p ? '#1d1430' : '#120d1e', accent: p ? FIGHTERS[p.type].color : null });
       if (p) {
         g.save(); g.beginPath(); g.rect(VIEW_W / 2 - 146, y + 2, 22, 22); g.clip();
-        this.shell.renderer.drawPreview(g, p.type, VIEW_W / 2 - 135, y + 46, { density: 1, key: 'lobby' + k, dt: 0 });
+        this.shell.renderer.drawPreview(g, p.type, VIEW_W / 2 - 135, y + 32, { density: 1, key: 'lobby' + k, dt: 0 });
         g.restore();
         drawText(g, p.name, VIEW_W / 2 - 118, y + 4, { color: '#fff1d6' });
         drawText(g, FIGHTERS[p.type].name + (p.id === 0 ? ' · ANFITRIÃO' : ''), VIEW_W / 2 - 118, y + 14, { color: '#8a7f9c' });
         if (p.id === net.localId) drawText(g, '◀ ▶ TROCAR', VIEW_W / 2 + 144, y + 9, { color: FIGHTERS[p.type].color, align: 'right' });
-      } else drawText(g, 'VAGA LIVRE · UM BOT JOGA SE NINGUÉM ENTRAR', VIEW_W / 2 - 140, y + 9, { color: '#5a4e68' });
+      } else drawText(g, k - net.players.length < net.bots ? 'VAGA LIVRE · UM BOT JOGA SE NINGUÉM ENTRAR' : 'VAGA LIVRE · SEM BOT', VIEW_W / 2 - 140, y + 9, { color: '#5a4e68' });
     }
-    button(g, this.rects.start, net.host ? 'COMEÇAR PARTIDA ▶' : 'AGUARDANDO ANFITRIÃO…', { hot: this.focus === 0 && net.host, disabled: !net.host, color: '#7bcbbb' });
-    button(g, this.rects.leave, 'SAIR DA SALA', { hot: this.focus === 1 });
-    drawText(g, net.host ? 'MANDE O CÓDIGO E O LINK DO JOGO PARA OS AMIGOS.' : 'O ANFITRIÃO COMEÇA A PARTIDA.', VIEW_W / 2, 306, { color: '#6a5e80', align: 'center' });
+    button(g, this.rects.bots, net.host ? `BOTS: ${net.bots} · TROCAR` : `BOTS: ${net.bots} · O ANFITRIÃO ESCOLHE`, { hot: this.focus === 0 && net.host, disabled: !net.host, color: '#8a7f9c' });
+    button(g, this.rects.start, net.host ? 'COMEÇAR PARTIDA ▶' : 'AGUARDANDO ANFITRIÃO…', { hot: this.focus === 1 && net.host, disabled: !net.host, color: '#7bcbbb' });
+    button(g, this.rects.leave, 'SAIR DA SALA', { hot: this.focus === 2 });
+    drawText(g, net.host ? 'MANDE O CÓDIGO E O LINK DO JOGO PARA OS AMIGOS.' : 'O ANFITRIÃO COMEÇA A PARTIDA.', VIEW_W / 2, 308, { color: '#6a5e80', align: 'center' });
   }
 }
