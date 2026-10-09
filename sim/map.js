@@ -115,7 +115,7 @@ export const MAP_IDS = Object.keys(MAPS);
 export const MAP = {};
 // Make id the arena being played (the depot if it is unknown). Cheap when it already is.
 export function useMap(id) {
-  const def = MAPS[id] || DEPOT;
+  const def = Object.hasOwn(MAPS, id) ? MAPS[id] : DEPOT;
   if (MAP.id === def.id) return MAP;
   for (const k of Object.keys(MAP)) delete MAP[k];
   Object.assign(MAP, def);

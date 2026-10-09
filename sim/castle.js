@@ -262,11 +262,12 @@ export function tickCastle(g, dt) {
     if (ck.t > CRACKED.reseal && !g.actors.some(o => !o.dead && o.x < cm.x1 + 12 && o.y > cm.y0 - 20)) { ck.t = 0; spawnCracked(g); }
   }
 
-  // The hidden room's door slides up while the gargoyle's spell lasts; it waits for the doorway to be clear to close.
+  // The hidden room's door slides up while the gargoyle's spell lasts. It never shuts anyone in: it
+  // waits for the doorway and the room to be empty, and opens again for anyone who is inside.
   const dr = hz.door, dm = MAP.door, H = dm.y1 - dm.y0;
   if (dr.t > 0) dr.t -= dt;
-  const blocked = g.actors.some(o => !o.dead && o.x > dm.x0 - 12 && o.x < dm.x1 + 12 && o.y > dm.y0 - 20 && o.y < dm.y1 + 10);
-  const want = dr.t > 0 || (dr.open > 0 && blocked) ? 1 : 0;
+  const inside = g.actors.some(o => !o.dead && o.x > dm.x0 - 12 && o.y > dm.y0 - 20 && o.y < dm.y1 + 10);
+  const want = dr.t > 0 || inside ? 1 : 0;
   dr.open = clamp(dr.open + (want ? 1 : -1) * dt * (want ? 1.2 : 0.8), 0, 1);
   Body.setPosition(dr.body, { x: (dm.x0 + dm.x1) / 2, y: (dm.y0 + dm.y1) / 2 - dr.open * H });
   hz.gargoyle.glow = Math.max(0, hz.gargoyle.glow - dt * 0.15);
@@ -276,7 +277,6 @@ export function tickCastle(g, dt) {
   // Pickups: hearts and roasts heal whoever touches them.
   for (const p of [...g.props]) {
     if (!p.pickup) continue;
-    if (p.life != null && (p.life -= dt) <= 0) { removeProp(g, p); continue; }
     const a = g.actors.find(o => !o.dead && !o.knocked && Math.abs(o.x - p.x) < 16 && Math.abs(o.y - p.y) < HALF_H + 10);
     if (!a) continue;
     const heal = p.kind === 'roast' ? ROAST : HEART;
