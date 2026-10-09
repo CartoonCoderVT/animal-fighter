@@ -5,7 +5,7 @@
 // Everything is derived from observable state (form, act, act time) and fx events, so remote peers
 // draw the same thing. Pure module at load time (no DOM until something is drawn), and no imports
 // from pixel-data.js, which imports this one.
-import { S, bayer } from '../engine/const.js';
+import { S, bayer, seeded } from '../engine/const.js';
 
 // Nox turned dark: near-black violet fur with a cold slate highlight and chest, so his silhouette
 // still reads on the night arenas; crimson ears and nose, a blood-red scarf, eyes and mouth that glow.
@@ -118,7 +118,7 @@ export class DarkNoxFX {
   // Where an actor was last drawn: his chest, his feet and his silhouette.
   spot(who, e) {
     let s = this.at.get(who);
-    if (!s) { s = { cx: e.x, cy: e.y, fx: e.x, fy: e.y + 11, lastT: null, trail: [], emberT: 0, dripT: 0, mask: null, mx: 0, my: 0, mw: FIG_W, popT: 9, fadeT: 9 }; this.at.set(who, s); }
+    if (!s) { s = { cx: e.x, cy: e.y, fx: e.x, fy: e.y + 11, lastT: null, trail: [], emberT: 0, dripT: 0, mask: null, mx: 0, my: 0, mw: FIG_W, popT: 9 }; this.at.set(who, s); }
     return s;
   }
 
@@ -126,7 +126,7 @@ export class DarkNoxFX {
     if (e.fx !== 'darkNox' && e.fx !== 'darkNoxPop' && e.fx !== 'darkFade') return;
     const x = (e.x ?? 0) * S, y = (e.y ?? 0) * S, who = e.who ?? -1;
     const s = this.spot(who, { x, y });
-    const P = fxPal(this.gore);
+    const P = fxPal(this.gore), rnd = seeded((e.id || 1) * 2654435761);
     if (e.fx === 'darkNox') {
       // The blood gathers: it spirals in from all around and rises off the floor into him.
       this.seqs.push({ k: 'rise', who, t: 0, life: POP, acc: 0 });
@@ -136,24 +136,23 @@ export class DarkNoxFX {
       this.flashes.push({ who, t: 0, life: 0.1 });
       this.rings.push({ who, t: 0, life: 0.5, r: 78, color: P.hot, thick: 2 });
       // Spikes of blood stabbing out all round him and drawing back.
-      for (let i = 0; i < 9; i++) this.parts.push({ k: 'spike', who, a: (i / 9) * Math.PI * 2 + (Math.random() - 0.5) * 0.4, len: 20 + Math.random() * 22, t: 0, life: 0.3 + Math.random() * 0.08 });
+      for (let i = 0; i < 9; i++) this.parts.push({ k: 'spike', who, a: (i / 9) * Math.PI * 2 + (rnd() - 0.5) * 0.4, len: 20 + rnd() * 22, t: 0, life: 0.3 + rnd() * 0.08 });
       for (let i = 0; i < 18; i++) {
-        const a = (i / 18) * Math.PI * 2 + Math.random() * 0.3, sp = 70 + Math.random() * 80;
-        this.parts.push({ k: 'bat', x: s.cx, y: s.cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp * 0.7 - 30, t: 0, life: 0.55 + Math.random() * 0.35, seed: Math.random() * 9 });
+        const a = (i / 18) * Math.PI * 2 + rnd() * 0.3, sp = 70 + rnd() * 80;
+        this.parts.push({ k: 'bat', x: s.cx, y: s.cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp * 0.7 - 30, t: 0, life: 0.55 + rnd() * 0.35, seed: rnd() * 9 });
       }
       for (let i = 0; i < 28; i++) {
-        const a = Math.random() * Math.PI * 2, sp = 40 + Math.random() * 110;
-        this.parts.push({ k: 'drop', x: s.cx, y: s.cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp * 0.8 - 50, g: 260, t: 0, life: 0.5 + Math.random() * 0.4, floor: s.fy });
+        const a = rnd() * Math.PI * 2, sp = 40 + rnd() * 110;
+        this.parts.push({ k: 'drop', x: s.cx, y: s.cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp * 0.8 - 50, g: 260, t: 0, life: 0.5 + rnd() * 0.4, floor: s.fy });
       }
     } else {
       // Turning back: the blood unwinds out of him, a few bats scatter, and what is left of the
       // dark runs off him into a pool at his feet that soaks away.
-      s.fadeT = 0;
       this.seqs.push({ k: 'fade', who, t: 0, life: FADE * 0.5, acc: 0 });
       this.rings.push({ who, t: 0, life: 0.4, r: 34, color: P.mid });
       for (let i = 0; i < 8; i++) {
-        const a = -Math.PI / 2 + (Math.random() - 0.5) * 2.6, sp = 40 + Math.random() * 50;
-        this.parts.push({ k: 'bat', x: s.cx, y: s.cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, t: 0, life: 0.6 + Math.random() * 0.3, seed: Math.random() * 9, small: true });
+        const a = -Math.PI / 2 + (rnd() - 0.5) * 2.6, sp = 40 + rnd() * 50;
+        this.parts.push({ k: 'bat', x: s.cx, y: s.cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, t: 0, life: 0.6 + rnd() * 0.3, seed: rnd() * 9, small: true });
       }
       this.parts.push({ k: 'pool', x: s.fx, y: s.fy, vx: 0, vy: 0, t: 0, life: 1.1 });
     }
@@ -198,7 +197,7 @@ export class DarkNoxFX {
     this.rings = this.rings.filter(r => r.t < r.life);
     for (const f of this.flashes) f.t += dt;
     this.flashes = this.flashes.filter(f => f.t < f.life);
-    for (const s of this.at.values()) { s.popT += dt; s.fadeT += dt; }
+    for (const s of this.at.values()) s.popT += dt;
   }
 
   // Keeps track of where he is and reads his silhouette out of the figure canvas: m holds 1 for
@@ -393,10 +392,12 @@ export class DarkNoxFX {
     this.drawParts(g, ox, oy, t, p => p.k === 'ember' && p.who === a.id);
   }
 
-  // The transformation and its reverse: spirals of blood, bats, rings, the dark flash, spray and smoke.
+  // The transformation and its reverse: spirals of blood, bats, the ring, the dark flash, the
+  // spikes and spray of the pop, and the pool he leaves when he turns back.
   drawEffects(g, ox, oy, t) {
     const P = fxPal(this.gore);
-    // The dark flash: for a beat the world around him goes black, with a ring of blood at its edge.
+    // The dark flash: for a beat the world round him goes black, fringed with dark red, and only
+    // his silhouette shows, in crimson.
     for (const fl of this.flashes) {
       const s = this.at.get(fl.who);
       if (!s) continue;

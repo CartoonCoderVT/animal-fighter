@@ -394,6 +394,9 @@ function greatArch(p) {
         const u = (px - V.x) / (py - V.y) * (FLOOR_Y - V.y);
         if (Math.abs(((u % 18) + 18) % 18 - 9) > 8.2) col = WALLC[Math.min(5, k + 1)];
         if (py - base < 1) col = WALLC[Math.min(5, k + 1)];
+        // The far window's moonlight down the middle of the flagstones, fading toward us.
+        const spill = 1 - (py - 262) / 66, half = 5 + (py - 262) * 0.3;
+        if (spill > 0 && Math.abs(px - V.x) < half && bayer(x, y) < spill * 0.6) col = col === FLOORC[k] ? '#2b2642' : '#1b172b';
       } else if (k + 1 < SC.length && k < RIB.length && !inS(px, py, SC[k] * 0.94) && k > 0) {
         // The face of a transverse rib: lit edge, then stone.
         col = inS(px, py, SC[k] * 0.985) ? RIB[k] : '#3c3456';
@@ -418,6 +421,18 @@ function greatArch(p) {
     if (px > xm - 7 && px < xm + 7) col = dl < 1 ? '#0b0814' : dl > 9 ? '#0f0b18' : Math.abs(px - xm) > 6 ? '#120e1c' : dl < 2 ? '#5a5084' : '#3a3258';
     p.set(x, y, col);
   }
+  // At the far end of the passage a tall lancet window lets the moon in.
+  const fw = { x: 314, y: 210, w: 12, h: 40 }, fin = archShape(fw, 0, 1.3), fout = archShape(fw, 1, 1.3);
+  for (let y = fw.y - 2; y <= fw.y + fw.h + 1; y++) for (let x = fw.x - 2; x < fw.x + fw.w + 2; x++) {
+    if (y >= fw.y + fw.h) { if (x >= fw.x - 1 && x <= fw.x + fw.w) p.set(x, y, y === fw.y + fw.h ? '#2e2846' : '#07050b'); continue; }
+    if (fin(x, y)) {
+      const t = (y - fw.y) / fw.h;
+      let col = bayer(x, y) < 0.3 + t * 0.55 ? '#45417e' : '#6a66a8';
+      if (x === 319 || x === 320 || y === fw.y + 15) col = '#0d0a16';
+      else if (x === fw.x || y === fw.y + 16) col = '#2a2652';
+      p.set(x, y, col);
+    } else if (fout(x, y)) p.set(x, y, '#15111f');
+  }
   // Keystone with a carved skull.
   const ky = Math.round(sp - Math.sqrt(r * r - (xm - cl) * (xm - cl))) - 12;
   for (let y = ky; y < ky + 4; y++) for (let x = Math.round(xm) - 7; x < Math.round(xm) + 7; x++) p.set(x, y, y === ky ? '#5a5084' : x === Math.round(xm) - 7 ? '#463d68' : x === Math.round(xm) + 6 ? '#1a152b' : '#3a3258');
@@ -436,6 +451,58 @@ function greatArch(p) {
       p.set(x, y, ly === 0 ? '#5a5084' : ly === 7 ? '#0d0a15' : x < cx - half + 2 ? '#463d68' : x > cx + half - 3 ? '#1a152b' : '#2e2748');
     }
   }
+}
+
+// Red velvet drapes hung inside the great arch: they meet under its point, sweep out to gold tie-backs
+// on the jambs and fall to the floor, framing the passage like a stage. Folds gather at the ties. They
+// stay in the deep reds (in the arch's shadow) so the fighters on the bridges read over them.
+function drapes(p) {
+  const { x0, x1, spring: sp } = ARCH;
+  const a = (x1 - x0) / 2, r = a * 1.15, cl = x0 + r, xm = (x0 + x1) / 2;
+  const apex = sp - Math.sqrt(r * r - (xm - cl) * (xm - cl));
+  const yA = Math.ceil(apex) + 1, yT = 234, xT = x0 + 13, xB = x0 + 19, yBot = FLOOR_Y;
+  // The left drape between its edges at row centre y; the right one is its mirror image.
+  const outer = y => (y >= sp ? x0 : cl - Math.sqrt(Math.max(0, r * r - (y - sp) * (y - sp))));
+  const inner = y => {
+    if (y <= yT) { const t = clamp01((y - yA) / (yT - yA)); return xT + (xm - xT) * (1 - t) ** 1.55; }
+    const t = (y - yT) / (yBot - yT);
+    return xT + (xB - xT) * t ** 1.4 + (y > yBot - 5 ? (y - (yBot - 5)) * 0.8 : 0);
+  };
+  const IN = (x, y) => y >= yA && y < yBot && x + 0.5 >= outer(y + 0.5) && x + 0.5 <= inner(y + 0.5);
+  const put = (x, y, col) => { p.set(x, y, col); p.set(VIEW_W - 1 - x, y, col); };
+  const FOLDS = 3.5;
+  for (let y = yA - 1; y <= yBot; y++) for (let x = x0 - 1; x < xm; x++) {
+    if (!IN(x, y)) {
+      // A dark line between the drape's edge and the passage.
+      if (x >= x0 && (IN(x - 1, y) || IN(x, y - 1))) put(x, y, '#07040a');
+      continue;
+    }
+    const yo = outer(y + 0.5), wdt = Math.max(1, inner(y + 0.5) - yo), u = (x + 0.5 - yo) / wdt;
+    let col;
+    if (!IN(x - 1, y) || !IN(x, y - 1) && y > yA) col = '#07040a';
+    else if (y < yBot - 2 && (!IN(x + 1, y) || !IN(x, y + 1))) col = (x + y) % 3 ? GOLD[2] : GOLD[3]; // gold braid
+    else if (y < yBot - 2 && (!IN(x + 2, y) || !IN(x + 1, y + 1))) col = VELVET[0];
+    else {
+      // Folds across the width; the far side and the top stay in the arch's shadow.
+      const f = Math.cos(u * Math.PI * 2 * FOLDS + 0.4);
+      let s = 0.5 + f * 0.45 - (1 - u) * 0.2 - clamp01((sp - 10 - y) / 70) * 0.2 + (Math.abs(y - yT) < 6 ? 0.08 : 0);
+      s += (bayer(x, y) - 0.5) * 0.25;
+      col = VELVET[Math.max(1, Math.min(3, 1 + Math.floor(s * 3)))];
+      if (f > 0.9 && u > 0.3 && s > 0.8 && bayer(x, y) < 0.5) col = VELVET[4];
+    }
+    put(x, y, col);
+  }
+  // The hem: a gold fringe resting on the floor.
+  for (let x = x0 + 1; x <= Math.floor(inner(yBot - 0.5)); x++) { put(x, yBot - 2, GOLD[1]); put(x, yBot - 1, x % 2 ? GOLD[2] : GOLD[0]); }
+  // Tie-backs: a twisted gold cord around the gathered drape and a tassel on the inner side.
+  for (let y = yT - 1; y <= yT + 1; y++) for (let x = x0 + 1; x <= Math.floor(inner(y + 0.5)) + 1; x++) {
+    const k = (x + y * 2) % 4;
+    put(x, y, k === 0 ? GOLD[1] : k === 1 ? GOLD[4] : GOLD[3]);
+  }
+  for (let x = x0 + 1; x <= xT + 1; x++) { put(x, yT - 2, VELVET[0]); put(x, yT + 2, VELVET[0]); }
+  const TASSEL = ['.a.', 'aba', '.c.', 'bcb', 'bcb', 'bcb', 'c.c'];
+  p.sprite(xT + 1, yT + 1, TASSEL, { a: GOLD[4], b: GOLD[3], c: GOLD[1] });
+  p.sprite(VIEW_W - 4 - xT, yT + 1, TASSEL, { a: GOLD[4], b: GOLD[2], c: GOLD[0] });
 }
 
 // Pointed vault ribs springing from a capital at (x, y) toward both sides.
@@ -563,6 +630,7 @@ function paintWall() {
     if (lvl > 0) p.shade(x, y, 1 - lvl * 0.16);
   }
   paintClockFace(p);
+  drapes(p);
   banner(p, PILLARS[0], 28, 86, 'hourglass');
   banner(p, PILLARS[1], 28, 86, 'hourglass');
   // Decor under the towers: a coat of arms on the left, Lola's portrait on the right.
@@ -602,34 +670,38 @@ function ivy(p, x, y, len, seed) {
 }
 
 // ---- structures behind the fighters ------------------------------------------------------------
+// A newel post w pixels wide (5 normally; a short run beside a gap becomes one wide gate pier with a
+// sunk panel), with a pyramid finial on top.
+function newel(p, px, w, y0, top) {
+  for (let y = y0 - 3; y < top; y++) for (let x = px; x < px + w; x++) {
+    const lx = x - px, ly = y - (y0 - 3);
+    let col = lx === 0 ? BK.l2 : lx === w - 1 ? BK.ink : lx === 1 ? BK.l : BK.m2;
+    if (ly === 0) col = BK.l3; else if (ly === 1 || ly === 4) col = lx === w - 1 ? BK.ink : BK.d;
+    else if (w >= 9 && ly >= 6 && ly < top - y0 && lx >= 2 && lx < w - 2) col = ly === 6 || lx === 2 ? BK.ink : ly === top - y0 - 1 || lx === w - 3 ? BK.l : BK.d;
+    p.set(x, y, col);
+  }
+  const c = px + (w >> 1);
+  p.set(c - 1, y0 - 5, BK.l2); p.set(c, y0 - 5, BK.l); p.set(c + 1, y0 - 5, BK.m); p.set(c - 1, y0 - 4, BK.l); p.set(c, y0 - 4, BK.m2); p.set(c + 1, y0 - 4, BK.d);
+  p.set(c, y0 - 6, BK.l2);
+}
+
 function balustrade(p, x0, x1, top, gaps = []) {
   const h = 12, y0 = top - h;
-  const gap = x => gaps.some(([a, b]) => x >= a && x < b);
   const VASE = [3, 1, 1, 3, 3, 3, 3, 1, 3];
-  for (let x = x0; x < x1; x++) {
-    if (gap(x)) continue;
-    p.set(x, y0, BK.l3); p.set(x, y0 + 1, BK.l); p.set(x, y0 + 2, BK.d);
-    p.set(x, top - 1, BK.m);
-  }
-  for (let bx = x0 + 4; bx < x1 - 4; bx += 7) {
-    if (gap(bx) || gap(bx + 2)) continue;
-    VASE.forEach((w, i) => {
+  // The runs between the gaps: rail and balusters between two posts.
+  const runs = [];
+  let a = x0;
+  for (const [g0, g1] of [...gaps].sort((u, v) => u[0] - v[0])) { if (g0 > a) runs.push([a, g0]); a = Math.max(a, g1); }
+  if (a < x1) runs.push([a, x1]);
+  for (const [ra, rb] of runs) {
+    if (rb - ra < 16) { newel(p, ra, rb - ra, y0, top); continue; }
+    for (let x = ra; x < rb; x++) { p.set(x, y0, BK.l3); p.set(x, y0 + 1, BK.l); p.set(x, y0 + 2, BK.d); p.set(x, top - 1, BK.m); }
+    const W = rb - ra - 10, n = Math.floor((W - 7) / 7) + 1, start = ra + 5 + ((W - 7 * (n - 1) - 3) >> 1);
+    for (let bx = start; bx < start + 7 * n; bx += 7) VASE.forEach((w, i) => {
       const y = y0 + 3 + i, off = (3 - w) >> 1;
       for (let k = 0; k < w; k++) p.set(bx + off + k, y, w === 1 ? BK.m2 : k === 0 ? BK.l2 : k === 2 ? BK.d : BK.l);
     });
-  }
-  // Newel posts at the ends and beside the gaps.
-  const posts = [x0, x1 - 5];
-  for (const [a, b] of gaps) posts.push(a - 5, b);
-  for (const px of posts) {
-    for (let y = y0 - 3; y < top; y++) for (let x = px; x < px + 5; x++) {
-      const lx = x - px, ly = y - (y0 - 3);
-      let col = lx === 0 ? BK.l2 : lx === 4 ? BK.ink : lx === 1 ? BK.l : BK.m2;
-      if (ly === 0) col = BK.l3; else if (ly === 1 || ly === 4) col = lx === 4 ? BK.ink : BK.d;
-      p.set(x, y, col);
-    }
-    p.set(px + 1, y0 - 5, BK.l2); p.set(px + 2, y0 - 5, BK.l); p.set(px + 3, y0 - 5, BK.m); p.set(px + 1, y0 - 4, BK.l); p.set(px + 2, y0 - 4, BK.m2); p.set(px + 3, y0 - 4, BK.d);
-    p.set(px + 2, y0 - 6, BK.l2);
+    newel(p, ra, 5, y0, top); newel(p, rb - 5, 5, y0, top);
   }
 }
 
@@ -938,21 +1010,11 @@ function paintFronts() {
 function paintForeground() {
   const p = new Pix();
   const ink = '#0a0711', rim = '#2a2140';
-  // A pier in silhouette at the right edge, and the spring of a foreground arch over the top-right corner.
-  for (let y = 0; y < VIEW_H; y++) {
-    let w = 8;
-    if (y >= 52 && y < 58) w = 11; else if (y >= 58 && y < 61) w = 10;
-    if (y >= 334) w = y < 337 ? 11 : 13;
-    for (let x = VIEW_W - w; x < VIEW_W; x++) p.set(x, y, x === VIEW_W - w ? rim : ink);
-  }
-  for (let y = 0; y < 60; y++) for (let x = 560; x < VIEW_W; x++) {
-    const d = Math.hypot(x + 0.5 - 560, y + 0.5 - 60);
-    if (d < 72) continue;
-    p.set(x, y, d < 73 ? rim : ink);
-  }
-  // Ivy hanging from the top-left, chains at the top corners.
+  // Nothing here may cover a place a fighter can stand (the side walls, the roof of the hidden room):
+  // the frame is ivy and the lip of the vault at the top corners, a chain, and rubble below the feet.
   const rnd = seeded(5);
-  for (const [x, len] of [[3, 34], [9, 22], [16, 44], [24, 18], [33, 28], [44, 14]]) {
+  const vines = [[3, 34], [9, 22], [16, 44], [24, 18], [33, 28], [44, 14], [596, 12], [604, 26], [624, 40], [633, 20]];
+  for (const [x, len] of vines) {
     let cx = x;
     for (let y = 0; y < len; y++) {
       if (rnd() < 0.25) cx += rnd() < 0.5 ? -1 : 1;
@@ -961,6 +1023,7 @@ function paintForeground() {
     }
   }
   for (let x = 0; x < 52; x++) { const h = 3 + Math.round(Math.sin(x * 0.4) * 1.5 + Math.sin(x * 0.13) * 2); for (let y = 0; y < h; y++) p.set(x, y, ink); }
+  for (let x = 590; x < VIEW_W; x++) { const h = 3 + Math.round(Math.sin(x * 0.37 + 1) * 1.5 + Math.sin(x * 0.15) * 2); for (let y = 0; y < h; y++) p.set(x, y, ink); }
   for (const [x, len] of [[614, 34]]) {
     for (let y = 0; y < len; y += 4) { p.set(x - 1, y, ink); p.set(x + 1, y, ink); p.set(x - 1, y + 1, ink); p.set(x + 1, y + 1, ink); p.set(x, y + 2, ink); p.set(x, y + 3, ink); p.set(x, y + 1, rim); }
     p.sprite(x - 3, len, ['.#####.', '#.....#', '#.....#', '.#...#.', '..###..'], { '#': ink });

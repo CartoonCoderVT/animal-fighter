@@ -481,21 +481,23 @@ const CHEST_OPEN = [
   'k33433333333433k',
   '.kkkkkkkkkkkkkk.'
 ];
+const chestGlows = [];
+function chestGlow(k) {
+  if (chestGlows[k]) return chestGlows[k];
+  const pulse = 0.25 + k / 16, c = mk(20, 17), g = c.getContext('2d');
+  for (let yy = -9; yy < 8; yy++) for (let xx = -2; xx < 18; xx++) {
+    const dx = (xx - 7.5) / 10, dy = (yy - 6) / 9, v = 1 - Math.hypot(dx, dy);
+    if (v <= 0 || bayer(xx + 2, yy + 9) > v * pulse) continue;
+    g.globalAlpha = v > 0.5 ? 0.55 : 0.3;
+    dot(g, xx + 2, yy + 9, v > 0.5 ? '#ffe9a0' : '#e0a840');
+  }
+  return (chestGlows[k] = c);
+}
 export function drawChest(g, x, y, open = false, t = 0, { emissive = false } = {}) {
   const b = bake(open ? 'chestO' : 'chest', open ? CHEST_OPEN : CHEST);
   const x0 = Math.round(x) - 8, y0 = Math.round(y) - b.h;
-  if (open) {
-    // a golden glow welling out of it (dithered, pulsing)
-    const pulse = 0.5 + Math.sin(t * 4) * 0.25;
-    const a = g.globalAlpha;
-    for (let yy = -9; yy < 8; yy++) for (let xx = -2; xx < 18; xx++) {
-      const dx = (xx - 7.5) / 10, dy = (yy - 6) / 9, v = 1 - Math.hypot(dx, dy);
-      if (v <= 0 || bayer(xx + x0, yy + y0) > v * pulse) continue;
-      g.globalAlpha = a * (v > 0.5 ? 0.55 : 0.3);
-      dot(g, x0 + xx, y0 + yy, v > 0.5 ? '#ffe9a0' : '#e0a840');
-    }
-    g.globalAlpha = a;
-  }
+  // a golden glow welling out of it (dithered, pulsing in eight baked steps)
+  if (open) g.drawImage(chestGlow(Math.round((Math.sin(t * 4) + 1) * 4)), x0 - 2, y0 - 9);
   if (!emissive) blit(g, b, x0, y0);
   else if (open) {
     // the heap of gold shines through the dark
@@ -543,6 +545,8 @@ const GARG_HALF = [
   '....kkk..'
 ];
 const DARKER = { x: 'u', u: 't', t: 'q', q: 'p', p: 'n' };
+// How much the sleeping gargoyle's coals glint at time t: about once every 7 s, for under a second.
+const sleepGlint = t => Math.max(0, Math.sin(t * 0.9 + 1.3)) ** 16;
 const GARGOYLE = GARG_HALF.map(r => r + [...r].reverse().map(c => DARKER[c] || c).join(''));
 const GARG_CONSOLE = [
   'kkkkkkkkkkkk',
@@ -560,6 +564,11 @@ export function drawGargoyle(g, x, y, face = -1, { glow = 0, t = 0, emissive = f
   if (!emissive) {
     blit(g, head, hx, hy);
     blit(g, con, hx + 3, hy + 16);
+  }
+  if (glow <= 0.03) {
+    // Asleep, the coals in its sockets glint now and then (in step with the light in castleLights).
+    const k = sleepGlint(t);
+    if (k > 0.3) for (const ex of [4, 5, 12, 13]) dot(g, hx + ex, hy + 9, (ex === 5 || ex === 12) && k > 0.7 ? '#ff6a4a' : '#e02a30');
   }
   if (glow > 0.03) {
     const flick = 0.85 + Math.sin(t * 17) * 0.15;
@@ -655,31 +664,43 @@ export function drawDoor(g, x0, y0, x1, y1, open = 0) {
 
 // ---- iron chain ---------------------------------------------------------------------------------
 // Oval links rasterized at any angle, alternating one seen face-on (a ring around a hole) and one
-// seen edge-on (a bar), lit from the upper left.
+// seen edge-on (a bar), lit from the upper left. The chandelier's chain is drawn every frame and only
+// its far end moves, so each (dx, dy) is rasterized once into a little canvas.
+const chainCache = new Map();
 export function drawChain(g, x0, y0, x1, y1) {
-  const dx = x1 - x0, dy = y1 - y0, len = Math.hypot(dx, dy);
-  if (len < 1) return;
-  const ux = dx / len, uy = dy / len, vx = -uy, vy = ux;
+  x0 = Math.round(x0); y0 = Math.round(y0);
+  const dx = Math.round(x1) - x0, dy = Math.round(y1) - y0;
+  if (!dx && !dy) return;
+  const key = dx + ',' + dy;
+  let c = chainCache.get(key);
+  if (!c) {
+    if (chainCache.size > 256) chainCache.clear();
+    chainCache.set(key, (c = chainSprite(dx, dy)));
+  }
+  g.drawImage(c.cv, x0 + c.ox, y0 + c.oy);
+}
+function chainSprite(dx, dy) {
+  const len = Math.hypot(dx, dy), ux = dx / len, uy = dy / len, vx = -uy, vy = ux;
   const pitch = 3.5, n = Math.max(1, Math.round(len / pitch)), step = len / n;
   // the side of the chain facing the light
   const litSide = vx * -0.55 + vy * -0.72 > 0 ? 1 : -1;
-  const xa = Math.floor(Math.min(x0, x1)) - 3, xb = Math.ceil(Math.max(x0, x1)) + 3, ya = Math.floor(Math.min(y0, y1)) - 3, yb = Math.ceil(Math.max(y0, y1)) + 3;
-  for (let py = ya; py <= yb; py++) for (let px = xa; px <= xb; px++) {
-    const rx = px + 0.5 - x0, ry = py + 0.5 - y0;
+  const xa = Math.min(0, dx) - 3, ya = Math.min(0, dy) - 3, w = Math.abs(dx) + 7, h = Math.abs(dy) + 7;
+  const cv = gridCanvas(w, h, (cx, cy) => {
+    const rx = cx + xa + 0.5, ry = cy + ya + 0.5;
     const along = rx * ux + ry * uy, across = rx * vx + ry * vy;
-    if (along < -0.5 || along > len + 0.5 || Math.abs(across) > 2.2) continue;
+    if (along < -0.5 || along > len + 0.5 || Math.abs(across) > 2.2) return null;
     const i = Math.max(0, Math.min(n - 1, Math.floor(along / step)));
-    let col = null;
     for (const j of [i - 1, i, i + 1]) {
       if (j < 0 || j >= n) continue;
       const la = along - (j + 0.5) * step;
       if (j % 2 === 0) {
         const r = Math.hypot(la / 2.3, across / 1.6);
-        if (r < 1.1 && r > 0.42) { col = across * litSide > 0.3 ? '#a49cbc' : across * litSide < -0.3 ? '#3e3757' : '#6a6088'; break; }
-      } else if (Math.abs(across) < 0.55 && Math.abs(la) < 2.4) { col = Math.abs(la) < 0.8 ? '#c4bed8' : '#7a70a0'; break; }
+        if (r < 1.1 && r > 0.42) return across * litSide > 0.3 ? '#a49cbc' : across * litSide < -0.3 ? '#3e3757' : '#6a6088';
+      } else if (Math.abs(across) < 0.55 && Math.abs(la) < 2.4) return Math.abs(la) < 0.8 ? '#c4bed8' : '#7a70a0';
     }
-    if (col) dot(g, px, py, col);
-  }
+    return null;
+  });
+  return { cv, ox: xa, oy: ya };
 }
 
 // ---- vector-built pieces (rotate cleanly) --------------------------------------------------------
@@ -824,104 +845,175 @@ function drawPendulumBody(g, px, py, sx, cy, ex, ey, ang, len) {
 }
 
 // ---- the loose stone ledge over the pit ---------------------------------------------------------
-const ledgeCache = new Map();
-function ledgeStones(x0, x1) {
-  const key = x0 + ':' + x1;
-  if (ledgeCache.has(key)) return ledgeCache.get(key);
-  const rnd = seeded(913 + x0 * 3 + x1);
-  const stones = [];
-  for (let x = x0; x < x1;) {
-    const w = Math.min(x1 - x, 9 + Math.floor(rnd() * 6));
-    stones.push({ x, w: x1 - (x + w) < 5 ? x1 - x : w, seed: rnd(), crack: Math.floor(rnd() * 6) + 2 });
-    x += stones[stones.length - 1].w;
+// A short run of cut stones in the play surfaces' ramp (castle-world's PLAY / PLAY_TOP), with the same
+// crisp two-row top edge as every floor and balcony, so it reads at once as somewhere to stand. Hairline
+// cracks, chipped corners and crumbs of mortar hanging under its joints say it will not hold for long,
+// and now and then a grain of grit drops out of a joint. Every look is baked: at rest one strip, while
+// it shakes one canvas per stone and crack depth, while it falls one per chunk, tilt and dissolve step.
+const LEDGE = {
+  top: '#d2c9e6', top2: '#a59cc2', bevel: '#7d749b', row2: '#4a4268', face: ['#463e5f', '#423a5a', '#3d3554'],
+  spec: '#5d5479', shade: '#2c2642', joint: '#1d1830', ink: '#120e1c', crack: '#07050c', lip: '#8a80aa', grit: ['#6a6190', '#4a4268']
+};
+const LEDGE_H = 8, LEDGE_CRUMB = 2;
+// A canvas from a colour grid (null is clear).
+function gridCanvas(w, h, at) {
+  const c = mk(w, h), g = c.getContext('2d'), id = g.createImageData(w, h), D = id.data;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const col = at(x, y);
+    if (!col) continue;
+    const rgb = rgbOf(col), i = (y * w + x) * 4;
+    D[i] = rgb[0]; D[i + 1] = rgb[1]; D[i + 2] = rgb[2]; D[i + 3] = 255;
   }
-  ledgeCache.set(key, stones);
+  g.putImageData(id, 0, 0);
+  return c;
+}
+const ledgeCache = new Map();
+// The stones of a ledge of width w (positions relative to its left end, so a camera shake never
+// reshuffles them), each with its colour grid (w x LEDGE_H + LEDGE_CRUMB).
+function ledgeStones(w) {
+  let stones = ledgeCache.get(w);
+  if (stones) return stones;
+  const rnd = seeded(913 + w * 7);
+  stones = [];
+  for (let x = 0; x < w;) {
+    let sw = Math.min(w - x, 9 + Math.floor(rnd() * 6));
+    if (w - (x + sw) < 5) sw = w - x;
+    const s = { x, w: sw, seed: rnd(), crack: 2 + Math.floor(rnd() * Math.max(1, sw - 5)), hair: rnd() < 0.6, crumb: rnd() < 0.7, cv: [], chunks: new Map() };
+    s.px = stonePixels(s, stones.length === 0);
+    stones.push(s);
+    x += sw;
+  }
+  ledgeCache.set(w, stones);
   return stones;
 }
-function paintStone(g, x, y, w, s, shake, cut = null) {
-  const H = 8;
-  for (let yy = 0; yy < H; yy++) for (let xx = 0; xx < w; xx++) {
-    if (cut && !cut(xx, yy)) continue;
+function stonePixels(s, first) {
+  const { w } = s, H = LEDGE_H + LEDGE_CRUMB, px = new Array(w * H).fill(null);
+  const set = (x, y, c) => { if (x >= 0 && y >= 0 && x < w && y < H) px[y * w + x] = c; };
+  const sd = Math.floor(s.seed * 997);
+  for (let y = 0; y < LEDGE_H; y++) for (let x = 0; x < w; x++) {
+    const L = x === 0, R = x === w - 1;
     let c;
-    const edgeL = xx === 0, edgeR = xx === w - 1;
-    if (yy === 0) c = edgeR ? PAL.t : '#c4bad4';
-    else if (yy === 1) c = edgeL ? PAL.x : PAL.u;
-    else if (yy === H - 1) c = PAL.n;
-    else if (yy === H - 2) c = PAL.p;
+    if (y === 0) c = R ? LEDGE.top2 : LEDGE.top;
+    else if (y === 1) c = R ? LEDGE.bevel : L ? LEDGE.top : LEDGE.top2;
+    else if (y === LEDGE_H - 1) c = (L || R) ? null : LEDGE.ink;
+    else if (R) c = LEDGE.joint;
+    else if (L) c = first ? LEDGE.bevel : LEDGE.spec;
+    else if (y === LEDGE_H - 2) c = LEDGE.shade;
+    else if (y === 2) c = LEDGE.row2;
     else {
-      const n = hash(xx * 13 + yy * 71 + Math.floor(s.seed * 997));
-      c = edgeL ? PAL.u : edgeR ? PAL.p : n < 0.13 ? PAL.q : n > 0.93 ? PAL.u : PAL.t;
+      const n = hash(x * 13 + y * 71 + sd);
+      c = n < 0.14 ? LEDGE.face[2] : n > 0.9 ? LEDGE.spec : (x + y + sd) % 3 ? LEDGE.face[0] : LEDGE.face[1];
     }
-    // the chipped bottom corners
-    if (yy === H - 1 && (edgeL || edgeR)) continue;
-    dot(g, x + xx, y + yy, c);
+    set(x, y, c);
   }
-  if (shake > 0.15) {
-    // a crack opening down the stone
-    const n = Math.min(H - 1, Math.round(shake * 9)), zig = [0, 0, 1, 1, 0, 1, 2, 2];
-    for (let i = 1; i <= n; i++) { dot(g, x + s.crack + zig[i], y + i, PAL.Z); if (i > 1 && i < H - 2) dot(g, x + s.crack + zig[i] + 1, y + i, PAL.x); }
+  // an old hairline crack from under the top edge, its lower lip catching the light
+  if (s.hair) {
+    let cx = s.crack;
+    for (let y = 2; y < LEDGE_H - 2; y++) {
+      set(cx, y, LEDGE.ink);
+      if (px[y * w + cx + 1] && cx + 1 < w - 1) set(cx + 1, y + 1, LEDGE.bevel);
+      if (hash(sd + y * 5) < 0.45) cx += hash(sd + y) < 0.5 ? -1 : 1;
+      cx = clamp(cx, 2, w - 3);
+    }
   }
+  // crumbs of mortar hanging under the joint
+  if (s.crumb && w > 4) {
+    set(w - 2, LEDGE_H, LEDGE.shade);
+    set(w - 1, LEDGE_H, LEDGE.joint);
+    if (hash(sd + 3) < 0.5) set(w - 2, LEDGE_H + 1, LEDGE.joint);
+  }
+  return px;
+}
+// A stone with the crack that opens down it as it shakes, n rows deep.
+const ZIG = [0, 0, 1, 1, 0, 1, 2, 2];
+function stoneCanvas(s, n) {
+  if (s.cv[n]) return s.cv[n];
+  const { w } = s, H = LEDGE_H + LEDGE_CRUMB, px = s.px.slice();
+  for (let i = 1; i <= n; i++) {
+    const x = s.crack + ZIG[i];
+    if (x < w) px[i * w + x] = LEDGE.crack;
+    if (i > 1 && i < LEDGE_H - 2 && x + 1 < w - 1) px[i * w + x + 1] = LEDGE.lip;
+  }
+  return (s.cv[n] = gridCanvas(w, H, (x, y) => px[y * w + x]));
+}
+// Half a stone breaking away (k 0 left, 1 right), tipped by tilt and dissolved to step f (0..4).
+function chunkCanvas(s, i, k, tilt, f) {
+  const key = k + '|' + tilt + '|' + f;
+  let c = s.chunks.get(key);
+  if (c) return c;
+  const half = Math.max(2, Math.floor(s.w / 2)), cx = k ? half : 0, cw = k ? s.w - half : half, id = i * 2 + k;
+  c = gridCanvas(cw, LEDGE_H, (xx, yy) => {
+    // ragged break edge, a slant as it tips, then it crumbles away
+    if ((k ? xx === 0 : xx === cw - 1) && (yy + id) % 3 === 0) return null;
+    if (tilt && (k ? cw - 1 - xx : xx) < tilt - (yy >> 1)) return null;
+    if (bayer(xx + id * 3, yy + id) < f / 5) return null;
+    return s.px[yy * s.w + cx + xx];
+  });
+  s.chunks.set(key, c);
+  return c;
 }
 export function drawCrumble(g, x0, x1, y, { shake = 0, gone = 0, t = 0 } = {}) {
   x0 = Math.round(x0); x1 = Math.round(x1); y = Math.round(y);
-  if (gone >= 1 || x1 - x0 < 2) return;
-  const stones = ledgeStones(x0, x1);
+  const w = x1 - x0;
+  if (gone >= 1 || w < 2) return;
+  const stones = ledgeStones(w);
   if (gone <= 0 && shake <= 0.05) {
     // at rest: one baked strip
-    const key = 'ledge|' + x0 + ':' + x1;
+    const key = 'ledge|' + w;
     let c = baked.get(key);
     if (!c) {
-      const cv = mk(x1 - x0, 8), cg = cv.getContext('2d');
-      stones.forEach(s => paintStone(cg, s.x - x0, 0, s.w, s, 0));
-      c = { c: cv, w: x1 - x0, h: 8, white: null };
+      const cv = mk(w, LEDGE_H + LEDGE_CRUMB), cg = cv.getContext('2d');
+      for (const s of stones) cg.drawImage(stoneCanvas(s, 0), s.x, 0);
+      c = { c: cv, w, h: LEDGE_H + LEDGE_CRUMB, white: null };
       baked.set(key, c);
     }
     g.drawImage(c.c, x0, y);
+    // now and then a grain of grit slips out of a joint
+    const cyc = t / 2.6, ph = cyc - Math.floor(cyc);
+    if (ph < 0.3) {
+      const s = stones[Math.floor(hash(Math.floor(cyc) * 7 + w) * stones.length)];
+      dot(g, x0 + s.x + s.w - 1, y + LEDGE_H + 1 + Math.floor(ph / 0.3 * 9), LEDGE.grit[ph < 0.15 ? 0 : 1]);
+    }
     return;
   }
   if (gone <= 0) {
+    const n = shake > 0.15 ? Math.min(LEDGE_H - 1, Math.round(shake * 9)) : 0;
     stones.forEach((s, i) => {
-      const jx = shake > 0.05 ? Math.round(Math.sin(t * 61 + i * 2.3) * Math.min(1, shake * 1.6)) : 0;
+      const jx = Math.round(Math.sin(t * 61 + i * 2.3) * Math.min(1, shake * 1.6));
       const jy = shake > 0.45 && Math.sin(t * 47 + i * 1.7) > 0.3 ? 1 : 0;
-      paintStone(g, s.x + jx, y + jy, s.w, s, shake);
+      g.drawImage(stoneCanvas(s, n), x0 + s.x + jx, y + jy);
     });
     // grit trickling from the joints while it shakes
-    if (shake > 0.05) for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 3; i++) {
       const ph = (t * 2.2 + i / 3) % 1, s = stones[i % stones.length];
-      dot(g, s.x + s.w - 1, y + 8 + Math.floor(ph * 14), i % 2 ? PAL.u : PAL.q);
+      dot(g, x0 + s.x + s.w - 1, y + LEDGE_H + Math.floor(ph * 14), LEDGE.grit[i % 2]);
     }
     return;
   }
   // Falling apart: each stone breaks in two chunks that tumble into the pit and crumble to dust.
   const a = g.globalAlpha;
+  const f = gone > 0.55 ? Math.min(4, Math.floor((gone - 0.55) / 0.45 * 5)) : 0;
   stones.forEach((s, i) => {
     const half = Math.max(2, Math.floor(s.w / 2));
     for (let k = 0; k < 2; k++) {
       const id = i * 2 + k, dir = k ? 1 : -1;
       const fall = gone * gone * (46 + hash(id) * 30), drift = dir * gone * (2 + hash(id + 9) * 5);
-      const tilt = gone > 0.25 ? Math.round(gone * 3 * dir) : 0;
-      const cx = s.x + (k ? half : 0), cw = k ? s.w - half : half;
-      const fade = gone > 0.55 ? (gone - 0.55) / 0.45 : 0;
-      paintStone(g, Math.round(cx + drift), Math.round(y + fall), cw, s, 0, (xx, yy) => {
-        // ragged break edge, a slant as it tips, then it dissolves
-        if ((k ? xx === 0 : xx === cw - 1) && (yy + id) % 3 === 0) return false;
-        if (tilt && (k ? cw - 1 - xx : xx) < Math.abs(tilt) - (yy >> 1)) return false;
-        return bayer(xx + id * 3, yy + id) >= fade;
-      });
+      const tilt = gone > 0.25 ? Math.round(gone * 3) : 0;
+      g.drawImage(chunkCanvas(s, i, k, tilt, f), Math.round(x0 + s.x + (k ? half : 0) + drift), Math.round(y + fall));
     }
     // pebbles
+    g.globalAlpha = a * (1 - gone);
     for (let k = 0; k < 2; k++) {
       const id = i * 5 + k;
-      const fx = s.x + Math.floor(hash(id + 3) * s.w), fy = y + 4 + gone * gone * (70 + hash(id) * 40);
-      g.globalAlpha = a * (1 - gone);
-      fill(g, fx, fy, 1 + (k & 1), 1 + (k & 1), k ? PAL.q : PAL.u);
+      const fx = x0 + s.x + Math.floor(hash(id + 3) * s.w), fy = y + 4 + gone * gone * (70 + hash(id) * 40);
+      fill(g, fx, fy, 1 + (k & 1), 1 + (k & 1), k ? LEDGE.face[0] : LEDGE.bevel);
     }
+    g.globalAlpha = a;
   });
   // a puff of dust where it was
   if (gone < 0.6) {
-    const n = 10;
-    for (let i = 0; i < n; i++) {
-      const dx = (hash(i * 4.1) - 0.5) * (x1 - x0 + 8) * (0.6 + gone), dy = 4 - gone * 10 * hash(i * 2.3) + Math.sin(i) * 2;
+    for (let i = 0; i < 10; i++) {
+      const dx = (hash(i * 4.1) - 0.5) * (w + 8) * (0.6 + gone), dy = 4 - gone * 10 * hash(i * 2.3) + Math.sin(i) * 2;
       g.globalAlpha = a * (0.6 - gone) * 0.9;
       dot(g, (x0 + x1) / 2 + dx, y + dy, i % 2 ? '#8a7f95' : '#6a6078');
     }
@@ -955,9 +1047,10 @@ export function castleLights(state = {}, t = 0) {
       const glow = Math.max(look.glow || 0, hz.gargoyle?.glow || 0);
       if (glow > 0.03) out.push({ x: X(p.x) - 2, y: X(p.y) - 1, r: 20 + glow * 26, color: '#ff3a3a', i: glow * (0.75 + Math.sin(t * 17) * 0.15), noRim: glow < 0.4 });
       else {
-        // Asleep, the coals in its eyes glint now and then (about once every 7 s, for under a second).
-        const k = Math.max(0, Math.sin(t * 0.9 + 1.3)) ** 16;
-        if (k > 0.04) out.push({ x: X(p.x), y: X(p.y), r: 14, color: '#ff3030', i: k, noRim: true });
+        // Asleep, the coals in its eyes glint now and then (drawGargoyle brightens them): only a faint
+        // halo here, so the stone of the head stays stone and does not turn pink.
+        const k = sleepGlint(t);
+        if (k > 0.04) out.push({ x: X(p.x), y: X(p.y), r: 8, color: '#ff3030', i: k * 0.45, noRim: true });
       }
     } else if (p.kind === 'roast') {
       out.push({ x: X(p.x), y: X(foot(p)) - 6, r: 12, color: '#ffd8a0', i: 0.25, noRim: true });
