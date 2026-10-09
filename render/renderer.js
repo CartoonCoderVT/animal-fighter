@@ -1008,7 +1008,7 @@ export class Renderer {
         // Dragged behind him at a run, its head scrapes sparks off the floor.
         if (sc && f.a.ground && Math.abs(f.a.vx || 0) > 3 && sc.y >= f.hy + oy - 3 && this.simDt > 0 && Math.random() < 0.6) this.fx.burst('spark', sc.x - ox, f.hy - 1, 1, { a: (f.a.face || 1) > 0 ? Math.PI + 0.4 : -0.4, spread: 0.8, s: 1.8, life: 0.25, colors: ['#ffffff', '#ffd0a0', this.fx.pal().light], g: 0.1, b: 0.3, em: true });
       }
-      if (f.a.bloodMark) drawMarks(eg, f.a, f.hx + ox, f.hy + oy - 31, st, this.fx.gore);
+      if (f.a.bloodMark) drawMarks(eg, f.a, f.hx + ox, f.hy + oy - (f.a.type === 2 ? 46 : 31), st, this.fx.gore);
     }
     this.fx.drawHemo(eg, ox, oy, t);
     this.fx.drawEmissive(eg, ox, oy, t);

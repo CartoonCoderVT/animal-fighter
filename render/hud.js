@@ -49,7 +49,8 @@ export class HUD {
       if (a.dead) continue;
       const f = FIGHTERS[a.type];
       const p = this.r.worldToView(a.x, a.y), z = VIEW_W / this.r.cam.sw;
-      const x = Math.round(p.x), y = Math.round(p.y - (a.knocked ? 10 : 14) * z - 6);
+      // Lola stands much taller than the others: her tag floats over her ears.
+      const x = Math.round(p.x), y = Math.round(p.y - (a.knocked ? 10 : a.type === 2 ? 34 : 14) * z - 6);
       const local = a.id === localId;
       const name = (local ? '▼ ' : '') + a.name;
       drawText(g, name, x, y - 11, { color: local ? '#fff1c8' : f.color, outline: '#0b0812', align: 'center' });
@@ -93,7 +94,7 @@ export class HUD {
       panel(g, cx, 6, cw, 26, { accent: f.color, fill: local ? '#1d1430e6' : '#120d1ed9', edge: local ? '#6a5490' : '#3b3052' });
       g.save();
       g.beginPath(); g.rect(cx + 3, 8, 22, 22); g.clip();
-      this.r.drawPreview(g, a.type, cx + 13, 34, { density: 1, key: 'hud' + a.id, dt: 0, form: a.form || null });
+      this.r.drawPreview(g, a.type, cx + 13, a.type === 2 ? 50 : 34, { density: 1, key: 'hud' + a.id, dt: 0, form: a.form || null });
       g.restore();
       if (a.dead) { g.fillStyle = 'rgba(10,6,16,0.6)'; g.fillRect(cx + 3, 8, 22, 22); drawText(g, Math.max(1, Math.ceil(a.respawn)) + '', cx + 14, 14, { color: '#f0d2b0', align: 'center', outline: '#0b0812' }); }
       drawText(g, a.name, cx + 29, 9, { color: local ? '#fff1c8' : '#d8cde8' });

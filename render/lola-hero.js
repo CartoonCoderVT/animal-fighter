@@ -40,7 +40,8 @@ export class LolaHero {
   constructor(renderer) { this.r = renderer; }
 
   draw(g, x, y, t, { density: s = 2, dt = 1 / 60 } = {}) {
-    const cx = x, cy = y - 30 * s, R = 21 * s;
+    // The clock is a halo behind her head and bow; the wheel of knives turns round her waist.
+    const cx = x, cy = y - 34 * s, R = 26 * s, wy = y - 18 * s;
     const lt = t - T_POSE, cyc = lt > 0 ? lt % LOOP : -1, stopped = cyc >= STOP[0] && cyc < STOP[1];
     // The clock: swelling in with its hands racing, then ticking second by second (a little
     // overshoot on every tick), and stopped dead while she holds the time.
@@ -59,8 +60,8 @@ export class LolaHero {
     if (t < T_FLASH + 0.1) {
       const k = clamp01(t / T_FLASH), r = (1 - ease(k)) * 46 * s + 6;
       g.globalAlpha = 0.4 + k * 0.6;
-      for (let i = 0; i < 96; i++) { const a = (i / 96) * Math.PI * 2; if (i % 2) dot(g, '#9cd0ff', x + Math.cos(a) * r, y - 14 * s + Math.sin(a) * r * 0.9, s, s); }
-      for (let i = 0; i < 12; i++) { const a = (i / 12) * Math.PI * 2; dot(g, '#ffffff', x + Math.cos(a) * r, y - 14 * s + Math.sin(a) * r * 0.9, s * 2, s * 2); }
+      for (let i = 0; i < 96; i++) { const a = (i / 96) * Math.PI * 2; if (i % 2) dot(g, '#9cd0ff', x + Math.cos(a) * r, wy + Math.sin(a) * r * 0.9, s, s); }
+      for (let i = 0; i < 12; i++) { const a = (i / 12) * Math.PI * 2; dot(g, '#ffffff', x + Math.cos(a) * r, wy + Math.sin(a) * r * 0.9, s * 2, s * 2); }
       g.globalAlpha = 1;
     }
     if (t < T_FLASH - 0.04) return;
@@ -80,8 +81,8 @@ export class LolaHero {
     if (wheel > 0) {
       const spinT = stopped ? lt - cyc + STOP[0] : t;
       for (let i = 0; i < 8; i++) {
-        const a0 = (i / 8) * Math.PI * 2 + spinT * 1.3, r = (8 + 18 * ease(wheel)) * s;
-        const kx = x + Math.cos(a0) * r, ky = y - 16 * s + Math.sin(a0) * r * 0.55;
+        const a0 = (i / 8) * Math.PI * 2 + spinT * 1.3, r = (10 + 20 * ease(wheel)) * s;
+        const kx = x + Math.cos(a0) * r, ky = wy + Math.sin(a0) * r * 0.55;
         // Behind her on the far half of the wheel.
         if (Math.sin(a0) < 0) drawKnife(g, kx, ky, a0 + Math.PI / 2, { s, len: 7, glint: stopped ? ((t * 2 + i * 0.3) % 2) : 0 });
       }
@@ -97,8 +98,8 @@ export class LolaHero {
     if (wheel > 0) {
       const spinT = stopped ? lt - cyc + STOP[0] : t;
       for (let i = 0; i < 8; i++) {
-        const a0 = (i / 8) * Math.PI * 2 + spinT * 1.3, r = (8 + 18 * ease(wheel)) * s;
-        const kx = x + Math.cos(a0) * r, ky = y - 16 * s + Math.sin(a0) * r * 0.55;
+        const a0 = (i / 8) * Math.PI * 2 + spinT * 1.3, r = (10 + 20 * ease(wheel)) * s;
+        const kx = x + Math.cos(a0) * r, ky = wy + Math.sin(a0) * r * 0.55;
         if (Math.sin(a0) >= 0) drawKnife(g, kx, ky, a0 + Math.PI / 2, { s, len: 7, glint: stopped ? ((t * 2 + i * 0.3) % 2) : 0 });
       }
     }
@@ -106,7 +107,7 @@ export class LolaHero {
     if (stopped) {
       const k = (cyc - STOP[0]) / (STOP[1] - STOP[0]);
       g.globalAlpha = 0.5 * (1 - k);
-      for (let i = 0; i < 80; i++) { const an = (i / 80) * Math.PI * 2, rr = 10 + k * 60 * s; dot(g, '#ffffff', x + Math.cos(an) * rr, y - 16 * s + Math.sin(an) * rr * 0.8, s, s); }
+      for (let i = 0; i < 80; i++) { const an = (i / 80) * Math.PI * 2, rr = 10 + k * 60 * s; dot(g, '#ffffff', x + Math.cos(an) * rr, wy + Math.sin(an) * rr * 0.8, s, s); }
       g.globalAlpha = 1;
     }
   }

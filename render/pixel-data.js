@@ -12,9 +12,8 @@ const FAR = { 1: '2', 2: '3', 4: '5', 6: '7', 9: '8', x: 'y' };
 const PALETTES = {
   cat: { o: '#3b1b1e', 1: '#ffb763', 2: '#f08a3c', 3: '#c25e2c', 4: '#fff3dc', 5: '#f0cc9c', 6: '#ffb3c4', 7: '#e8728e', 8: '#a8482a', e: '#1e1420', w: '#ffffff', r: '#ff9c9c' },
   rat: { o: '#2b2238', 1: '#cec7dc', 2: '#a89fbc', 3: '#7b7192', 4: '#efe7f0', 5: '#d4c8d8', 6: '#ffb8ca', 7: '#ee7a9a', e: '#1e1420', w: '#ffffff', r: '#ffa0b6' },
-  // Lola: silver-white fur, a navy maid dress (8 dark, 9 mid, x light, y its far side), a white apron
-  // (4/5), pink ears, a gold watch (g), eyes of deep blue with a blue iris.
-  rabbit: { o: '#231a3e', 1: '#ffffff', 2: '#eeeaf8', 3: '#b9b2d8', 4: '#ffffff', 5: '#cfcdea', 6: '#ffb0c8', 7: '#e8729a', 8: '#232c78', 9: '#3d52b8', x: '#6c8cf0', y: '#34479e', e: '#241a4e', w: '#ffffff', r: '#ff9cb8', g: '#ffd23a' },
+  // Lola: pink-white fur under a wine outline, a light-blue bow and dress, a white apron, a gold watch.
+  rabbit: { o: '#5c1f30', 1: '#ffffff', 2: '#ffe4ea', 3: '#f3aebf', 4: '#ffffff', 5: '#efd3df', 6: '#ff9db3', 7: '#e8668a', 8: '#3e64c4', 9: '#6aa2ee', x: '#b8e0ff', y: '#7fb0f0', e: '#2a1420', g: '#ffd47a', h: '#cf893a', r: '#e8405e' },
   ocelot: { o: '#3a2010', 1: '#ffd36c', 2: '#eca83e', 3: '#bf7a26', 4: '#fff2cf', 5: '#f0d39a', 6: '#e0a070', 7: '#d0605e', 8: '#5a2e18', 9: '#8a5028', e: '#1e1420', w: '#ffffff', r: '#ffa08a' },
   // Juma's beast form: deeper fur, near-black rosettes, ivory fangs and claws, burning eyes.
   ocelotBeast: { o: '#220c04', 1: '#f2a848', 2: '#c86c20', 3: '#8a4214', 4: '#f6e2b8', 5: '#d6ad78', 6: '#e09070', 7: '#b8343a', 8: '#2e1408', 9: '#62300f', e: '#140806', w: '#ffffff', r: '#ff7a5a', f: '#fff6e0', g: '#ffd23a', m: '#4a0a10' },
@@ -35,7 +34,7 @@ export const TAILS = {
   cat: { width: 3, colors: ['2', '1', '3'], stripe: '8', every: 2.5, shape: [[1, 0], [-2, 0], [-5, -1], [-7, -3], [-8, -6], [-8, -9], [-6, -11]] },
   ocelot: { width: 3, colors: ['2', '1', '3'], stripe: '8', every: 2.5, tip: '8', shape: [[1, 0], [-2, 0], [-5, -1], [-7, -3], [-8, -6], [-8, -9], [-6, -11]] },
   rat: { width: 1, colors: ['6', '6', '7'], shape: [[0, 0], [-3, 1], [-6, 0], [-8, -2], [-9, -5], [-8, -8]] },
-  rabbit: { blob: true },
+  rabbit: null,
   ocelotBeast: { width: 4, colors: ['2', '1', '3'], stripe: '8', every: 2.5, tip: '8', shape: [[1, 0], [-3, 0], [-7, -1], [-10, -3], [-12, -7], [-12, -11], [-10, -14]] }
 };
 // Nox's scarf: a knot in the matrix and two loose ends drawn as chains from the back of the knot.
@@ -45,8 +44,16 @@ export const SCARF = {
 };
 
 const castOf = id => ({ id, palette: PALETTES[id], parts: PARTS[id], tail: TAILS[id] || null, scarf: id === 'bat' ? SCARF : null });
+// Lola stands taller than the others: the big head with its bow sits high over a wide bell of a
+// dress, the short puffed arms hang from the top of it and the feet carry stockings and shoes.
+// eye: the eye in head cells from the head's pivot.
+const LOLA_RIG = {
+  anchor: { head: [0, -19], body: [0, -5], armF: [-1, -16], armB: [-4, -17], footF: [2, -1], footB: [-2, -1], tail: [-4, -5], scarf: [0, -7] },
+  joint: { head: [0, -19], armF: [-1, -16], armB: [-4, -17], footF: [2, -5], footB: [-2, -5] },
+  eye: [5, -5]
+};
 // The fighters, by type. Alternate forms are casts of their own with their own anchors.
-export const CAST = Object.keys(PARTS).filter(id => id !== 'ocelotBeast').map(castOf);
+export const CAST = Object.keys(PARTS).filter(id => id !== 'ocelotBeast').map(id => (id === 'rabbit' ? { ...castOf(id), ...LOLA_RIG } : castOf(id)));
 // Juma's beast form is bigger: a taller chest carries the head higher and the shoulders wider.
 export const BEAST = {
   ...castOf('ocelotBeast'),

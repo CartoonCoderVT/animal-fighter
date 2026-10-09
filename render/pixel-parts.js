@@ -229,53 +229,66 @@ export const PARTS = {
       '6677',
     ],
   },
-  // Lola, the maid of the clock: silver-white fur, a frilled headband with a navy bow, a braid
-  // tied in navy, a navy dress under a white apron (tied in a bow at the back), puffed sleeves,
-  // a gold pocket watch at the hip, white stockings and Mary Janes. Faces patch the eye and
-  // mouth rows of the base head (see LOLA_FACES below).
+  // Lola, the white rabbit of the clock: pink-white fur under a wine outline, long pink-lined ears,
+  // a big light-blue bow, one big black eye and a pink blush; a light-blue dress with puffed sleeves
+  // and a gingham hem over a white petticoat, a white apron with a red heart, a black ribbon at the
+  // collar, a gold pocket watch at her hip, white stockings and black Mary Janes. She stands taller
+  // than the others (her own rig in pixel-data.js). Faces patch the eye and mouth of the base head
+  // (below).
   rabbit: {
     head: [
-      '....12....12...',
-      '...162...1663..',
-      '...162...1663..',
-      '...162...1663..',
-      '.x.162...1673..',
-      'x9x172...1773..',
-      '9998.4.4.4.4.3.',
-      'x9x84444444443.',
-      '.x.888888888883',
-      '...111111122223',
-      '..1111111222223',
-      '.21111122222223',
-      '211112222we223.',
-      '3112222222ex447',
-      '3122222224e4455',
-      '.122222r4445555',
-      '.83222223355555',
-      '..3332233333...',
-      '.....3333......',
+      '.....11......12......',
+      '....1112....1122.....',
+      '....11662...12262....',
+      '....12662...22663....',
+      '.....12661.22663.....',
+      '.....12661.22663.....',
+      '.....12661.22663.....',
+      '.....12661.22663.....',
+      '.....12671.226xx.....',
+      '.....12671.32x999....',
+      '.....126xx.3x99998...',
+      '.xx..21x99x8899998...',
+      'x99x.32x99998x8898...',
+      'x999x33x9998881882...',
+      '.x99982188811112222..',
+      '..8889o1111111122222.',
+      '.x9998211111222ee222.',
+      'x9998221111222eee1116',
+      'x9983221112222eee1116',
+      '.88.3222222222ee2112.',
+      '....322222226622222..',
+      '.....3222222662222...',
+      '.......333333333.....',
     ],
     body: [
-      '....x999.....',
-      '...x99994....',
-      '..xx99448....',
-      '..x9948884...',
-      '44x99444459..',
-      '44x9944445g..',
-      '.xx99444458g.',
-      '.x9994444459.',
-      'xx99994444599',
-      '4545454545454',
+      '.......4444444.......',
+      '..xx..544444445......',
+      '.x99x.544444e4e4.....',
+      '.x99g89999994e44.....',
+      '..8g..899999e4e5.....',
+      '.hgggh99999994448....',
+      'hg444gh99999444448...',
+      'g44e44h999944r4r448..',
+      'g44ee4h999944rrr4448.',
+      'hg444hh9999444r44458.',
+      'xhhhhh999995454545498',
+      '949494949494949494949',
+      '494949494949494949494',
+      '544444444444444444445',
+      '.4.444.444.444.444.4.',
     ],
     arm: [
-      'xx.',
-      'x98',
-      '444',
-      '.12',
+      'x99.',
+      '9988',
+      '.12.',
+      '.22.',
     ],
     foot: [
-      '.444',
-      '8888',
+      '.44.',
+      '.45.',
+      '.eee',
+      'eeee',
     ],
   },
   ocelot: {
@@ -665,7 +678,7 @@ export const PARTS = {
   },
 };
 
-// Lola's faces: her base head with the eye (rows 12-14, columns 9-11) and the mouth redrawn.
+// Lola's faces: her base head with the eye and the mouth redrawn ([row, column, replacement]).
 const face = (base, patches) => base.map((row, y) => {
   let r = row;
   for (const [py, px, str] of patches) if (py === y) r = r.slice(0, px) + str + r.slice(px + str.length);
@@ -673,11 +686,11 @@ const face = (base, patches) => base.map((row, y) => {
 });
 {
   const L = PARTS.rabbit, h = L.head;
-  L.headBlink = face(h, [[12, 9, '222'], [13, 9, 'ee2'], [14, 9, '444']]);
-  L.headHurt = face(h, [[12, 9, 'e22'], [13, 9, '2e2'], [14, 9, 'e44']]);
-  L.headAngry = face(h, [[11, 9, 'e'], [12, 9, '2ee'], [13, 9, 'eex'], [14, 9, '4e4']]);
-  L.headOpen = face(h, [[11, 9, 'e'], [12, 9, '2ee'], [13, 9, 'eex'], [15, 10, '4ee'], [16, 11, 'e7']]);
-  L.headDead = face(h, [[12, 9, 'e2e'], [13, 9, '2e2'], [14, 9, 'e4e']]);
+  L.headBlink = face(h, [[16, 15, '22'], [17, 14, '222'], [19, 14, '22']]);
+  L.headHurt = face(h, [[16, 14, 'e22'], [17, 14, '2'], [18, 16, '2'], [19, 15, '2']]);
+  L.headAngry = face(h, [[15, 13, 'ee'], [16, 15, '2']]);
+  L.headOpen = face(h, [[19, 18, 'ee'], [20, 17, 'e7']]);
+  L.headDead = face(h, [[16, 14, 'e2'], [17, 14, '2e2'], [18, 15, '2'], [19, 14, '22']]);
 }
 
 // Pain: the squeezed eyes of the hurt face with the open mouth of the shout.

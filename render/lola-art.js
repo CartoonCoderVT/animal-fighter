@@ -439,7 +439,7 @@ export class LolaFX {
     if (owner) {
       const sp = partSprite({ type: owner.type, form: owner.form || null, part: 'head', angle: 0, face: 1, wounds: [], cut: [] }, '', t < 0.5 ? 'Angry' : 'Open');
       if (sp) {
-        const s = 6, w = sp.canvas.width * s, hh = sp.canvas.height * s, px = 100, py = y0 + h + 12 - hh;
+        const s = Math.max(3, Math.min(6, Math.floor(130 / sp.canvas.height))), w = sp.canvas.width * s, hh = sp.canvas.height * s, px = 168 - Math.round(w / 2), py = y0 + h + 12 - hh;
         g.imageSmoothingEnabled = false;
         g.drawImage(sp.canvas, px, py, w, hh);
         // The eye burns: the middle of the eye cells of her base face, flared.

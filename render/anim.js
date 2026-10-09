@@ -140,8 +140,8 @@ export const FRAMES = {
   // Lola, the maid of the clock. Knives in both hands (drawn by render/lola-art.js along the arms).
   // Her guard: low and light on her feet, the front hand up with a fan of knives between the
   // fingers, the back hand low with one more. Two breaths.
-  lStance1: { head: [1, 1, 11.25], body: [0, 1], armF: [2, -1, -125], armB: [-1, 0, 35], footF: [3, 0], footB: [-3, 0] },
-  lStance2: { head: [1, 2, 11.25], body: [0, 2], armF: [2, 0, -125], armB: [-1, 1, 35], footF: [3, 0], footB: [-3, 0] },
+  lStance1: { head: [1, 1, 11.25], body: [0, 1], armF: [4, 1, -105], armB: [-1, 0, 35], footF: [3, 0], footB: [-3, 0] },
+  lStance2: { head: [1, 2, 11.25], body: [0, 2], armF: [4, 2, -105], armB: [-1, 1, 35], footF: [3, 0], footB: [-3, 0] },
   // The cuts: the knife cocked back over the shoulder (A), the snap (X), the impact pose (I).
   lCaA: { head: [-1, 1], body: [-1, 1], armF: [-2, -2, 150], armB: [1, 0, -40], footF: [3, 0], footB: [-2, 0] },
   lCaX: { head: [2, 0, 11.25], body: [2, 0], armF: [3, -1, -95], armB: [-1, 0, 40], footF: [3, 0], footB: [-3, -1, 22.5] },
@@ -186,8 +186,8 @@ export const FRAMES = {
   wHome: { head: [0, 1, 11.25], body: [0, 1], armF: [1, 1, -20], armB: [-1, 1, 20], footF: [2, 0], footB: [-2, 0] },
   wSnap: { head: [-1, 0, -11.25], body: [0, 0], armF: [1, -2, -150], armB: [-1, 0, 20], footF: [2, 0], footB: [-2, 0] },
   // Her hero pose on the select screen: knives fanned in both hands, crossed in front of her.
-  lHero: { head: [1, 0, 11.25], body: [0, 0], armF: [3, -2, -135], armB: [-2, -1, 150], footF: [3, 0], footB: [-3, 0] },
-  lHero2: { head: [1, 1, 11.25], body: [0, 1], armF: [3, -1, -135], armB: [-2, 0, 150], footF: [3, 0], footB: [-3, 0] },
+  lHero: { head: [1, 0, 11.25], body: [0, 0], armF: [5, 1, -100], armB: [-3, -1, 140], footF: [3, 0], footB: [-3, 0] },
+  lHero2: { head: [1, 1, 11.25], body: [0, 1], armF: [5, 2, -100], armB: [-3, 0, 140], footF: [3, 0], footB: [-3, 0] },
   // Juma
   paw0: { armF: [-1, -2, 160], body: [-1, 0], head: [-1, 0] },
   paw1: { armF: [3, 0, -80], body: [1, 0], head: [2, 0], footF: [1, 0] },
