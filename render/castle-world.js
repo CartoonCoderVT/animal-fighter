@@ -32,11 +32,11 @@ const ARCH = { x0: 250, x1: 390, spring: 200 };
 const START = (11 * 60 + 45) * 60; // the clock reads a quarter to midnight when the match starts
 
 // ---- palettes ------------------------------------------------------------------------------
-const WALL = { mortar: '#0f0b18', shadow: '#17122a', f: ['#201a33', '#241d38', '#28203e'], hi: '#322a4d', spec: '#2c2546' };
-const LOW = { mortar: '#0e0a17', shadow: '#181329', f: ['#221b35', '#261e3a', '#2a2240'], hi: '#362e52', spec: '#2f2849' };
-const PLAY = { mortar: '#191426', shadow: '#272139', f: ['#39324f', '#3d3554', '#423a5a'], hi: '#51486d', spec: '#5d5479' };
+const WALL = { mortar: '#120e1d', shadow: '#1b1530', f: ['#221b37', '#261f3c', '#2a2241', '#2e2646', '#322a4b'], hi: '#3a315a', spec: '#332b50' };
+const LOW = { mortar: '#110d1b', shadow: '#1c1631', f: ['#241d39', '#28203e', '#2c2443', '#302848', '#342c4d'], hi: '#3e365f', spec: '#373054' };
+const PLAY = { mortar: '#191426', shadow: '#272139', f: ['#363049', '#39324f', '#3d3554', '#423a5a', '#463e5f'], hi: '#51486d', spec: '#5d5479' };
 const PLAY_TOP = ['#d2c9e6', '#a59cc2', '#7d749b', '#5f5680'];
-const COLUMN = ['#100c19', '#1c1730', '#29223f', '#352d50', '#41385f', '#4b4169', '#41385f', '#352d50', '#2d2647', '#251f3d', '#1e1832', '#161126', '#100c19'];
+const COLUMN = ['#120e1c', '#201a35', '#2d2645', '#393056', '#453c66', '#514670', '#453c66', '#393056', '#312a4c', '#292242', '#211b37', '#19142a', '#120e1c'];
 const BK = { ink: '#0d0a15', d: '#1a1530', m: '#29223f', m2: '#332b4d', l: '#463d66', l2: '#5c5282', l3: '#776d9c' };
 const VELVET = ['#1c0510', '#35091a', '#541225', '#771b31', '#9a2b3f', '#b84452'];
 const GOLD = ['#3a2412', '#6e4520', '#a8702e', '#d9a548', '#f6d27a', '#fff0b8'];
@@ -53,6 +53,7 @@ const RGB = new Map();
 const C = c => { if (typeof c !== 'string') return c; let v = RGB.get(c); if (!v) { v = hexToRgb(c); RGB.set(c, v); } return v; };
 const clamp01 = v => (v < 0 ? 0 : v > 1 ? 1 : v);
 const TAU = Math.PI * 2;
+const mixDark = hex => { const [r, g, b] = C(hex); return '#' + [r, g, b].map(v => Math.round(v * 0.6).toString(16).padStart(2, '0')).join(''); };
 
 class Pix {
   constructor(w = VIEW_W, h = VIEW_H) {
@@ -111,7 +112,8 @@ function ditherV(p, x0, y0, w, h, stops) {
 
 // One dressed stone: 1px mortar bottom/right, lit top/left edge, darker lower rows, a few specks.
 function stone(p, bx, by, bw, bh, pal, rnd, cx0 = 0, cx1 = p.w) {
-  const face = pal.f[Math.floor(rnd() * pal.f.length)], chip = rnd();
+  const n = Math.sin(bx * 0.021 + by * 0.013) + Math.sin(bx * 0.007 - by * 0.031 + 2) + rnd() * 1.6 - 0.8;
+  const face = pal.f[Math.max(0, Math.min(pal.f.length - 1, Math.floor((n + 2) / 4 * pal.f.length)))], chip = rnd();
   for (let y = by; y < by + bh; y++) for (let x = Math.max(bx, cx0); x < Math.min(bx + bw, cx1); x++) {
     const lx = x - bx, ly = y - by;
     let col = face;
@@ -124,8 +126,8 @@ function stone(p, bx, by, bw, bh, pal, rnd, cx0 = 0, cx1 = p.w) {
   const inX = x => x >= cx0 && x < cx1;
   if (chip < 0.22) for (const [dx, dy] of [[2, 2], [3, 2], [2, 3]]) { if (inX(bx + bw - dx)) p.set(bx + bw - dx, by + bh - dy, pal.mortar); }
   else if (chip > 0.86) for (const [dx, dy] of [[0, 0], [1, 0], [0, 1]]) { if (inX(bx + dx)) p.set(bx + dx, by + dy, pal.mortar); }
-  const n = (bw * bh) / 30 | 0;
-  for (let i = 0; i < n; i++) {
+  const specks = (bw * bh) / 30 | 0;
+  for (let i = 0; i < specks; i++) {
     const x = bx + 2 + Math.floor(rnd() * Math.max(1, bw - 4)), y = by + 2 + Math.floor(rnd() * Math.max(1, bh - 4));
     if (inX(x)) p.set(x, y, rnd() < 0.6 ? pal.shadow : pal.spec);
   }
@@ -232,7 +234,8 @@ function paintWindow(p, win) {
       if (lshape[li](x, y)) {
         const l = lancets[li], lx = x - l.x;
         tp = 'open';
-        if (y < lsp) tp = li ? 'glassB' : 'glassA';
+        const cxl = l.x + l.w / 2 - 0.5, dia = Math.abs(x - cxl) + Math.abs(y - (lApex + 8));
+        if (dia <= 3) tp = dia > 2.2 ? 'lead' : li ? 'glassB' : 'glassA';
         if ((y - lsp) % 15 === 14 || y === lsp) tp = 'lead';
         if (lx === Math.floor(l.w / 2) && y > lsp) tp = 'lead';
       } else {
@@ -261,9 +264,8 @@ function paintWindow(p, win) {
     else if (tp === 'lead') p.set(x, y, '#0c0914');
     else {
       p.erase(x, y);
-      const col = { glassA: '#a82a3c', glassB: '#2a4ea8', red: '#b8283c', blue: '#2a50b4', gold: '#f2c35b' }[tp];
-      p.set(x, y, col, tp === 'gold' ? 230 : 175);
-      if ((tp === 'red' || tp === 'blue' || tp === 'glassA' || tp === 'glassB') && bayer(x, y) < 0.12) p.set(x, y, '#f0e0ff', 120);
+      const col = { glassA: '#9a2236', glassB: '#24459a', red: '#a82236', blue: '#22449e', gold: '#e8b850' }[tp];
+      p.set(x, y, col, tp === 'gold' ? 220 : 165);
     }
   }
   // Sill.
@@ -361,28 +363,43 @@ function banner(p, cx, y0, h, emblem) {
 }
 
 function greatArch(p) {
-  const { x0, x1, spring } = ARCH;
-  const shape = archShape({ x: x0, y: 0, w: x1 - x0, h: FLOOR_Y }, 0, 1.15);
-  const a = (x1 - x0) / 2, r = a * 1.15, sp = spring;
+  const { x0, x1, spring: sp } = ARCH;
+  const a = (x1 - x0) / 2, r = a * 1.15;
   const cl = x0 + r, cr = x1 - r, xm = (x0 + x1) / 2;
-  const inner = (x, y) => {
-    const px = x + 0.5, py = y + 0.5;
+  // Signed distance-ish to the opening (negative inside), in continuous coordinates.
+  const inner = (px, py) => {
     if (px < x0 || px > x1 || py > FLOOR_Y) return 99;
-    if (py >= sp) return -1;
+    if (py >= sp) return -Math.min(px - x0, x1 - px);
     return Math.hypot(px - (px < xm ? cl : cr), py - sp) - r;
   };
-  void shape;
-  for (let y = 90; y < FLOOR_Y; y++) for (let x = x0 - 12; x < x1 + 12; x++) {
-    const d = inner(x, y);
+  // The recess is a vaulted passage: transverse arches recede toward a vanishing point.
+  const V = { x: xm, y: 236 }, SC = [1, 0.8, 0.64, 0.51, 0.41, 0.33];
+  const inS = (px, py, k) => inner(V.x + (px - V.x) / k, V.y + (py - V.y) / k) <= 0;
+  const WALLC = ['#18131f', '#141019', '#100d16', '#0d0a12', '#0a080f', '#07050b'];
+  const FLOORC = ['#231d31', '#1e192b', '#191524', '#15111e', '#110e19', '#0c0a12'];
+  const RIB = ['#332b4a', '#2b2540', '#241f36', '#1e1a2d', '#181524'];
+  for (let y = 100; y < FLOOR_Y; y++) for (let x = x0 - 12; x < x1 + 12; x++) {
     const px = x + 0.5, py = y + 0.5;
+    const d = inner(px, py);
     if (d <= 0) {
-      // The recess: a deep, dark passage with the ghost of a stair climbing into it.
-      const depth = clamp01((py - (sp - r * 0.98)) / 200);
-      let col = bayer(x, y) < depth * 0.9 ? '#120e1c' : '#0c0914';
-      const sx = (x - x0) + (FLOOR_Y - y) * 1.0;
-      if (y > 210 && x > x0 + 10 && x < x1 - 10 && (FLOOR_Y - y) % 9 === 0 && sx > 40 && sx < 170) col = '#1c1729';
-      if (y > 210 && x > x0 + 10 && x < x1 - 10 && (FLOOR_Y - y) % 9 > 0 && sx > 40 && sx < 170 && (x - x0 + (FLOOR_Y - y)) % 9 === 0) col = '#151120';
-      if (d > -2 && py < sp) col = '#07050c';
+      let k = 0;
+      while (k + 1 < SC.length && inS(px, py, SC[k + 1])) k++;
+      const base = V.y + (FLOOR_Y - V.y) * (SC[k + 1] || SC[k] * 0.8);
+      let col = WALLC[k];
+      if (py > base) {
+        // Floor of the passage: flagstones in perspective.
+        col = FLOORC[k];
+        const u = (px - V.x) / (py - V.y) * (FLOOR_Y - V.y);
+        if (Math.abs(((u % 18) + 18) % 18 - 9) > 8.2) col = WALLC[Math.min(5, k + 1)];
+        if (py - base < 1) col = WALLC[Math.min(5, k + 1)];
+      } else if (k + 1 < SC.length && k < RIB.length && !inS(px, py, SC[k] * 0.94) && k > 0) {
+        // The face of a transverse rib: lit edge, then stone.
+        col = inS(px, py, SC[k] * 0.985) ? RIB[k] : '#3c3456';
+        if (!inS(px, py, SC[k] * 0.955) && inS(px, py, SC[k] * 0.985)) col = mixDark(RIB[k]);
+      } else if (bayer(x, y) < 0.5 && k < 5 && inS(px, py, SC[k + 1] * 1.03)) col = WALLC[Math.min(5, k + 1)];
+      // Shadow under the outer arch.
+      if (d > -3 && py < sp) col = '#07050c';
+      else if (d > -6 && py < sp && bayer(x, y) < 0.5) col = '#0a0711';
       p.set(x, y, col);
       continue;
     }
@@ -393,7 +410,7 @@ function greatArch(p) {
     // Voussoirs.
     const c = px < xm ? cl : cr;
     const ang = Math.atan2(sp - py, px < xm ? c - px : px - c);
-    const s = ang * (r + 5), seg = s / 11 - Math.floor(s / 11);
+    const sv = ang * (r + 5), seg = sv / 11 - Math.floor(sv / 11);
     let col = dl < 1 ? '#0b0814' : dl < 2 ? '#4b4270' : dl > 9 ? '#0f0b18' : dl < 4 ? '#382f56' : '#2e2748';
     if (seg < 0.1 && dl > 1) col = '#120e1c';
     if (px > xm - 7 && px < xm + 7) col = dl < 1 ? '#0b0814' : dl > 9 ? '#0f0b18' : Math.abs(px - xm) > 6 ? '#120e1c' : dl < 2 ? '#5a5084' : '#3a3258';
@@ -406,12 +423,10 @@ function greatArch(p) {
   // Piers with imposts where the arch springs.
   for (const cx of PIERS) {
     column(p, cx, 14, 0, FLOOR_Y, COLUMN, { capital: false, base: true, joints: 22, baseH: 8 });
-    const ix = cx < 320 ? cx + 7 : cx - 13;
     for (let y = sp - 8; y < sp; y++) for (let x = cx - 9; x < cx + 9; x++) {
       const ly = y - (sp - 8);
       p.set(x, y, ly === 0 ? '#61578c' : ly === 7 ? '#0d0a15' : ly < 3 ? '#41385f' : ly === 3 ? '#1a152b' : '#2e2748');
     }
-    void ix;
     // Capitals at the top, where the vault ribs spring.
     for (let y = 8; y < 16; y++) for (let x = cx - 10; x < cx + 10; x++) {
       const ly = y - 8, half = 10 - Math.max(0, 4 - ly);
@@ -435,62 +450,75 @@ function ribs(p, cx, y, span, dirs = [-1, 1]) {
   }
 }
 
+// A heater shield, quartered red and blue under a gold rim, hung from a ring.
 function shield(p, cx, y0) {
-  const rows = [
-    '.#############.',
-    '#rrrrrrgbbbbbb#',
-    '#rrrrrrgbbbbbb#',
-    '#rrrrrrgbbbbbb#',
-    '#rrrrrrgbbbbbb#',
-    '#gggggggggggggg',
-    '#bbbbbbgrrrrrr#',
-    '#bbbbbbgrrrrrr#',
-    '.#bbbbbgrrrrr#.',
-    '.#bbbbbgrrrrr#.',
-    '..#bbbbgrrrr#..',
-    '...#bbbgrrr#...',
-    '....##bgr##....',
-    '......###......'
-  ];
-  p.sprite(cx - 7, y0, rows, { '#': GOLD[2], g: GOLD[3], r: VELVET[3], b: '#24306a' });
-  p.sprite(cx - 3, y0 + 3, ['.#.#.', '#####', '.###.'], { '#': GOLD[4] });
+  const w = 24, h = 28, x0 = cx - w / 2;
+  for (let y = y0; y < y0 + h; y++) {
+    const ly = y - y0, t = ly / (h - 1);
+    const half = t < 0.42 ? w / 2 : (w / 2) * Math.sqrt(Math.max(0, 1 - ((t - 0.42) / 0.58) ** 1.6));
+    for (let x = x0; x < x0 + w; x++) {
+      const dx = x + 0.5 - cx;
+      if (Math.abs(dx) > half) continue;
+      const edge = half - Math.abs(dx), top = ly;
+      let col;
+      if (edge < 1 || top < 1 || (t > 0.95)) col = GOLD[0];
+      else if (edge < 2.2 || top < 2) col = dx < 0 ? GOLD[4] : GOLD[2];
+      else if (Math.abs(dx) < 1.5 || Math.abs(ly - 11) < 1) col = GOLD[3];
+      else {
+        const q = (dx < 0) === (ly < 11);
+        col = q ? (bayer(x, y) < 0.15 ? VELVET[4] : VELVET[3]) : (bayer(x, y) < 0.15 ? '#3a4c9a' : '#2a3a80');
+        if (edge < 3.5) col = q ? VELVET[2] : '#1e2a62';
+      }
+      p.set(x, y, col);
+    }
+  }
+  // A gold bat over the cross, and the hanging ring.
+  p.sprite(cx - 6, y0 + 8, ['#.........#', '##..#.#..##', '###.###.###', '.#########.', '..##.#.##..', '...#...#...'], { '#': GOLD[4] });
+  p.sprite(cx - 2, y0 - 5, ['.###.', '#...#', '#...#', '.###.', '..#..'], { '#': IRON[4] });
 }
 
+// A gilded frame around an oil portrait: Lola, the white rabbit of the clock, under the full moon.
 function portrait(p, x0, y0, w, h) {
-  // A gilded frame around a dark oil portrait: a rabbit in a bow under a full moon.
   for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) {
     const lx = x - x0, ly = y - y0, e = Math.min(lx, ly, w - 1 - lx, h - 1 - ly);
     let col;
-    if (e === 0) col = GOLD[1];
-    else if (e === 1) col = lx < w - 2 && ly < h - 2 && (lx === 1 || ly === 1) ? GOLD[4] : GOLD[2];
-    else if (e === 2) col = (lx + ly) % 3 === 0 ? GOLD[2] : GOLD[3];
-    else if (e === 3) col = GOLD[0];
+    if (e === 0) col = GOLD[0];
+    else if (e === 1) col = lx === 1 || ly === 1 ? GOLD[4] : GOLD[2];
+    else if (e === 2) col = (lx + ly) % 4 === 0 ? GOLD[4] : GOLD[3];
+    else if (e === 3) col = GOLD[1];
     else {
       const t = (ly - 4) / (h - 8);
-      col = bayer(x, y) < t ? '#1a1420' : '#231a2c';
-      const mx = x0 + w * 0.68, my = y0 + h * 0.3, md = Math.hypot(x + 0.5 - mx, y + 0.5 - my);
-      if (md < 5) col = md < 4 ? '#c9b98e' : '#8a7c68';
+      col = bayer(x, y) < t * 1.2 ? '#1c1638' : '#2c2658';
+      const mx = x0 + w - 8.5, my = y0 + 9.5, md = Math.hypot(x + 0.5 - mx, y + 0.5 - my);
+      if (md < 3.6) col = md < 2.8 ? '#e8dcb8' : '#a89c8a';
+      else if (md < 6 && bayer(x, y) < 0.4) col = '#3e3870';
     }
     p.set(x, y, col);
   }
-  // The sitter: Lola's silhouette with her bow and long ears.
-  const sx = x0 + 9, sy = y0 + 8;
-  p.sprite(sx, sy, [
-    '..#..#......',
-    '..#..#......',
-    '.##.##......',
-    '.#####......',
-    'b#####b.....',
-    'bb###bb.....',
-    '.#####......',
-    '.######.....',
-    '########....',
-    '#########...',
-    '##########..',
-    '##########..',
-    '###########.',
-    '###########.'
-  ].slice(0, h - 12), { '#': '#0d0a14', b: VELVET[4] });
+  p.sprite(x0 + 5, y0 + 5, [
+    '...wwp..wwp.......',
+    '...wpw..wpw.......',
+    '...wpw..wpw.......',
+    '...wpw..wpw.......',
+    '...wpw.wpw........',
+    '..BbbwBbww........',
+    '.bbbbBBbbbb.......',
+    '..bb.wwwwbb.......',
+    '....wwwwwwww......',
+    '...wwwwwwwwww.....',
+    '...wwwwwwwKKww....',
+    '..swwwwwwwKKwwn...',
+    '..swwwwwwwwwkww...',
+    '...sswwwwwwwww....',
+    '.....sswwwws......',
+    '.......wwww.......',
+    '.....dRRRRRd......',
+    '...dddWWWWWddd....',
+    '..ddddWWHWWdddd...',
+    '.dddddWWWWWddddd..',
+    '.DddddddddddddDD..',
+    'DDddddddddddddDD..',
+  ], { w: '#f4ecf2', s: '#c4b0c8', p: '#f3aebf', b: '#9cd0ff', B: '#5a9af0', K: '#1a1020', n: '#e8668a', k: '#ff9db3', d: '#6aa2ee', D: '#3e64c4', W: '#ffffff', R: '#1a1020', H: '#e8405e' });
 }
 
 function paintWall() {
@@ -522,8 +550,8 @@ function paintWall() {
   banner(p, PILLARS[0], 28, 86, 'hourglass');
   banner(p, PILLARS[1], 28, 86, 'hourglass');
   // Decor under the towers: a coat of arms on the left, Lola's portrait on the right.
-  shield(p, 58, 214);
-  portrait(p, 556, 208, 36, 44);
+  shield(p, 60, 216);
+  portrait(p, 556, 206, 30, 40);
   // Cobwebs in the corners.
   cobweb(p, 0, 0, 26, 1, 1);
   cobweb(p, 639, 0, 22, -1, 1);
@@ -533,6 +561,18 @@ function paintWall() {
   ivy(p, 14, 0, 70, 21);
   ivy(p, 626, 0, 54, 23);
   ivy(p, 520, 4, 36, 24);
+  // Damp streaks under the window sills, moss low on the wainscot.
+  const rd = seeded(61);
+  for (const win of WINDOWS) for (let x = win.x - 6; x < win.x + win.w + 6; x++) {
+    const len = 6 + rd() * 34;
+    for (let y = win.y + win.h + 5; y < win.y + win.h + 5 + len; y++) if (bayer(x, y) < 0.55 * (1 - (y - win.y - win.h - 5) / len)) p.shade(x, y, 0.8);
+  }
+  for (let x = 0; x < VIEW_W; x++) {
+    const m = Math.sin(x * 0.05) + Math.sin(x * 0.13 + 1) * 0.6 + Math.sin(x * 0.011 + 3) * 1.2;
+    if (m < 0.8 || (x > PIERS[0] - 8 && x < PIERS[1] + 8)) continue;
+    const h = Math.round((m - 0.8) * 9);
+    for (let y = 315 - h; y < 316; y++) if (bayer(x, y) < 0.35 + (y - (315 - h)) / (h + 1) * 0.4 && p.alpha(x, y)) p.set(x, y, IVY[2], 150);
+  }
   // Darker toward the top corners and the vault.
   const D = p.D;
   for (let y = 0; y < 250; y++) for (let x = 0; x < VIEW_W; x++) {
@@ -665,7 +705,7 @@ function paintBack() {
   // Chains and shackles on the wall, a skull on the floor.
   chain(p, 626, ROOM.y0 + 2, 128);
   p.sprite(623, 128, ['.###.', '#...#', '#...#', '.###.'], { '#': IRON[4] });
-  p.sprite(560, 153, ['.###..', '#####.', '#o#o#.', '#####.', '.#.#..', '......'].slice(0, 7), { '#': BONE[2], o: '#140d16' });
+  p.sprite(560, 153, ['.###..', '#####.', '#o#o#.', '#####.', '.#.#..'], { '#': BONE[2], o: '#140d16' });
   p.set(567, 158, BONE[1]); p.set(568, 159, BONE[2]); p.set(569, 158, BONE[1]);
   // The doorway (behind the gargoyle's door): a deep jamb.
   for (let y = ROOM.y0; y < ROOM.y1; y++) for (let x = DOOR.x0; x < DOOR.x1; x++) {
@@ -894,11 +934,17 @@ function paintFronts() {
 function paintForeground() {
   const p = new Pix();
   const ink = '#0a0711', rim = '#2a2140';
-  // A broken gothic pier at the right edge.
+  // A pier in silhouette at the right edge, and the spring of a foreground arch over the top-right corner.
   for (let y = 0; y < VIEW_H; y++) {
-    let w = 9;
-    if (y > 26 && y < 34) w = 12; else if (y > 318 && y < 330) w = 13;
+    let w = 8;
+    if (y >= 52 && y < 58) w = 11; else if (y >= 58 && y < 61) w = 10;
+    if (y >= 334) w = y < 337 ? 11 : 13;
     for (let x = VIEW_W - w; x < VIEW_W; x++) p.set(x, y, x === VIEW_W - w ? rim : ink);
+  }
+  for (let y = 0; y < 60; y++) for (let x = 560; x < VIEW_W; x++) {
+    const d = Math.hypot(x + 0.5 - 560, y + 0.5 - 60);
+    if (d < 72) continue;
+    p.set(x, y, d < 73 ? rim : ink);
   }
   // Ivy hanging from the top-left, chains at the top corners.
   const rnd = seeded(5);
@@ -911,7 +957,7 @@ function paintForeground() {
     }
   }
   for (let x = 0; x < 52; x++) { const h = 3 + Math.round(Math.sin(x * 0.4) * 1.5 + Math.sin(x * 0.13) * 2); for (let y = 0; y < h; y++) p.set(x, y, ink); }
-  for (const [x, len] of [[598, 30], [610, 18]]) {
+  for (const [x, len] of [[614, 34]]) {
     for (let y = 0; y < len; y += 4) { p.set(x - 1, y, ink); p.set(x + 1, y, ink); p.set(x - 1, y + 1, ink); p.set(x + 1, y + 1, ink); p.set(x, y + 2, ink); p.set(x, y + 3, ink); p.set(x, y + 1, rim); }
     p.sprite(x - 3, len, ['.#####.', '#.....#', '#.....#', '.#...#.', '..###..'], { '#': ink });
   }
@@ -923,11 +969,11 @@ function paintForeground() {
 }
 
 // ---- the night outside ---------------------------------------------------------------------------
-const MOON = { x: 439, y: 54, r: 21 };
+const MOON = { x: 54, y: 88, r: 23 };
 
 function paintSky() {
   const w = VIEW_W + MARGIN * 2, h = VIEW_H + MARGIN * 2, p = new Pix(w, h);
-  ditherV(p, 0, 0, w, h, [[0, '#05041a'], [0.12, '#0a0924'], [0.26, '#111033'], [0.38, '#191741'], [0.5, '#221e4e'], [0.6, '#2d265a'], [0.72, '#3a2f64'], [1, '#43356a']]);
+  ditherV(p, 0, 0, w, h, [[0, '#05041a'], [0.08, '#0a0926'], [0.17, '#121034'], [0.26, '#1b1844'], [0.34, '#262152'], [0.41, '#30285c'], [0.5, '#382d64'], [1, '#3c3068']]);
   const rnd = seeded(17);
   for (let i = 0; i < 260; i++) {
     const x = Math.floor(rnd() * w), y = Math.floor(rnd() * h * 0.5), b = rnd();
@@ -948,9 +994,12 @@ function paintSky() {
       if (dx + dy > mr * 0.9 && bayer(x, y) < (dx + dy - mr * 0.9) / (mr * 0.5)) col = '#b8b0c4';
       if (dx + dy < -mr * 1.1 && e > 0.7) col = '#fffbee';
       p.set(x, y, col);
-    } else if (d < mr + 56) {
-      const t = 1 - (d - mr) / 56, band = Math.ceil(t * 4) / 4;
-      if (bayer(x, y) < band * band * 0.6) p.set(x, y, t > 0.8 ? '#a49cd0' : t > 0.55 ? '#6a62a8' : '#40397a', 90 + band * 110);
+    } else if (d < mr + 50) {
+      const t = 1 - (d - mr) / 50;
+      if (t > 0.86) p.set(x, y, bayer(x, y) < 0.75 ? '#8e86c4' : '#5c56a0', 200);
+      else if (t > 0.6) { if (bayer(x, y) < 0.5) p.set(x, y, '#5c56a0', 170); }
+      else if (t > 0.3) { if (bayer(x, y) < 0.25) p.set(x, y, '#3e3880', 160); }
+      else if (bayer(x, y) < 0.0625) p.set(x, y, '#3e3880', 140);
     }
   }
   return p.done();
@@ -985,50 +1034,53 @@ function paintClouds(seed, h, count, base, top, rim, w = 1360) {
 function paintCastle() {
   const w = VIEW_W + MARGIN * 4, h = VIEW_H + MARGIN * 2, p = new Pix(w, h);
   const OX = MARGIN * 2, OY = MARGIN;
-  const body = '#110e28', rimL = '#2c2860', roof = '#0d0a20', win = ['#f0a860', '#ffd59a', '#c8784a'];
+  const body = '#0c0a1f', rimL = '#3a3474', roof = '#0a081a', win = ['#f0a860', '#ffd59a', '#c8784a'];
   const rnd = seeded(29);
-  // Far mountains.
+  // Far mountains, pale with distance.
   for (let x = 0; x < w; x++) {
     const vx = x - OX;
-    const ridge = 118 - Math.abs(Math.sin(vx * 0.013 + 1.2)) * 22 - Math.sin(vx * 0.041) * 6 - Math.sin(vx * 0.11) * 2;
-    for (let y = Math.round(ridge) + OY; y < h; y++) p.set(x, y, y === Math.round(ridge) + OY ? '#26224f' : '#16133a');
+    const ridge = Math.round(116 - Math.abs(Math.sin(vx * 0.011 + 0.4)) * 26 - Math.sin(vx * 0.037) * 6 - Math.sin(vx * 0.13) * 2 + 16 * Math.exp(-(((vx - MOON.x) / 46) ** 2)));
+    for (let y = ridge + OY; y < h; y++) p.set(x, y, y === ridge + OY ? '#3a3370' : y < ridge + OY + 3 && bayer(x, y) < 0.5 ? '#2a245a' : '#1e1946');
   }
   const towers = [];
   const tower = (vx, tw, top, kind, lit = 2) => towers.push({ vx, tw, top, kind, lit });
-  // Hand-placed so each window frames something.
-  tower(30, 12, 64, 'cone'); tower(46, 8, 86, 'cone'); tower(62, 10, 98, 'crenel'); tower(14, 9, 96, 'crenel');
-  tower(188, 9, 58, 'cone'); tower(204, 12, 92, 'crenel'); tower(176, 7, 98, 'cone');
-  tower(426, 8, 100, 'cone'); tower(452, 10, 104, 'crenel');
-  tower(572, 34, 74, 'keep'); tower(586, 8, 34, 'cone'); tower(602, 9, 52, 'cone'); tower(566, 7, 58, 'cone');
-  for (let vx = -40; vx < VIEW_W + 40; vx += 34 + Math.floor(rnd() * 20)) if (!towers.some(t => Math.abs(t.vx - vx) < 30)) tower(vx, 8 + Math.floor(rnd() * 6), 100 + Math.floor(rnd() * 12), rnd() < 0.5 ? 'cone' : 'crenel', 1);
+  // Placed so each window frames something: a spire beside the moon, a chapel spire, the keep.
+  tower(27, 8, 60, 'cone'); tower(68, 9, 102, 'crenel', 1);
+  tower(182, 12, 64, 'cone'); tower(205, 11, 94, 'crenel');
+  tower(422, 11, 100, 'cone'); tower(438, 8, 58, 'cone', 1); tower(456, 12, 102, 'crenel');
+  tower(566, 40, 74, 'keep', 4); tower(580, 11, 44, 'cone'); tower(598, 8, 54, 'cone'); tower(562, 7, 60, 'cone', 1);
+  for (let vx = -40; vx < VIEW_W + 40; vx += 30 + Math.floor(rnd() * 18)) if (!towers.some(t => Math.abs(t.vx - vx) < 26)) tower(vx, 8 + Math.floor(rnd() * 6), 98 + Math.floor(rnd() * 10), rnd() < 0.5 ? 'cone' : 'crenel', 1);
   // Curtain wall linking them.
   for (let x = 0; x < w; x++) {
-    const vx = x - OX, top = 112 + Math.round(Math.sin(vx * 0.02) * 3);
+    const vx = x - OX, top = 110 + Math.round(Math.sin(vx * 0.02) * 2);
     for (let y = top + OY; y < h; y++) p.set(x, y, body);
-    if (vx % 6 < 3) for (let y = top - 3 + OY; y < top + OY; y++) p.set(x, y, body);
+    if (((vx % 6) + 6) % 6 < 3) for (let y = top - 3 + OY; y < top + OY; y++) p.set(x, y, body);
   }
   for (const t of towers) {
     const x0 = t.vx + OX, top = t.top + OY;
     const litSide = t.vx + t.tw / 2 < MOON.x ? 1 : -1;
     for (let y = top; y < h; y++) for (let x = x0; x < x0 + t.tw; x++) p.set(x, y, (litSide > 0 ? x === x0 + t.tw - 1 : x === x0) ? rimL : body);
-    if (t.kind === 'cone' || t.kind === 'keep') {
-      const ch = t.kind === 'keep' ? 0 : Math.round(t.tw * 1.7);
+    if (t.kind === 'cone') {
+      const ch = Math.round(t.tw * 1.8);
       for (let y = top - ch; y < top; y++) {
-        const half = (y - (top - ch)) / ch * (t.tw / 2 + 1);
-        for (let x = Math.floor(x0 + t.tw / 2 - half); x <= Math.ceil(x0 + t.tw / 2 - 1 + half); x++) p.set(x, y, roof);
-        p.set(Math.round(litSide > 0 ? x0 + t.tw / 2 - 1 + half : x0 + t.tw / 2 - half), y, rimL);
+        const half = (y - (top - ch)) / ch * (t.tw / 2 + 1.5);
+        const xa = Math.floor(x0 + t.tw / 2 - half), xb = Math.ceil(x0 + t.tw / 2 - 1 + half);
+        for (let x = xa; x <= xb; x++) p.set(x, y, roof);
+        p.set(litSide > 0 ? xb : xa, y, rimL);
       }
-      if (t.kind === 'cone') { p.set(x0 + (t.tw >> 1), top - ch - 1, roof); p.set(x0 + (t.tw >> 1), top - ch - 2, roof); }
+      for (let k = 1; k < 4; k++) p.set(x0 + (t.tw >> 1), top - ch - k, roof);
+      for (let x = x0 - 2; x < x0 + t.tw + 2; x++) p.set(x, top, body);
     }
-    if (t.kind === 'crenel' || t.kind === 'keep') for (let x = x0 - 1; x < x0 + t.tw + 1; x++) { if ((x - x0) % 3 !== 2) { p.set(x, top - 1, body); p.set(x, top - 2, body); } }
+    if (t.kind === 'crenel' || t.kind === 'keep') for (let x = x0 - 1; x < x0 + t.tw + 1; x++) { p.set(x, top, body); if ((x - x0) % 3 !== 2) { p.set(x, top - 1, body); p.set(x, top - 2, body); } }
     for (let k = 0; k < t.lit; k++) {
-      const wx = x0 + 2 + Math.floor(rnd() * Math.max(1, t.tw - 4)), wy = top + 6 + Math.floor(rnd() * 26);
+      const wx = x0 + 2 + Math.floor(rnd() * Math.max(1, t.tw - 4)), wy = top + 5 + Math.floor(rnd() * 24);
       const c = win[Math.floor(rnd() * 3)];
       p.set(wx, wy, c); p.set(wx, wy + 1, c);
+      if (t.tw > 14) { p.set(wx + 1, wy, c); p.set(wx + 1, wy + 1, c); }
     }
   }
-  // A pennant on the keep's spire.
-  p.sprite(586 + 4 + OX, 34 - 10 + OY, ['#....', '###..', '#####', '###..', '#....', '#....', '#....'], { '#': '#0d0a20' });
+  // A pennant on the keep's tallest spire.
+  p.sprite(585 + OX, 44 - 26 + OY, ['#....', '###..', '#####', '###..', '#....', '#....'], { '#': roof });
   return p.done();
 }
 
@@ -1049,7 +1101,7 @@ function paintHills() {
     };
     branch(bx, by, -Math.PI / 2 - 0.08, 16 * s, 3);
   };
-  tree(60, 132, 1.25); tree(190, 124, 0.7); tree(600, 128, 0.8);
+  tree(64, 134, 0.95); tree(190, 124, 0.7); tree(600, 128, 0.8);
   // Graves on the crag.
   for (const gx of [36, 210, 446, 584]) p.sprite(gx + OX, 118 + OY, ['.#.', '###', '.#.', '.#.', '###'], { '#': '#0b0918' });
   return p.done();
@@ -1069,8 +1121,8 @@ function paintFog(seed, color, amt, w = 1280, h = 40) {
 // Bats (5x3 frames: wings up, level, down, level).
 const BAT_FRAMES = [['#...#', '.###.', '..#..'], ['.....', '#####', '..#..'], ['..#..', '.###.', '#...#'], ['.....', '#####', '..#..']];
 const BATS = [
-  { T: 23, v: 58, y: 46, amp: 9, dir: 1, off: 2 },
-  { T: 23, v: 58, y: 58, amp: 7, dir: 1, off: 1.4 },
+  { T: 23, v: 58, y: 72, amp: 9, dir: 1, off: 2 },
+  { T: 23, v: 58, y: 84, amp: 7, dir: 1, off: 1.4 },
   { T: 31, v: 46, y: 96, amp: 12, dir: -1, off: 9 },
   { T: 37, v: 64, y: 30, amp: 6, dir: -1, off: 21 },
   { T: 41, v: 52, y: 72, amp: 14, dir: 1, off: 30 }
@@ -1135,7 +1187,7 @@ export class CastleWorld {
     this.cloudsNear = paintClouds(13, 60, 6, '#151231', '#4d4789', '#0e0c22');
     this.castle = paintCastle();
     this.hills = paintHills();
-    this.fog = paintFog(5, '#3a3470', 0.55);
+    this.fog = paintFog(5, '#3a3470', 0.32);
     this.wall = paintWall();
     this.back = paintBack();
     this.solids = paintSolids();
@@ -1146,12 +1198,12 @@ export class CastleWorld {
       const p = new Pix(44, 44), c = 22;
       for (let y = 0; y < 44; y++) for (let x = 0; x < 44; x++) {
         const d = Math.hypot(x - c, y - c);
-        if (d <= 19.5) p.set(x, y, d > 18.5 ? '#0d0a16' : bayer(x, y) < d / 40 ? '#120e1d' : '#171324');
+        if (d <= 19.5) p.set(x, y, d > 18.5 ? '#0d0a16' : bayer(x, y) < d / 30 ? '#100c1a' : '#161226');
       }
       const step = f / 4;
-      gearPaint(p, c, c, 10, 10, step * (TAU / 10), IRON.slice(1, 5).map((_, i) => [GOLD[0], GOLD[1], GOLD[2], GOLD[3]][i]));
-      gearPaint(p, c - 9.5, c + 11.5, 6.4, 6, -step * (TAU / 6) + 0.3, [IRON[1], IRON[2], IRON[4], IRON[5]], 3);
-      gearPaint(p, c + 11, c - 10, 5.6, 6, -step * (TAU / 6), [IRON[1], IRON[2], IRON[4], IRON[5]], 3);
+      gearPaint(p, c, c, 10, 10, step * (TAU / 10), [IRON[0], IRON[2], IRON[3], IRON[5]]);
+      gearPaint(p, c - 9.5, c + 11.5, 6.4, 6, -step * (TAU / 6) + 0.3, [IRON[0], IRON[1], IRON[2], IRON[4]], 3);
+      gearPaint(p, c + 11, c - 10, 5.6, 6, -step * (TAU / 6), [IRON[0], IRON[1], IRON[2], IRON[4]], 3);
       for (let y = 0; y < 44; y++) for (let x = 0; x < 44; x++) if (Math.hypot(x - c, y - c) > 19.5) p.erase(x, y);
       return p.done();
     });
@@ -1173,8 +1225,8 @@ export class CastleWorld {
     g.drawImage(this.cloudsFar, Math.round(1360 - cf + cam.x * 0.07), 34 + Math.round(cam.y * 0.07));
     [x, y] = par(0.15);
     g.drawImage(this.castle, x - MARGIN, y);
-    g.drawImage(this.fog, Math.round(-((t * 4) % 1280) + x), 104 + y);
-    g.drawImage(this.fog, Math.round(1280 - ((t * 4) % 1280) + x), 104 + y);
+    g.drawImage(this.fog, Math.round(-((t * 4) % 1280) + x), 100 + y);
+    g.drawImage(this.fog, Math.round(1280 - ((t * 4) % 1280) + x), 100 + y);
     g.drawImage(this.cloudsNear, Math.round(-cn + cam.x * 0.1), 4 + Math.round(cam.y * 0.1));
     g.drawImage(this.cloudsNear, Math.round(1360 - cn + cam.x * 0.1), 4 + Math.round(cam.y * 0.1));
     [x, y] = par(0.3);

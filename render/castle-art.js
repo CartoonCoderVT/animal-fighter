@@ -421,9 +421,9 @@ export function drawRoast(g, x, y, t = 0, { emissive = false } = {}) {
 
 // ---- treasure chest ----------------------------------------------------------------------------
 const CHEST = [
-  '..kkkkkkkkkkkk..',
-  '.ke5dddddddd5dk.',
-  'kdd5cccccccc5cbk',
+  '...kkkkkkkkkk...',
+  '..k5eedddddd5k..',
+  'kdd5dccccccc5cbk',
   'kcc4ccGggGcc4bak',
   'k33433GygG33433k',
   'kdd5dcGkkGcc5cbk',
@@ -694,8 +694,8 @@ function chandelierDef() {
     C(0, 2, 0, 15, 1.1, 1.4, 'iron', 1),
     E(0, 6, 2.2, 1.4, 'gold', 1.5),
     Pg(arc(0, Math.PI, 18), 'iron', 3, { b: 0.5 }),
-    E(0, 15.3, 3, 1.8, 'gold', 4),
-    Pg([[-2.2, 16], [2.2, 16], [0.4, 21], [-0.4, 21]], 'iron', 3.8),
+    E(0, 14.6, 2.8, 1.6, 'gold', 4),
+    Pg([[-2, 15.4], [2, 15.4], [0.4, 18.6], [-0.4, 18.6]], 'iron', 3.8),
     E(0, 0.8, 1.6, 1.6, 'iron', 2)
   ];
   const details = [];
@@ -712,8 +712,8 @@ function chandelierDef() {
   for (let i = 1; i < 36; i++) { const a = i / 36 * Math.PI, x = rx * Math.cos(a), y = cy + ry * Math.sin(a); details.push(pxd(x, y + 0.4, i % 6 === 3 ? '#fff3c0' : '#c89040', false)); }
   for (const a of [Math.PI * 0.25, Math.PI * 0.5, Math.PI * 0.75]) {
     const x = rx * Math.cos(a), y = cy + ry * Math.sin(a) + band;
-    shapes.push(E(x, y + 1.6, 1.1, 1.5, 'gold', 4.5));
-    details.push(pxd(x, y + 1.2, '#fff3c0', false));
+    shapes.push(E(x, y + 1.2, 1, 1.2, 'gold', 4.5));
+    details.push(pxd(x, y + 0.8, '#fff3c0', false));
   }
   for (let i = 2; i < 18; i += 4) { const a = i / 18 * Math.PI, x = rx * Math.cos(a), y = cy + ry * Math.sin(a); details.push(pxd(x, y + 1.6, '#9a92b4', false)); }
   // three hanging chains from the hook to the ring
@@ -837,6 +837,19 @@ export function drawCrumble(g, x0, x1, y, { shake = 0, gone = 0, t = 0 } = {}) {
   x0 = Math.round(x0); x1 = Math.round(x1); y = Math.round(y);
   if (gone >= 1 || x1 - x0 < 2) return;
   const stones = ledgeStones(x0, x1);
+  if (gone <= 0 && shake <= 0.05) {
+    // at rest: one baked strip
+    const key = 'ledge|' + x0 + ':' + x1;
+    let c = baked.get(key);
+    if (!c) {
+      const cv = mk(x1 - x0, 8), cg = cv.getContext('2d');
+      stones.forEach(s => paintStone(cg, s.x - x0, 0, s.w, s, 0));
+      c = { c: cv, w: x1 - x0, h: 8, white: null };
+      baked.set(key, c);
+    }
+    g.drawImage(c.c, x0, y);
+    return;
+  }
   if (gone <= 0) {
     stones.forEach((s, i) => {
       const jx = shake > 0.05 ? Math.round(Math.sin(t * 61 + i * 2.3) * Math.min(1, shake * 1.6)) : 0;
