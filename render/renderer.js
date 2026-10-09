@@ -451,10 +451,12 @@ export class Renderer {
     for (const e of events) { this.fx.event(e); this.lola.event(e); this.hype(e, settings); if (!state.fxQueue) this.fx.lastId = Math.max(this.fx.lastId, e.id); }
     this.updateCamera(state, dt, settings, localId);
     const hz = state.hazards || null;
-    this.spawnAmbientFx(state, hz, dt);
     // Effects run on game time: they slow down with the dramatic slow motion and the LAB's, and
-    // hang where they are while Lola holds time still. Hers run on.
-    this.fx.update(state.timeStop ? 0 : dt * (state.drama ? 0.35 : 1) * Math.min(1, state.timeScale ?? 1));
+    // hang where they are while Lola holds time still (no new ones either). Hers run on.
+    if (!state.timeStop) {
+      this.spawnAmbientFx(state, hz, dt);
+      this.fx.update(dt * (state.drama ? 0.35 : 1) * Math.min(1, state.timeScale ?? 1));
+    }
     this.lola.update(dt * (state.drama && !state.timeStop ? 0.35 : 1));
 
     const [ox, oy] = this.shakeOffset(dt, settings);
@@ -1008,7 +1010,7 @@ export class Renderer {
         // Dragged behind him at a run, its head scrapes sparks off the floor.
         if (sc && f.a.ground && Math.abs(f.a.vx || 0) > 3 && sc.y >= f.hy + oy - 3 && this.simDt > 0 && Math.random() < 0.6) this.fx.burst('spark', sc.x - ox, f.hy - 1, 1, { a: (f.a.face || 1) > 0 ? Math.PI + 0.4 : -0.4, spread: 0.8, s: 1.8, life: 0.25, colors: ['#ffffff', '#ffd0a0', this.fx.pal().light], g: 0.1, b: 0.3, em: true });
       }
-      if (f.a.bloodMark) drawMarks(eg, f.a, f.hx + ox, f.hy + oy - (f.a.type === 2 ? 46 : 31), st, this.fx.gore);
+      if (f.a.bloodMark) drawMarks(eg, f.a, f.hx + ox, f.hy + oy - (f.a.type === 2 ? 34 : 31), st, this.fx.gore);
     }
     this.fx.drawHemo(eg, ox, oy, t);
     this.fx.drawEmissive(eg, ox, oy, t);

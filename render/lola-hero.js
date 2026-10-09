@@ -41,15 +41,18 @@ export class LolaHero {
 
   draw(g, x, y, t, { density: s = 2, dt = 1 / 60 } = {}) {
     // The clock is a halo behind her head and bow; the wheel of knives turns round her waist.
-    const cx = x, cy = y - 34 * s, R = 26 * s, wy = y - 18 * s;
+    const cx = x, cy = y - 30 * s, R = 22 * s, wy = y - 15 * s;
     const lt = t - T_POSE, cyc = lt > 0 ? lt % LOOP : -1, stopped = cyc >= STOP[0] && cyc < STOP[1];
+    // The world's own time: it stands still while she holds it, then runs on from there.
+    const held = STOP[1] - STOP[0];
+    const wt = lt > 0 ? T_POSE + Math.floor(lt / LOOP) * (LOOP - held) + Math.min(cyc, STOP[0]) + Math.max(0, cyc - STOP[1]) : t;
     // The clock: swelling in with its hands racing, then ticking second by second (a little
     // overshoot on every tick), and stopped dead while she holds the time.
     const grow = ease(clamp01(t / 0.4));
     let sec;
     if (t < T_FLASH) sec = -t * 220;
     else {
-      const tt = stopped ? Math.floor(lt - cyc + STOP[0]) + 0.99 : t;
+      const tt = stopped ? Math.floor(wt) + 0.99 : wt;
       const f = tt % 1;
       sec = Math.floor(tt) + (f < 0.12 ? Math.sin((f / 0.12) * Math.PI) * 0.15 : 0);
     }
@@ -79,9 +82,9 @@ export class LolaHero {
     // holds the time (and frozen ones glint).
     const wheel = clamp01((t - T_KNIVES) / 0.5);
     if (wheel > 0) {
-      const spinT = stopped ? lt - cyc + STOP[0] : t;
+      const spinT = wt;
       for (let i = 0; i < 8; i++) {
-        const a0 = (i / 8) * Math.PI * 2 + spinT * 1.3, r = (10 + 20 * ease(wheel)) * s;
+        const a0 = (i / 8) * Math.PI * 2 + spinT * 1.3, r = (9 + 18 * ease(wheel)) * s;
         const kx = x + Math.cos(a0) * r, ky = wy + Math.sin(a0) * r * 0.55;
         // Behind her on the far half of the wheel.
         if (Math.sin(a0) < 0) drawKnife(g, kx, ky, a0 + Math.PI / 2, { s, len: 7, glint: stopped ? ((t * 2 + i * 0.3) % 2) : 0 });
@@ -96,9 +99,9 @@ export class LolaHero {
     drawFigure(g, ft < 0.12 ? tintOf(sp, '#ffffff') : sp, x, y, 1, s);
     handKnives(g, a, f, x, y, 1, s, t, 'front');
     if (wheel > 0) {
-      const spinT = stopped ? lt - cyc + STOP[0] : t;
+      const spinT = wt;
       for (let i = 0; i < 8; i++) {
-        const a0 = (i / 8) * Math.PI * 2 + spinT * 1.3, r = (10 + 20 * ease(wheel)) * s;
+        const a0 = (i / 8) * Math.PI * 2 + spinT * 1.3, r = (9 + 18 * ease(wheel)) * s;
         const kx = x + Math.cos(a0) * r, ky = wy + Math.sin(a0) * r * 0.55;
         if (Math.sin(a0) >= 0) drawKnife(g, kx, ky, a0 + Math.PI / 2, { s, len: 7, glint: stopped ? ((t * 2 + i * 0.3) % 2) : 0 });
       }

@@ -44,13 +44,12 @@ export const SCARF = {
 };
 
 const castOf = id => ({ id, palette: PALETTES[id], parts: PARTS[id], tail: TAILS[id] || null, scarf: id === 'bat' ? SCARF : null });
-// Lola stands taller than the others: the big head with its bow sits high over a wide bell of a
-// dress, the short puffed arms hang from the top of it and the feet carry stockings and shoes.
+// Lola's head with its bow sits a pixel higher than the others', so more of her dress shows.
 // eye: the eye in head cells from the head's pivot.
 const LOLA_RIG = {
-  anchor: { head: [0, -19], body: [0, -5], armF: [-1, -16], armB: [-4, -17], footF: [2, -1], footB: [-2, -1], tail: [-4, -5], scarf: [0, -7] },
-  joint: { head: [0, -19], armF: [-1, -16], armB: [-4, -17], footF: [2, -5], footB: [-2, -5] },
-  eye: [5, -5]
+  anchor: { head: [1, -10], body: [0, -2], armF: [4, -7], armB: [1, -8], footF: [2, -1], footB: [-2, -1], tail: [-4, -5], scarf: [0, -7] },
+  joint: { head: [1, -10], armF: [4, -7], armB: [1, -8], footF: [2, -2], footB: [-2, -2] },
+  eye: [3, -4]
 };
 // The fighters, by type. Alternate forms are casts of their own with their own anchors.
 export const CAST = Object.keys(PARTS).filter(id => id !== 'ocelotBeast').map(id => (id === 'rabbit' ? { ...castOf(id), ...LOLA_RIG } : castOf(id)));

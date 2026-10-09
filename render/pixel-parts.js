@@ -229,65 +229,52 @@ export const PARTS = {
       '6677',
     ],
   },
-  // Lola, the white rabbit of the clock: pink-white fur under a wine outline, long pink-lined ears,
-  // a big light-blue bow, one big black eye and a pink blush; a light-blue dress with puffed sleeves
-  // and a gingham hem over a white petticoat, a white apron with a red heart, a black ribbon at the
-  // collar, a gold pocket watch at her hip, white stockings and black Mary Janes. She stands taller
-  // than the others (her own rig in pixel-data.js). Faces patch the eye and mouth of the base head
-  // (below).
+  // Lola, the white rabbit of the clock, at the size of the others: pink-white fur under a wine
+  // outline, long pink-lined ears, a light-blue bow on her head, one big black eye and a pink blush;
+  // a light-blue dress with puffed sleeves and a gingham hem over a white frill, a white apron with
+  // a red heart, a black ribbon at the collar, a gold pocket watch at her back hip, white stockings
+  // and black Mary Janes. Her head sits a pixel higher than the others' (her rig in pixel-data.js).
+  // Faces patch the eye and mouth of the base head (below).
   rabbit: {
     head: [
-      '.....11......12......',
-      '....1112....1122.....',
-      '....11662...12262....',
-      '....12662...22663....',
-      '.....12661.22663.....',
-      '.....12661.22663.....',
-      '.....12661.22663.....',
-      '.....12661.22663.....',
-      '.....12671.226xx.....',
-      '.....12671.32x999....',
-      '.....126xx.3x99998...',
-      '.xx..21x99x8899998...',
-      'x99x.32x99998x8898...',
-      'x999x33x9998881882...',
-      '.x99982188811112222..',
-      '..8889o1111111122222.',
-      '.x9998211111222ee222.',
-      'x9998221111222eee1116',
-      'x9983221112222eee1116',
-      '.88.3222222222ee2112.',
-      '....322222226622222..',
-      '.....3222222662222...',
-      '.......333333333.....',
+      '...11....12....',
+      '...166...126...',
+      '...1662.2266...',
+      '....266.266....',
+      '....266.266....',
+      '....261.266x...',
+      '....261.2x99x..',
+      '.x..26xx899998.',
+      'x9x.2x99889x8..',
+      'x99x3x9988182..',
+      '.888o188111222.',
+      'x998211112ee226',
+      'x998211122ee116',
+      '8883222222ee116',
+      '...3222266222..',
+      '.....3333332...',
     ],
     body: [
-      '.......4444444.......',
-      '..xx..544444445......',
-      '.x99x.544444e4e4.....',
-      '.x99g89999994e44.....',
-      '..8g..899999e4e5.....',
-      '.hgggh99999994448....',
-      'hg444gh99999444448...',
-      'g44e44h999944r4r448..',
-      'g44ee4h999944rrr4448.',
-      'hg444hh9999444r44458.',
-      'xhhhhh999995454545498',
-      '949494949494949494949',
-      '494949494949494949494',
-      '544444444444444444445',
-      '.4.444.444.444.444.4.',
+      '....44444....',
+      '.xx.444e4e...',
+      'x99x9999e4...',
+      '.8g89999444..',
+      '.ggg9999448..',
+      'g44g99r4r444.',
+      'g4eg99rrr448.',
+      '.gg9999r4448.',
+      'x999999944448',
+      '9494949494949',
+      '4545454545454',
     ],
     arm: [
-      'x99.',
-      '9988',
-      '.12.',
-      '.22.',
+      'x9.',
+      '989',
+      '.12',
+      '.22',
     ],
     foot: [
-      '.44.',
-      '.45.',
-      '.eee',
+      '.445',
       'eeee',
     ],
   },
@@ -686,11 +673,11 @@ const face = (base, patches) => base.map((row, y) => {
 });
 {
   const L = PARTS.rabbit, h = L.head;
-  L.headBlink = face(h, [[16, 15, '22'], [17, 14, '222'], [19, 14, '22']]);
-  L.headHurt = face(h, [[16, 14, 'e22'], [17, 14, '2'], [18, 16, '2'], [19, 15, '2']]);
-  L.headAngry = face(h, [[15, 13, 'ee'], [16, 15, '2']]);
-  L.headOpen = face(h, [[19, 18, 'ee'], [20, 17, 'e7']]);
-  L.headDead = face(h, [[16, 14, 'e2'], [17, 14, '2e2'], [18, 15, '2'], [19, 14, '22']]);
+  L.headBlink = face(h, [[11, 10, '22'], [12, 10, 'ee'], [13, 10, '22']]);
+  L.headHurt = face(h, [[11, 10, 'e2'], [12, 10, '2e'], [13, 10, 'e2']]);
+  L.headAngry = face(h, [[10, 10, 'ee'], [11, 10, '2e']]);
+  L.headOpen = face(h, [[14, 11, 'ee'], [15, 11, 'e7']]);
+  L.headDead = face(h, [[11, 10, 'e2'], [12, 10, '2e'], [13, 10, 'e2']]);
 }
 
 // Pain: the squeezed eyes of the hurt face with the open mouth of the shout.

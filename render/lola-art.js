@@ -88,8 +88,8 @@ export function handKnives(g, a, f, fx, fy, face, scale, time, layer) {
     const h = handOf(frame, slot, fx, fy, face, scale, ch), c = Math.cos(h.ang), sn = Math.sin(h.ang);
     if (hold === 'watch') { drawWatch(g, h.x + c * 2 * scale, h.y + sn * 2 * scale, scale, time, a.wPose !== 'snap'); continue; }
     const glint = ((time * 0.9 + (slot === 'armB' ? 0.4 : 0) + (a.id || 0) * 0.17) % 2.2);
-    if (hold === 'one') drawKnife(g, h.x + c * scale, h.y + sn * scale, h.ang, { s: scale, len: 8, glint: glint < 1 ? glint : 0 });
-    else for (const d of [-0.42, 0, 0.42]) drawKnife(g, h.x + Math.cos(h.ang + d) * scale, h.y + Math.sin(h.ang + d) * scale, h.ang + d, { s: scale, len: 7, glint: d === 0 && glint < 1 ? glint : 0 });
+    if (hold === 'one') drawKnife(g, h.x + c * scale, h.y + sn * scale, h.ang, { s: scale, len: 6, glint: glint < 1 ? glint : 0 });
+    else for (const d of [-0.45, 0, 0.45]) drawKnife(g, h.x + Math.cos(h.ang + d) * scale, h.y + Math.sin(h.ang + d) * scale, h.ang + d, { s: scale, len: 6, glint: d === 0 && glint < 1 ? glint : 0 });
   }
 }
 
@@ -203,17 +203,7 @@ export class LolaFX {
   drawEmissive(g, state, ox, oy) {
     for (const gh of this.ghosts) this.drawGhost(g, gh, ox, oy);
     for (const r of this.rings) this.drawRing(g, r, ox, oy);
-    for (const tr of this.trails) {
-      const k = tr.t / tr.life, n = Math.max(1, Math.round(Math.hypot(tr.x2 - tr.x, tr.y2 - tr.y) / 3));
-      g.globalAlpha = 1 - k;
-      for (let i = 0; i <= n; i++) {
-        const u = i / n;
-        if (u < k * 0.8) continue;
-        g.fillStyle = i % 2 ? BLUE.light : '#ffffff';
-        g.fillRect(Math.round(tr.x + (tr.x2 - tr.x) * u + ox), Math.round(tr.y + (tr.y2 - tr.y) * u + oy), 1, 1);
-      }
-      g.globalAlpha = 1;
-    }
+    this.drawTrails(g, ox, oy);
     for (const p of this.sparks) {
       g.globalAlpha = Math.min(1, (p.life / p.max) * 1.5);
       g.fillStyle = p.c;
@@ -229,6 +219,21 @@ export class LolaFX {
     }
   }
 
+  // The dotted line of a skip, from where she was to where she is, eaten from the start.
+  drawTrails(g, ox, oy) {
+    for (const tr of this.trails) {
+      const k = tr.t / tr.life, n = Math.max(1, Math.round(Math.hypot(tr.x2 - tr.x, tr.y2 - tr.y) / 3));
+      g.globalAlpha = 1 - k;
+      for (let i = 0; i <= n; i++) {
+        const u = i / n;
+        if (u < k * 0.8) continue;
+        g.fillStyle = i % 2 ? BLUE.light : '#ffffff';
+        g.fillRect(Math.round(tr.x + (tr.x2 - tr.x) * u + ox), Math.round(tr.y + (tr.y2 - tr.y) * u + oy), 1, 1);
+      }
+    }
+    g.globalAlpha = 1;
+  }
+
   drawGhost(g, gh, ox, oy) {
     const k = gh.t / gh.life, sg = this.sg, W = 72, H = 64, FX = 36, FY = 50;
     sg.globalCompositeOperation = 'source-over';
@@ -241,7 +246,7 @@ export class LolaFX {
     const lvl = Math.min(16, Math.floor(k * 18));
     if (lvl > 0) { sg.fillStyle = sg.createPattern(DITHER[lvl], 'repeat'); sg.fillRect(0, 0, W, H); }
     const cut = Math.round(H - (H - 4) * Math.max(0, k - 0.3) / 0.7);
-    if (cut < H) sg.fillRect(0, cut, W, H - cut);
+    if (cut < H) { sg.fillStyle = '#000'; sg.fillRect(0, cut, W, H - cut); }
     sg.globalCompositeOperation = 'source-over';
     g.globalAlpha = k < 0.12 ? 1 : 0.85;
     g.drawImage(this.scratch, Math.round(gh.x + ox - FX), Math.round(gh.y + oy - FY));
@@ -276,7 +281,7 @@ export class LolaFX {
       if (k.k < 1) for (let i = 3; i < 9; i++) { g.globalAlpha = 0.6 * (1 - i / 9); g.fillStyle = '#ffffff'; g.fillRect(Math.round(x - c * i), Math.round(y - sn * i), 1, 1); }
       g.globalAlpha = 1;
       const glint = (this.time * 0.7 + (k.id || 0) * 0.137) % 3;
-      drawKnife(g, x - c * 8, y - sn * 8, k.ang, { len: 8, glint: glint < 1 ? glint : 0 });
+      drawKnife(g, x - c * 7, y - sn * 7, k.ang, { len: 7, glint: glint < 1 ? glint : 0 });
     }
   }
 
@@ -363,6 +368,7 @@ export class LolaFX {
       }
       for (const gh of this.ghosts) this.drawGhost(sg, gh, ox, oy);
       for (const r of this.rings) this.drawRing(sg, r, ox, oy);
+      this.drawTrails(sg, ox, oy);
       for (const p of this.sparks) { sg.fillStyle = p.c; sg.fillRect(Math.round(p.x + ox), Math.round(p.y + oy), 1, 1); }
     }
   }
