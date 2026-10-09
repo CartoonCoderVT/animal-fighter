@@ -140,6 +140,11 @@ export class Renderer {
     this.darkNox = null; this.darkNoxMod = null;
     import('./dark-nox.js').then(m => { this.darkNoxMod = m; this.darkNox = new m.DarkNoxFX(this); }).catch(e => console.warn('dark nox', e));
     import('./castle-world.js').then(m => { this.worlds.castle = new m.CastleWorld(); }).catch(e => console.warn('castle world', e));
+    // The Cat King's court, his crown, cape and scepter, and his entrance on the select screen.
+    this.court = null; this.courtMod = null; this.kingArt = null; this.KingHero = null;
+    import('./court-art.js').then(m => { this.courtMod = m; this.court = new m.CourtFX(this); }).catch(e => console.warn('court art', e));
+    import('./king-art.js').then(m => { this.kingArt = m; }).catch(e => console.warn('king art', e));
+    import('./king-hero.js').then(m => { this.KingHero = m.KingHero; }).catch(e => console.warn('king hero', e));
     this.resize();
   }
 
@@ -162,6 +167,7 @@ export class Renderer {
     this.fx.reset();
     this.lola.reset();
     this.darkNox?.reset?.();
+    this.court?.reset?.();
     this.figCache.clear();
     this.secondary.clear();
     this.trails.clear();
@@ -488,7 +494,7 @@ export class Renderer {
     this.fx.gore = settings.gore ?? 2;
     this.fx.limit = settings.particles === false ? 300 : 900;
     const events = state.fxQueue ? state.fxQueue.splice(0) : (state.events || []).filter(e => e.type === 'fx' && e.id > this.fx.lastId);
-    for (const e of events) { this.fx.event(e); this.lola.event(e); this.darkNox?.event(e); this.hype(e, settings); if (!state.fxQueue) this.fx.lastId = Math.max(this.fx.lastId, e.id); }
+    for (const e of events) { this.fx.event(e); this.lola.event(e); this.darkNox?.event(e); this.court?.event(e); this.hype(e, settings); if (!state.fxQueue) this.fx.lastId = Math.max(this.fx.lastId, e.id); }
     this.updateCamera(state, dt, settings, localId);
     const hz = state.hazards || null;
     // Effects run on game time: they slow down with the dramatic slow motion and the LAB's, and
@@ -500,6 +506,7 @@ export class Renderer {
     this.lola.update(dt * (state.drama && !state.timeStop ? 0.35 : 1));
     this.lola.watch(state);
     this.darkNox?.update(dt * (state.drama ? 0.35 : 1));
+    if (!state.timeStop) this.court?.update(dt * (state.drama ? 0.35 : 1));
 
     const [ox, oy] = this.shakeOffset(dt, settings);
     const rich = settings.particles !== false && !this.autoLow;
@@ -558,10 +565,21 @@ export class Renderer {
     this.lola.drawLit(lg, state, ox, oy);
     this.drawTrails(lg, figures, ox, oy);
     if (this.darkNox) for (const f of figures) if (f.a.type === 4 && (f.a.form === 'dark' || f.a.act === 'darkRise' || f.a.act === 'darkFade')) this.darkNox.drawBack(lg, f, ox, oy, state.time ?? t);
+    // The Cat King's court behind him, and his cape.
+    const kings = state.actors.filter(a => a.court);
+    if (this.court) for (const a of kings) this.court.drawCourt(lg, a, ox, oy, state.time ?? t, false);
+    if (this.kingArt) for (const f of figures) if (f.a.type === 0 && !f.a.dead) this.kingArt.drawRegalia(lg, f, ox, oy, state.time ?? t, 'back');
     for (const f of figures) {
       if (f.a.invincible > 0.1 && Math.floor(t * 12) % 2) lg.globalAlpha = 0.55;
       lg.drawImage(f.fc.body.c, f.x, f.y);
       lg.globalAlpha = 1;
+    }
+    // His crown and scepter, then the court in front of him (the shield on guard, whoever is striking),
+    // and their arrows.
+    if (this.kingArt) for (const f of figures) if (f.a.type === 0 && !f.a.dead) this.kingArt.drawRegalia(lg, f, ox, oy, state.time ?? t, 'front');
+    if (this.court) {
+      for (const a of kings) this.court.drawCourt(lg, a, ox, oy, state.time ?? t, true);
+      for (const b of state.bullets || []) if (b.kind === 'arrow' || b.kind === 'magic') this.court.drawBullet(lg, b, ox, oy, state.time ?? t);
     }
     // DARK NOX's scythe flying on its own, over the fighters.
     if (this.darkNox?.drawFamiliar) for (const a of state.actors) if (a.fam) this.darkNox.drawFamiliar(lg, a, ox, oy, state.time ?? t, false);
@@ -988,7 +1006,7 @@ export class Renderer {
     for (const a of state.actors) if (!a.dead && a.burning > 0) add({ x: X(a.x), y: X(a.y) - 6, r: 50, color: '#ff9a45', i: 0.8 });
     for (const p of state.props) if (p.rocket || p.burning > 0) add({ x: X(p.x), y: X(p.y), r: 54, color: '#ffae5a', i: 0.8 });
     // Lola's knives give a small cold light; other shots a warm one.
-    for (const b of state.bullets || []) add(b.kind === 'knife' ? { x: X(b.x), y: X(b.y), r: 10, color: '#cfe4ff', i: 0.45, noRim: true } : { x: X(b.x), y: X(b.y), r: b.word ? 22 : 14, color: b.word ? b.color : '#ffe2a0', i: 0.6, noRim: !!b.word });
+    for (const b of state.bullets || []) if (b.kind !== 'arrow') add(b.kind === 'knife' ? { x: X(b.x), y: X(b.y), r: 10, color: '#cfe4ff', i: 0.45, noRim: true } : { x: X(b.x), y: X(b.y), r: b.word ? 22 : 14, color: b.word ? b.color : '#ffe2a0', i: 0.6, noRim: !!b.word });
     if (hz?.cable) {
       const end = hz.cable[hz.cable.length - 1];
       if (Math.random() < 0.6) add({ x: X(end[0]), y: X(end[1]), r: 30, color: '#8af0ff', i: 0.5 + Math.random() * 0.4 });
@@ -1001,6 +1019,8 @@ export class Renderer {
     }
     if (this.darkNoxMod) for (const f of figures) if (f.a.type === 4 && (f.a.form === 'dark' || f.a.act === 'darkRise')) for (const l of this.darkNoxMod.darkLights(f, t) || []) add(l);
     if (this.darkNoxMod?.familiarLights) for (const a of state.actors) if (a.fam) for (const l of this.darkNoxMod.familiarLights(a, t, this.fx.gore) || []) add(l);
+    if (this.courtMod?.courtLights) for (const l of this.courtMod.courtLights(state, t) || []) add(l);
+    if (this.kingArt?.regaliaLights) for (const f of figures) if (f.a.type === 0 && !f.a.dead) for (const l of this.kingArt.regaliaLights(f, t) || []) add(l);
     for (const f of figures) if (f.a.type === 4 && f.info?.eye) {
       add({ x: f.info.eye.x, y: f.info.eye.y, r: 10, color: '#ff4f6e', i: 0.7, noRim: true });
       // The blood orb lights the claw up as it condenses.
@@ -1031,7 +1051,7 @@ export class Renderer {
       }
     }
     for (const b of state.bullets || []) {
-      if (b.kind === 'knife') continue;
+      if (b.kind === 'knife' || ((b.kind === 'arrow' || b.kind === 'magic') && this.court)) continue;
       const x = X(b.x) + ox, y = X(b.y) + oy;
       if (b.word) drawText(eg, b.word, x, y - 5, { color: b.color, outline: '#1a1424', align: 'center' });
       else {
@@ -1055,6 +1075,10 @@ export class Renderer {
       this.darkNox.drawEffects(eg, ox, oy, st);
       if (this.darkNox.drawFamiliar) for (const a of state.actors) if (a.fam) this.darkNox.drawFamiliar(eg, a, ox, oy, st, true);
       if (state.pools?.length && this.darkNox.drawPoolsGlow) this.darkNox.drawPoolsGlow(eg, state.pools.map(p => (Array.isArray(p) ? p : [p.x, p.y, p.amt, p.by])), state.actors, ox, oy, st);
+    }
+    if (this.court) {
+      for (const a of state.actors) if (a.court) this.court.drawCourtGlow(eg, a, ox, oy, st);
+      this.court.drawEffects(eg, ox, oy, st);
     }
     for (const f of figures) {
       if (f.a.type === 4 && f.a.act === 'swarm') this.drawSwarm(eg, f, ox, oy, st);
@@ -1193,6 +1217,7 @@ export class Renderer {
   drawHero(g, type, x, y, t, { density = 2, dt = 1 / 60, key = 'hero' + type } = {}) {
     if (type === 4) { (this.noxHero ||= new NoxHero(this)).draw(g, x, y, t, { density, dt, gore: this.fx.gore }); return; }
     if (type === 2) { (this.lolaHero ||= new LolaHero(this)).draw(g, x, y, t, { density, dt }); return; }
+    if (type === 0 && this.KingHero) { (this.kingHero ||= new this.KingHero(this)).draw(g, x, y, t, { density, dt }); return; }
     this.drawPreview(g, type, x, y, { density, mode: 'demo', key, face: 1, dt });
   }
 
