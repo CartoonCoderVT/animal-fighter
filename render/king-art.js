@@ -176,6 +176,9 @@ const isOrder = a => a.attack > 0 && ORDERS[a.attackKind];
 const orderP = a => clamp(1 - a.attack / (MOVES[a.attackKind]?.dur || 0.3), 0, 1);
 const decreeOf = a => (a.act === 'decree' ? a.actT ?? 0 : -1);
 
+// Frames every fighter shares: in these the arm is not aiming the scepter anywhere.
+const GENERIC = /^(idle|run|jump|fall|crouch|land|skid|hurt|dizzy|tumble|glide|carry|climb|throw|stomp|parry|airdash|roll)/;
+
 // Steps the springs once per sim time and returns this frame's pose of the regalia.
 function pose(a, f, t, st) {
   const dt = clamp(t - st.t, 0, 0.1);
@@ -196,35 +199,45 @@ function pose(a, f, t, st) {
     st.vW += ((W * face - st.W) * 160 - st.vW * 11) * h; st.W += st.vW * h;
     st.vL += ((L - st.L) * 120 - st.vL * 10) * h; st.L += st.vL * h;
   }
-  // The scepter.
-  let ang = REST, reach = 0, beat = 0, smear = null, glow = 0;
+  // The scepter. When his frame lifts the arm (the order and decree poses) it points along the arm;
+  // with the arm down it is keyed here, and never swings up through his face.
+  const frame = f.info?.frame || {}, armDeg = frame.armF?.[2] || 0, armAng = 180 + armDeg;
+  const posed = Math.abs(armDeg) >= 70 && !GENERIC.test(f.info?.name || '');
+  const clear = v => (posed || v < -90 || v >= 26 ? [v, 0] : [26, (26 - Math.max(v, -40)) / 30]);
+  let ang = REST, reach = 0, beat = 0, glow = 0;
   const name = f.info?.name || '';
   if (dec >= 0) {
     if (st.kind !== 'decree') { st.kind = 'decree'; st.from = st.ang; }
     const up = ease(clamp(dec / 0.2, 0, 1)), down = clamp((dec - 2.4) / 0.2, 0, 1);
-    ang = st.from + (0 - st.from) * up + (REST - 0) * down; reach = 2 * up * (1 - down);
+    const [high, extra] = clear(posed ? armAng : 0);
+    ang = st.from + (high - st.from) * up + (REST - high) * down; reach = (2 + extra) * up * (1 - down);
     glow = Math.min(up, 1 - down);
     beat = dec < 0.45 ? clamp(1 - Math.abs(dec - 0.2) / 0.25, 0, 1) : 0.35 + 0.25 * Math.sin(t * 8);
-    if (dec < 0.24) smear = { from: st.from, to: ang };
   } else if (isOrder(a)) {
     const p = orderP(a);
     if (st.kind !== a.attackKind || p < st.p) { st.kind = a.attackKind; st.from = st.ang; }
     st.p = p;
     const o = orderAt(a.attackKind, p, st.from), b = BEAT(a.attackKind);
-    ang = o.ang; reach = o.reach;
+    const [v, extra] = clear(posed ? armAng : o.ang);
+    ang = v; reach = o.reach + extra;
     beat = clamp(1 - Math.abs(p - b) / 0.16, 0, 1);
-    if (p > b - 0.24 && p < b + 0.1) smear = { from: orderAt(a.attackKind, Math.max(0, p - 0.14), st.from).ang, to: ang };
   } else {
     st.kind = null;
-    if (hurt) ang = -40 + Math.sin(t * 30) * 8;
-    else if (a.ground === false) ang = 14;
-    else if (/^run/.test(name) || Math.abs(vx) > 1.2) ang = 58 + (name === 'run1' ? 6 : name === 'run2' ? -6 : 0);
-    else if (name === 'crouch') ang = 60;
-    ang += Math.sin(t * 2.1) * 3;
-    st.ang += (ang - st.ang) * Math.min(1, dt * 18);
+    let v = REST;
+    if (hurt) v = -40 + Math.sin(t * 30) * 8;
+    else if (a.ground === false) v = posed ? clamp(armAng, 10, 80) : 20;
+    else if (/^run/.test(name) || Math.abs(vx) > 1.2) v = 58 + (name === 'run1' ? 6 : name === 'run2' ? -6 : 0);
+    else if (name === 'crouch' || name === 'land') v = 62;
+    v += Math.sin(t * 2.1) * 3;
+    st.ang += (v - st.ang) * Math.min(1, dt * 18);
     ang = st.ang;
   }
   if (dec >= 0 || isOrder(a)) st.ang = ang;
+  // The swing over the last few frames, for the smear.
+  const hist = (st.hist ||= []);
+  if (dt > 0) { hist.push([t, ang]); while (hist.length > 8) hist.shift(); }
+  let smear = null;
+  if (dec >= 0 || isOrder(a)) for (const [ht, ha] of hist) if (t - ht <= 0.09 && Math.abs(ha - ang) >= 20) { smear = { from: ha, to: ang }; break; }
   return { W: st.W * face, L: st.L, ang, reach, beat, smear, glow, hurt };
 }
 
@@ -318,8 +331,9 @@ function drawCape(g, T, frame, P, t, v, mask) {
   for (let y = box.y0; y <= box.y1; y++) for (let x = -CX + 1; x < CW - CX - 1; x++) {
     const c = grid[(y + CY) * CW + x + CX];
     if (!c) continue;
-    const [X, Y] = toView(T, x, y), vx = Math.round(X), vy = Math.round(Y);
-    if (mask && mask(vx, vy)) continue;
+    const [X, Y] = spin(T, x, y);
+    if (mask && mask(X, Y)) continue;
+    const vx = Math.round(T.ox + T.bx + X * T.face * s), vy = Math.round(T.oy + T.by + Y * s);
     if (c !== last) { g.fillStyle = pal[CODES[c]]; last = c; }
     g.fillRect(vx, vy, s, s);
   }
@@ -459,9 +473,9 @@ export function drawKingRegalia(g, T, a, frame, P, t, layer, { mask = null, ch =
         g.fillRect(X, Y, s, s);
         g.globalAlpha = 1;
       }
-      if (P.glow > 0.2 || P.beat > 0.6) {
+      if (P.glow > 0.2) {
         const [X, Y] = cell(T, cx, cy - 5);
-        g.globalAlpha = 0.8 * Math.max(P.glow * (0.6 + 0.4 * Math.sin(t * 6)), P.beat > 0.6 ? 1 : 0);
+        g.globalAlpha = 0.8 * P.glow * (0.6 + 0.4 * Math.sin(t * 6));
         star(g, X, Y, 2, s, '#ffffff', '#fff0a0');
         g.globalAlpha = 1;
       }
@@ -471,15 +485,12 @@ export function drawKingRegalia(g, T, a, frame, P, t, layer, { mask = null, ch =
 
 // His body's own pixels, tail left out (with secondary motion the tail is a separate overlay and
 // info.sprite is the rest of him): the cape stays behind his body and arms but covers the root of
-// his tail, which pokes out from under it.
-function bodyMask(T, s) {
+// his tail, which pokes out from under it. Tested in character space (quarter turns applied), so it
+// holds at any scale and facing.
+export function bodyMask(s) {
   if (!s?.canvas) return null;
   const A = (s._kingA ||= s.canvas.getContext('2d').getImageData(0, 0, s.w, s.h).data);
-  const fx = Math.round(T.ox + T.bx), fy = Math.round(T.oy + T.by), face = T.face;
-  return (vx, vy) => {
-    const lx = face > 0 ? vx - fx - s.x0 : fx - vx - s.x0, ly = vy - fy - s.y0;
-    return lx >= 0 && ly >= 0 && lx < s.w && ly < s.h && A[(ly * s.w + lx) * 4 + 3] > 0;
-  };
+  return (X, Y) => { const lx = X - s.x0, ly = Y - s.y0; return lx >= 0 && ly >= 0 && lx < s.w && ly < s.h && A[(ly * s.w + lx) * 4 + 3] > 0; };
 }
 
 const poses = new Map();
@@ -494,13 +505,16 @@ export function drawRegalia(g, f, ox, oy, t, layer = 'front') {
   const a = f?.a;
   if (!a || a.type !== 0 || !f.info) return;
   const { frame, ch, T } = basis(f, ox, oy), P = poseFor(f, t);
-  drawKingRegalia(g, T, a, frame, P, t, layer, { mask: layer === 'back' ? bodyMask(T, f.info.sprite) : null, ch });
+  drawKingRegalia(g, T, a, frame, P, t, layer, { mask: layer === 'back' ? bodyMask(f.info.sprite) : null, ch });
 }
 
 export function regaliaLights(f, t) {
   const a = f?.a;
   if (!a || a.type !== 0 || !f.info || (a.severed || []).includes('armF')) return [];
-  const { frame, ch, T } = basis(f, 0, 0), P = poseFor(f, t);
+  // Lights are gathered before the figures are drawn, on another clock: use the pose last drawn.
+  const P = poses.get(a.id);
+  if (!P) return [];
+  const { frame, ch, T } = basis(f, 0, 0);
   const [x, y] = orbPoint(T, frame, ch, P), out = [{ x, y, r: 9 + P.beat * 10, color: '#ffd27a', i: 0.25 + P.beat * 0.5 }];
   if (P.glow > 0) out.push({ x, y, r: 30 + P.glow * 40 + Math.sin(t * 8) * 4, color: '#ffe08a', i: 0.6 + P.glow * 0.8 });
   return out;

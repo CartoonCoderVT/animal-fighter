@@ -292,6 +292,29 @@ function dagger(G, K, hand, a, len = 3) {
   G.end();
 }
 
+// The kite shield, centred on c, turned by rot (radians, clockwise; 0 upright, its point down): a red
+// field lit on its left, a gold rim and the royal crest (a little gold crown).
+function shieldOf(G, K, c, rot, w, h) {
+  const cs = Math.cos(rot), sn = Math.sin(rot), at = (x, y) => [c[0] + x * cs - y * sn, c[1] + x * sn + y * cs];
+  G.begin(true);
+  G.poly([at(-w, -h * 0.45), at(w, -h * 0.45), at(w, h * 0.12), at(0, h * 0.55), at(-w, h * 0.12)], K.main, () => 2);
+  for (let i = 0; i < G.R.length; i++) {
+    if (G.P[i] !== G.pid) continue;
+    const x = (i % GW) - OX + 0.5 - c[0], y = Math.floor(i / GW) - OY + 0.5 - c[1], lx = x * cs + y * sn, ly = -x * sn + y * cs;
+    const rim = G.P[i - 1] !== G.pid || G.P[i + 1] !== G.pid || G.P[i - GW] !== G.pid || G.P[i + GW] !== G.pid;
+    if (rim) { G.R[i] = K.trim; G.L[i] = lx < 0 || ly < -h * 0.3 ? 3 : 2; }
+    else G.L[i] = lx < -1 ? 3 : lx > 1.2 ? 1 : 2;
+  }
+  if (w >= 2.5) {
+    const k = at(0, -h * 0.08), kx = Math.round(k[0] - 0.5), ky = Math.round(k[1] - 0.5);
+    G.set(kx - 1, ky, K.trim, 3); G.set(kx, ky, K.trim, 4); G.set(kx + 1, ky, K.trim, 2);
+    G.set(kx - 1, ky - 1, K.trim, 4); G.set(kx + 1, ky - 1, K.trim, 3); G.set(kx, ky - 1, K.main, 1); G.set(kx, ky + 1, K.main, 1);
+  }
+  G.end();
+  G.pt('shield', ...at(0, -h * 0.08));
+  G.pt('shieldTip', ...at(0, h * 0.55));
+}
+
 // ---- each familiar -----------------------------------------------------------------------------
 const BUILD = {
   // The soldier: a little ginger cat in a round steel cap (ear guards, a red plume), a red tabard
@@ -455,30 +478,7 @@ const BUILD = {
     }
     G.set(hx - 1, hy - 4, K.trim, 3); G.set(hx, hy - 4, K.trim, 3); G.set(hx - 2, hy - 4, K.trim, 3); G.set(hx - 1, hy - 5, K.trim, 4);
     G.end();
-    if (!o.noShield) {
-      const [sx, sy] = o.sh, w = o.shW ?? 3.5, hgt = o.shH ?? 12, tilt = o.shA || 0;
-      G.begin(true);
-      const at = (x, y) => [x + (y - sy) * tilt, y];
-      G.poly([at(sx - w, sy), at(sx + w, sy), at(sx + w, sy + hgt * 0.55), at(sx, sy + hgt), at(sx - w, sy + hgt * 0.55)], K.main, () => 2);
-      // The gold rim and the shading of the field.
-      for (let i = 0; i < G.R.length; i++) {
-        if (G.P[i] !== G.pid) continue;
-        const x = (i % GW) - OX, y = Math.floor(i / GW) - OY, cx = sx + (y - sy) * tilt;
-        const rim = !G.R[i - 1] || G.P[i - 1] !== G.pid || !G.R[i + 1] || G.P[i + 1] !== G.pid || !G.R[i - GW] || G.P[i - GW] !== G.pid || !G.R[i + GW] || G.P[i + GW] !== G.pid;
-        if (rim) { G.R[i] = K.trim; G.L[i] = x < cx || y === Math.floor(sy) ? 3 : 2; }
-        else G.L[i] = x < cx - 1 ? 3 : x > cx + 1 ? 1 : 2;
-      }
-      // The crest: a little gold crown.
-      const kx = Math.round(sx + hgt * 0.38 * tilt), ky = Math.round(sy + hgt * 0.38);
-      if (w >= 3) {
-        G.set(kx - 1, ky, K.trim, 3); G.set(kx, ky, K.trim, 4); G.set(kx + 1, ky, K.trim, 2);
-        G.set(kx - 1, ky - 1, K.trim, 4); G.set(kx + 1, ky - 1, K.trim, 3); G.set(kx, ky - 1, K.main, 1);
-        G.set(kx, ky + 1, K.main, 1);
-      }
-      G.end();
-      G.pt('shield', sx + hgt * 0.4 * tilt, sy + hgt * 0.4);
-      G.pt('shieldTop', sx, sy);
-    }
+    if (!o.noShield) shieldOf(G, K, o.sh, o.shRot || 0, o.shW ?? 3.5, o.shH ?? 10);
     if (o.showArm) arm(G, Kb, c, o.hand);
   }
 };
