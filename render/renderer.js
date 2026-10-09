@@ -33,7 +33,7 @@ const FIG_W = 72, FIG_H = 64, FIG_X = 36, FIG_Y = 50;
 const WEAPON_SCALE = 0.7;
 // Nox's eye in head cells from the head pivot; the hand at the tip of the near arm.
 const EYE = [2, -6], HAND = [0, 3];
-const DEMO_ACT = ['pounce', 'ball', 'world', 'morph', 'beam'];
+const DEMO_ACT = ['decree', 'ball', 'world', 'morph', 'beam'];
 // The instant of Juma's transformation: the figure burns white just before and after the pop.
 function morphFlash(a) {
   const t = a.actT ?? 0;
@@ -45,7 +45,7 @@ function morphFlash(a) {
 const morphJitter = (a, time) => (a.act === 'morph' && (a.actT ?? 0) > 0.12 && (a.actT ?? 0) < 0.6 ? (Math.floor(time * 34) % 2 ? 1 : -1) : 0);
 const JUMA_TRAIL = { null: '#ffd27a', beast: '#ff7a2a' };
 // Specials the menu preview carries forward across the pedestal.
-const DEMO_MOVES = ['pounce', 'ball', 'bite'];
+const DEMO_MOVES = ['ball', 'bite'];
 
 function vignette() {
   const c = mk(VIEW_W, VIEW_H), g = c.getContext('2d');

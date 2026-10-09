@@ -31,7 +31,6 @@ export function endAct(g, a) {
   }
   a.act = null;
   a.actT = 0;
-  a.rideOn = null;
 }
 
 export function startSpecial(g, a) {
@@ -48,13 +47,7 @@ export function startSpecial(g, a) {
   a.attack = 0;
   a.hits = null;
   g.fx('focus', { x: a.x, y: a.y, p: 0.6 });
-  if (sp.id === 'pounce') {
-    setAct(a, 'pounce', sp.dur);
-    Body.setVelocity(a.body, { x: a.face * 9.5, y: a.ground ? -5.5 : Math.min(v.y, -2.5) });
-    a.ground = false;
-    g.text(a.x, a.y - 30, 'BOTE!', '#ffb763');
-    g.sound('swing', a.x);
-  } else if (sp.id === 'ball') {
+  if (sp.id === 'ball') {
     setAct(a, 'ball', sp.dur);
     a.ballV = a.face * 8.5;
     a.ballHit = {};
@@ -242,34 +235,6 @@ export function stepSpecial(g, a, input, pressed, dt) {
   a.actT += dt;
   const v = a.body.velocity;
   switch (a.act) {
-    case 'pounce': {
-      const b = enemiesNear(g, a, b => !b.knocked && Math.abs(b.x - a.x) < 16 && Math.abs(b.y - a.y) < 26)[0];
-      if (b) {
-        setAct(a, 'ride', 1.3);
-        a.rideOn = b.id;
-        a.rideTick = 0;
-        b.stun = Math.max(b.stun, 0.3);
-        g.text(b.x, b.y - 34, 'MONTOU!', '#ffb763');
-        return LOCK;
-      }
-      if ((a.ground && a.actT > 0.12) || a.actT > a.actMax) endAct(g, a);
-      return a.act ? LOCK : null;
-    }
-    case 'ride': {
-      const b = g.actor(a.rideOn);
-      if (!b || b.dead || b.knocked || a.actT > a.actMax || pressed('jump')) { kickoff(g, a, b); return LOCK; }
-      const tx = b.x - a.face * 2, ty = b.y - 35;
-      Body.setPosition(a.body, { x: a.body.position.x + clamp(tx - a.body.position.x, -7, 7), y: a.body.position.y + clamp(ty - a.body.position.y, -7, 7) });
-      Body.setVelocity(a.body, { x: b.body.velocity.x, y: b.body.velocity.y });
-      a.rideTick -= dt;
-      if (a.rideTick <= 0) {
-        a.rideTick = 0.16;
-        damage(g, b, 4, { x: b.x + rnd(-4, 4), y: b.y - 8 }, a.id, 'claw', { kb: { x: 0, y: 0 }, part: 'head', dir: rnd(-1.2, 1.2) });
-        b.stun = Math.max(b.stun, 0.2);
-        g.fx('slash', { x: b.x, y: b.y - 8, face: Math.random() < 0.5 ? 1 : -1, size: 12, kind: 'claw', fin: 0, color: '#f1d9a8' });
-      }
-      return LOCK;
-    }
     case 'chase': {
       const b = g.actor(a.chaseId);
       if (!b || b.dead || b.knocked) { endAct(g, a); return null; }
@@ -299,9 +264,6 @@ export function stepSpecial(g, a, input, pressed, dt) {
       if (a.ground || a.climbing || a.actT > a.actMax) { endAct(g, a); landPlunge(g, a); return null; }
       return { lock: true, vx: v.x * 0.95, vy: Math.max(v.y, 14) };
     }
-    case 'kickoff':
-      if (a.actT > 0.3 || (a.ground && a.actT > 0.1)) endAct(g, a);
-      return null;
     case 'blink': {
       if (a.actT < a.actMax) return { lock: true, vx: 0, vy: 0 };
       const b = g.actor(a.blinkTo), then = a.blinkThen;
@@ -464,14 +426,6 @@ export function stepSpecial(g, a, input, pressed, dt) {
     }
   }
   return null;
-}
-
-function kickoff(g, a, b) {
-  if (b && !b.dead) damage(g, b, 6, { x: b.x, y: b.y - 10 }, a.id, 'kick', { kb: { x: a.face * 7, y: -4 }, knock: true });
-  setAct(a, 'kickoff', 0.35);
-  a.rideOn = null;
-  Body.setVelocity(a.body, { x: -a.face * 4, y: -7 });
-  g.sound('punch', a.x);
 }
 
 function biteTarget(g, a) {

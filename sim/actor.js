@@ -86,8 +86,8 @@ function land(g, a, impact, height = 0) {
   }
 }
 
-// Held by a rival: in Nox's requiem, or ridden by Mingau.
-const heldBy = (g, a) => g.actors.some(o => o !== a && ((o.act === 'requiem' && o.reqId === a.id) || (o.act === 'ride' && o.rideOn === a.id) || decreeHolds(o, a)));
+// Held by a rival: in Nox's requiem, or in the Cat King's decree.
+const heldBy = (g, a) => g.actors.some(o => o !== a && ((o.act === 'requiem' && o.reqId === a.id) || decreeHolds(o, a)));
 
 export function stepActor(g, a, dt) {
   if (a.dead) {
@@ -289,7 +289,7 @@ export function stepActor(g, a, dt) {
   if (pressed('left') || pressed('right')) a.dirTap = g.time;
   // Reeling from a hit, Shift is a split second of parry: timed to the next blow it breaks the combo
   // (combat.js parried); missed, Shift does nothing for a while (no mashing out of a string).
-  // Not out of a hold (the requiem, a rider): those have their own way out.
+  // Not out of a hold (the requiem, the decree): those have their own way out.
   if (pressed('dodge') && a.hitstun > 0 && !a.knocked && !(a.frozen > 0) && !(a.burstCd > 0) && !a.act && !heldBy(g, a)) {
     a.parry = BURST.window; a.burstCd = BURST.cd;
     g.fx('ring', { x: a.x, y: a.y, size: 20, color: '#c8f0ff' });
@@ -339,14 +339,13 @@ export function stepActor(g, a, dt) {
   a.lastPreVy = vy;
 }
 
-const GHOST_ACTS = ['chase', 'ride', 'pounce', 'kickoff', 'plunge', 'requiem', 'swarm', 'charge', 'leap', 'meteor', 'blink', 'world'];
+const GHOST_ACTS = ['chase', 'plunge', 'requiem', 'swarm', 'charge', 'leap', 'meteor', 'blink', 'world'];
 function updateMask(g, a, vy) {
   const b = a.body;
   let mask = MASK.actor;
   if (a.ghostClear && !g.actors.some(o => o !== a && !o.dead && !o.knocked && Math.abs(o.body.position.x - b.position.x) < 16 && Math.abs(o.body.position.y - b.position.y) < HALF_H * 2)) a.ghostClear = false;
   if (a.ghostClear || a.dodge > 0 || GHOST_ACTS.includes(a.act) || (a.attack > 0 && MOVES[a.attackKind]?.pass)) mask &= ~CAT.actor;
-  // A rider follows the head under it, so catwalks it would land on are not in its way.
-  if (!a.climbing && a.act !== 'ride') {
+  if (!a.climbing) {
     const feet = b.position.y + HALF_H;
     for (let i = 0; i < MAP.oneway.length; i++) {
       if (a.drop[i] > 0) continue;
