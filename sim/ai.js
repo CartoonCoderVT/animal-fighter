@@ -204,6 +204,11 @@ export function think(g, a, dt) {
     if (a.type === 4 && !a.act && !(a.batCd > 0) && Math.hypot(dx, dy) > 110 && Math.hypot(dx, dy) < 320 && Math.random() < 0.015) input.bats = true;
     // Nox opens with the shadow cut from a few steps away.
     if (a.type === 4 && a.ground && !a.act && !a.weapon && Math.abs(dx) > 28 && Math.abs(dx) < (a.form === 'dark' ? 96 : 64) && Math.abs(dy) < 16 && Math.random() < 0.05) { input.attack = !a.lastInput.attack; input.right = dx > 0; input.left = dx < 0; }
+    // The Cat King: from a distance, the rain of arrows now and then; a few steps off, the charge.
+    if (a.type === 0 && a.ground && !a.act && Math.abs(dy) < 40 && !target.knocked) {
+      if (Math.abs(dx) > 100 && Math.abs(dx) < 210 && Math.random() < 0.015) { input.attack = !a.lastInput.attack; input.down = true; }
+      else if (Math.abs(dx) > 60 && Math.abs(dx) < 120 && Math.random() < 0.02) { input.attack = !a.lastInput.attack; input.right = dx > 0; input.left = dx < 0; }
+    }
     // Juma, small: the lightning pounce from a few steps away, the bite up close.
     // The beast: the charge from further off, the earthquake when rivals crowd her.
     if (a.type === 3 && a.ground && !a.act && !a.weapon && Math.abs(dy) < 18 && !target.knocked) {
