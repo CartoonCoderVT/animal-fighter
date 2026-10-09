@@ -200,6 +200,8 @@ export class Shell {
     const scene = this.scene;
     if (e.type === 'status' || e.type === 'error') { scene.status = e.message; if (!(scene instanceof OnlineScene)) this.toast(e.message); }
     else if (e.type === 'lobby') { if (!this.playing) { if (this.base instanceof LobbyScene) this.base.refresh?.(); else this.go(new LobbyScene(this)); } }
+    else if (e.type === 'joined') this.lateJoin(e.player);
+    else if (e.type === 'outdated') this.hardRefresh(e.code);
     else if (e.type === 'input') this.game?.inputFor(e.id, e.input);
     else if (e.type === 'start') { this.mode = 'online'; this.startMatch(e.players, { mode: 'online', isRemote: true, map: e.map }); }
     else if (e.type === 'state') {
@@ -215,9 +217,39 @@ export class Shell {
     } else if (e.type === 'left') {
       const a = this.game?.actor(e.id);
       if (a) { a.bot = true; a.input = EMPTY_INPUT(); this.toast(a.name + ' saiu. Um bot assumiu.'); }
+      // A rematch gives the empty place to a bot too.
+      if (this.net.host && this.lastPlayers) this.lastPlayers = this.lastPlayers.map(p => p.id === e.id ? { ...p, bot: true } : p);
     } else if (e.type === 'disconnected') { this.leaveMatch({ keepRoom: false }); this.toast(e.message); }
     else if (e.type === 'end') { this.disposeGame(); this.remote = null; this.go(new LobbyScene(this)); this.toast(e.message); }
     else if (e.type === 'latency') this.latency = e.ms;
+  }
+
+  // A friend who opens the room while the match runs takes a bot's place, or a free spawn.
+  lateJoin(player) {
+    const game = this.game;
+    if (!this.net.host || !game) return;
+    let a = game.actor(player.id);
+    if (a) { a.bot = false; a.name = player.name; a.input = EMPTY_INPUT(); a.queued = {}; }
+    else {
+      const [x, y] = game.spawns[player.id % game.spawns.length];
+      a = game.addActor({ id: player.id, type: player.type, name: player.name, bot: false, x, y });
+    }
+    const players = game.actors.filter(b => b.id >= 0 && b.id < 4).map(b => ({ id: b.id, type: b.type, name: b.name, bot: b.bot }));
+    this.lastPlayers = players;
+    this.net.sendTo(player.id, { type: 'start', players, map: this.net.map });
+    this.toast(`${player.name} entrou na partida.`);
+  }
+
+  // The host runs a newer version than this browser kept in its cache: fetch every file again
+  // past the cache, then reload straight back into the room. Once per version, so it never loops.
+  async hardRefresh(code) {
+    let tried = false;
+    try { tried = sessionStorage.getItem('af-refreshed') === code; sessionStorage.setItem('af-refreshed', code); } catch {}
+    if (tried) { this.scene.status = 'O jogo foi atualizado. Feche a aba e abra o link de novo (ou use uma aba anônima).'; return; }
+    this.scene.status = 'Atualizando o jogo para a versão do anfitrião…';
+    const urls = new Set([location.origin + location.pathname, ...performance.getEntriesByType('resource').map(r => r.name).filter(u => u.startsWith(location.origin))]);
+    await Promise.all([...urls].map(u => fetch(u, { cache: 'reload' }).catch(() => {})));
+    location.replace(`${location.pathname}?sala=${code}`);
   }
 
   // ---- loop -----------------------------------------------------------------------------
