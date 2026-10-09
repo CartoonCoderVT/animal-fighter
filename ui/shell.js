@@ -119,7 +119,7 @@ export class Shell {
   makePlayers() {
     const name = (this.settings.name || FIGHTERS[this.selected].name).slice(0, 18);
     const bots = clamp(this.settings.bots ?? 3, 1, 3);
-    return [{ id: 0, type: this.selected, name, bot: false }, ...[1, 2, 3].slice(0, bots).map(id => ({ id, type: (this.selected + id) % 5, name: FIGHTERS[(this.selected + id) % 5].name, bot: true }))];
+    return [{ id: 0, type: this.selected, name, bot: false }, ...[1, 2, 3].slice(0, bots).map(id => ({ id, type: (this.selected + id) % FIGHTERS.length, name: FIGHTERS[(this.selected + id) % FIGHTERS.length].name, bot: true }))];
   }
 
   startMatch(players = this.makePlayers(), { mode = this.mode, isRemote = false, instant = false } = {}) {
@@ -159,7 +159,7 @@ export class Shell {
   ensureAttract() {
     if (this.attract && this.attractAge < 90) return this.attract;
     this.attract?.dispose();
-    const types = [0, 1, 2, 3, 4].sort(() => Math.random() - 0.5).slice(0, 4);
+    const types = FIGHTERS.map((f, i) => i).sort(() => Math.random() - 0.5).slice(0, 4);
     this.attract = new Game({ mode: 'attract', settings: { ...this.settings }, players: types.map((type, id) => ({ id, type, bot: true, name: FIGHTERS[type].name })) });
     this.attractAge = 0;
     this.renderer.resetMatch();

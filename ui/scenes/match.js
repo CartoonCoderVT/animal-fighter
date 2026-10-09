@@ -62,7 +62,7 @@ export class MatchScene {
     if (id === 'reset') { s.startMatch(s.lastPlayers, { mode: 'sandbox', instant: true }); return; }
     if (id === 'dummy') {
       if (g.actors.length >= 10) { s.toast('Limite de 10 alvos. Use LIMPAR.'); return; }
-      g.addActor({ type: (s.selected + g.actors.length) % 5, x: clamp(x, 40, 920), y: Math.min(y, 300), bot: true });
+      g.addActor({ type: (s.selected + g.actors.length) % FIGHTERS.length, x: clamp(x, 40, 920), y: Math.min(y, 300), bot: true });
       return;
     }
     if (id === 'pistol' || id === 'shotgun') g.addProp({ kind: 'gun', weapon: id, x, y });

@@ -1,5 +1,5 @@
 import { Bodies, Body, Composite, Query, CAT, MASK } from './physics.js';
-import { weightOf, formOf } from './fighters.js';
+import { weightOf, formOf, styleOf } from './fighters.js';
 import { pose, subtree, PARENT, PIVOT_FROM_CENTER, HALF_H } from '../render/rig.js';
 import { S, rnd, clamp } from '../engine/const.js';
 import { knockdown, pushActor, buildRagdoll, ragdollOf, breakJoint, gib, makeLimb, releaseHeld, pinLimb, addStump } from './ragdoll.js';
@@ -7,21 +7,21 @@ import { extendedAttack, dropWeapon, damageProp } from './props.js';
 import { hazardBulletHit, breakLamp } from './hazards.js';
 import { MOVES, HEAVY, AIR, NOX_AIR, JUMA_AIR, BEAST_AIR, TITAN_AIR, NATURAL, comboOf, airOf } from './moves.js';
 import { MAP } from './map.js';
-import { startSpecial, startStomp, throwCarried, startChase, endAct, startPlunge, startSwarm, startBite, startCharge, feedRage } from './specials.js';
+import { startSpecial, startStomp, throwCarried, startChase, endAct, startPlunge, startSwarm, startBite, startCharge, feedRage, frogPower } from './specials.js';
 import { isMelee, WEAPON_INFO, weaponSlot } from './weapons.js';
 
 export const KIND = {
   punch: 'blunt', board: 'blunt', impact: 'blunt', fall: 'blunt', crush: 'blunt', power: 'blunt', pipe: 'blunt',
   whip: 'blunt', kick: 'blunt', paw: 'blunt', stomp: 'blunt', sonic: 'blunt', slam: 'blunt',
   claw: 'cut', blade: 'cut', katana: 'cut', axe: 'cut', hammer: 'blunt', spear: 'pierce',
-  bullet: 'pierce', pellet: 'pierce', shard: 'pierce', thrown: 'pierce', fang: 'pierce', bite: 'pierce', blood: 'cut', hemo: 'pierce', scythe: 'cut', roar: 'blunt',
+  spit: 'blunt', tongue: 'blunt', slap: 'blunt', croak: 'blunt', belly: 'blunt', bullet: 'pierce', pellet: 'pierce', shard: 'pierce', thrown: 'pierce', fang: 'pierce', bite: 'pierce', blood: 'cut', hemo: 'pierce', scythe: 'cut', roar: 'blunt',
   explosion: 'explosion', fire: 'fire', shock: 'shock', bleed: 'bleed', grind: 'grind', freeze: 'freeze'
 };
 const DOT = new Set(['fire', 'bleed', 'shock', 'freeze']);
 const isGun = w => w === 'pistol' || w === 'shotgun';
 const LIMB = ['armF', 'armB', 'footF', 'footB'];
 const limbOf = part => (LIMB.includes(part) ? part : null);
-const SLASH = { blood: '#ff3a5a', claw: '#f1d9a8', whip: '#ffc8d8', kick: '#ffe8f0', paw: '#ffe0a0', fang: '#e8d0ff', air: '#ffffff', blade: '#f4f8ff', katana: '#ffffff', spear: '#e8f0ff', pipe: '#f0d8c8', axe: '#fff0e0', hammer: '#ffe8d0' };
+const SLASH = { slap: '#e8ffd0', tongue: '#ff9cb4', blood: '#ff3a5a', claw: '#f1d9a8', whip: '#ffc8d8', kick: '#ffe8f0', paw: '#ffe0a0', fang: '#e8d0ff', air: '#ffffff', blade: '#f4f8ff', katana: '#ffffff', spear: '#e8f0ff', pipe: '#f0d8c8', axe: '#fff0e0', hammer: '#ffe8d0' };
 const HEAVY_WEAPONS = ['pipe', 'axe', 'hammer'];
 
 // Hitlag (Smash's freeze frames): only the fighters involved in a hit stop for a moment; the
@@ -48,8 +48,9 @@ export function armUsable(a) {
 }
 // The limb a move needs: claws and paws use an arm, kicks the feet; tails and fangs always work.
 function moveUsable(a) {
-  if (a.type === 0 || a.type === 3) return armUsable(a) || (!a.severed.includes('armB') && !a.broken.armB);
-  if (a.type === 2) return ['footF', 'footB'].some(f => !a.severed.includes(f) && !a.broken[f]);
+  const s = styleOf(a);
+  if (s === 0 || s === 3) return armUsable(a) || (!a.severed.includes('armB') && !a.broken.armB);
+  if (s === 2) return ['footF', 'footB'].some(f => !a.severed.includes(f) && !a.broken[f]);
   return true;
 }
 
@@ -69,16 +70,16 @@ export function attack(g, a) {
   }
   if (!moveUsable(a)) {
     a.attackCd = 0.8;
-    g.text(a.x, a.y - 26, a.type === 2 ? 'PERNA QUEBRADA!' : 'SEM GARRAS!', '#d7b5ba');
+    g.text(a.x, a.y - 26, styleOf(a) === 2 ? 'PERNA QUEBRADA!' : 'SEM GARRAS!', '#d7b5ba');
     return;
   }
   // Right after a launcher, J leaps after the target to start an air combo.
   const prey = a.chase && g.time < a.chase.until ? g.actor(a.chase.id) : null;
   if (prey && !prey.dead && !prey.knocked && !prey.ground) { a.chase = null; startChase(g, a, prey); return; }
   let id;
-  const list = comboOf(a), chaining = a.comboTimer > 0 && (list.includes(a.attackKind) || ['shadowCut', 'scytheDash', 'batStrike', 'jBolt', 'jCross'].includes(a.attackKind));
-  const nox = a.type === 4, side = a.input.left || a.input.right, tapped = g.time - (a.dirTap ?? -9) < 0.2;
-  const juma = a.type === 3, small = juma && !a.form, titan = juma && a.form === 'titan';
+  const list = comboOf(a), chaining = a.comboTimer > 0 && (list.includes(a.attackKind) || ['shadowCut', 'scytheDash', 'batStrike', 'jBolt', 'jCross', 'fGrapple'].includes(a.attackKind));
+  const style = styleOf(a), nox = style === 4, side = a.input.left || a.input.right, tapped = g.time - (a.dirTap ?? -9) < 0.2;
+  const juma = style === 3, small = juma && !a.form, titan = juma && a.form === 'titan', frog = style === 5;
   if (a.dashStrike) id = 'dashAtk';
   else if (!a.ground && !a.climbing) {
     const air = airOf(a), prev = air.indexOf(a.attackKind);
@@ -89,8 +90,10 @@ export function attack(g, a) {
     if (titan) id = downedNear(g, a) ? 'tPound' : 'tQuake';
     else if (juma && a.form) id = 'bQuake';
     else if (juma && !chaining && !(a.biteCd > 0)) { startBite(g, a); return; }
-    else id = nox && chaining ? 'scytheSweep' : nox && downedNear(g, a) ? 'execute' : HEAVY[a.type];
+    else id = nox && chaining ? 'scytheSweep' : nox && downedNear(g, a) ? 'execute' : frog && downedNear(g, a) ? 'fSquash' : HEAVY[style];
   }
+  // The frog with a direction: the tongue-hook, out of the string or on a fresh tap inside it.
+  else if (frog && side && (!chaining || tapped) && a.attackKind !== 'fGrapple') { a.face = a.input.right ? 1 : -1; id = 'fGrapple'; }
   else if (nox && !chaining && side) { a.face = a.input.right ? 1 : -1; id = 'shadowCut'; }
   else if (nox && chaining && side && tapped && a.attackKind !== 'scytheDash') { a.face = a.input.right ? 1 : -1; id = 'scytheDash'; }
   // Juma with a direction: small, the lightning pounce (a fresh tap inside the string: the cross);
@@ -103,7 +106,7 @@ export function attack(g, a) {
   else {
     // The shadow cut opens the string at the reap; the phantom reap picks it up at the guillotine;
     // Juma's pounce goes on into the storm of claws, her cross into the rake.
-    a.combo = chaining ? (a.attackKind === 'shadowCut' || a.attackKind === 'batStrike' ? 1 : a.attackKind === 'scytheDash' ? 3 : a.attackKind === 'jBolt' ? 2 : a.attackKind === 'jCross' ? 3 : (a.combo + 1) % list.length) : 0;
+    a.combo = chaining ? (a.attackKind === 'shadowCut' || a.attackKind === 'batStrike' ? 1 : a.attackKind === 'scytheDash' ? 3 : a.attackKind === 'jBolt' ? 2 : a.attackKind === 'jCross' ? 3 : a.attackKind === 'fGrapple' ? 3 : (a.combo + 1) % list.length) : 0;
     id = list[a.combo];
   }
   // Nox's strings never drop to distance: a rival knocked out of reach of the next blow is chased
@@ -196,11 +199,13 @@ function reaches(a, mv, x, y, pad = 0, low = !!mv.low) {
 }
 
 export function strike(g, a, mv, i) {
+  // Moves whose hits reach differently (the frog's tongue-hook: far for the tongue, close for the knees).
+  if (mv.reach) mv = { ...mv, range: mv.reach[i] ?? mv.range };
   if (mv.blink) { blinkCut(g, a, mv); return; }
   if (mv.execute) { execute(g, a, mv); return; }
   if (mv.pound) { pound(g, a, mv, i); return; }
   const face = a.face;
-  const kind = mv.kind === 'air' ? NATURAL[a.type] : mv.kind;
+  const kind = mv.kind === 'air' ? NATURAL[styleOf(a)] : mv.kind;
   const counter = a.counter > 0;
   const last = i === mv.hits.length - 1;
   let amount = (mv.dmg[i] ?? mv.dmg[0]) * (counter ? 1.5 : 1);
@@ -208,7 +213,7 @@ export function strike(g, a, mv, i) {
   const low = !!mv.low;
   let struck = false;
   const hit = new Set();
-  const vamp = a.type === 4, juma = a.type === 3;
+  const vamp = styleOf(a) === 4, juma = styleOf(a) === 3;
   let first = null;
   for (const b of g.enemies(a)) {
     if (b.knocked) continue;
@@ -242,6 +247,13 @@ export function strike(g, a, mv, i) {
     if (mv.breaks && last && !b.dead && Math.random() < 0.5) breakBone(g, b, LIMB[Math.floor(rnd(0, 4))]);
     if (mv.hold && !b.knocked && !b.dead) { b.hitstun = Math.max(b.hitstun || 0, mv.hold); b.hitstunMax = Math.max(b.hitstunMax || 0, b.hitstun); }
     if (mv.crumple && !b.knocked && !b.dead) b.hitHeavy = true;
+    // The tongue-hook: stuck to the rival, it reels them in to the frog, who springs to meet them.
+    if (mv.grapple && !last && !b.knocked && !b.dead) {
+      b.float = Math.max(b.float || 0, 0.35);
+      shove(b, clamp((a.x + face * 20 - b.x) * 0.3, -11, 11), -1.5);
+      if (a.ground) shove(a, face * 2.5, -3.2);
+      a.reeled = b.id;
+    }
     // The vortex drags the rival into the middle of the whirl and holds them there.
     if (mv.pull && !last && !b.knocked && !b.dead) { b.float = Math.max(b.float || 0, 0.4); shove(b, clamp((a.x - b.x) * 0.2, -3, 3), clamp((a.y - 4 - b.y) * 0.2, -3, 3)); }
     // Slammed into the floor: the first time in a combo the rival bounces back up, the second it stays down.
@@ -269,6 +281,10 @@ export function strike(g, a, mv, i) {
   if (mv.shock) struck = shockwave(g, a, mv, amount, hit) || struck;
   // The beast's clap: a ring of force out of her paws shoves everyone else back.
   if (mv.clap) clapRing(g, a, hit);
+  // The frog's croak: the throat sac bursts into a ring of sound all around him.
+  if (mv.croak) croakRing(g, a, mv, hit);
+  // The giant palm lands with a wet crack.
+  if (kind === 'slap' && mv.crumple && struck) { g.fx('bigPalm', { x: first ? first.x : a.x + face * 24, y: (first ? first.y : a.y) - 2, face }); g.text(a.x + face * 20, a.y - 30, 'PLAFT!', '#c8f080'); g.shake = Math.max(g.shake, 4); }
   // The beast's blows crack the floor where they land and throw up rocks.
   if (mv.quake && a.ground) { g.fx('quake', { x: a.x + face * (mv.shockAt ?? Math.round(mv.range * 0.6)), y: a.y + 16, p: mv.quake, face }); g.shake = Math.max(g.shake, 2 + mv.quake); }
   // Through and past: turn back to the rival for the rest of the string.
@@ -301,11 +317,11 @@ export function strike(g, a, mv, i) {
     if (struck) g.sound(kind === 'axe' ? 'chop' : kind === 'hammer' || kind === 'pipe' ? 'thud' : 'slash', a.x);
     return;
   }
-  if (mv.noSmear) { if (struck) g.sound(kind === 'fang' ? 'squish' : kind === 'scythe' ? 'slash' : 'blood', a.x); return; }
+  if (mv.noSmear) { if (struck) g.sound(kind === 'fang' || kind === 'tongue' ? 'squish' : kind === 'scythe' ? 'slash' : kind === 'croak' ? 'punch' : 'blood', a.x); return; }
   // A storm of claws scatters its gashes up and down the rival.
   const fy = mv.flurry ? [-5, 4, -2, 6, -7][i % 5] : 0;
   g.fx('slash', { x: a.x + face * Math.round(mv.range * 0.6), y: a.y + (low ? 12 : mv.launch ? -6 : 2) + fy, face, size: Math.max(18, mv.range * 0.55), kind, fin: finisher ? 1 : 0, color: SLASH[kind] || '#fff', up: mv.launch ? 1 : 0, down: mv.spike ? 1 : 0 });
-  if (struck) g.sound(kind === 'claw' ? 'slash' : kind === 'fang' ? 'squish' : kind === 'blood' ? 'blood' : 'punch', a.x);
+  if (struck) g.sound(kind === 'claw' ? 'slash' : kind === 'fang' ? 'squish' : kind === 'blood' ? 'blood' : kind === 'slap' ? 'slap' : 'punch', a.x);
 }
 
 // The titan is a much bigger target than her body box.
@@ -320,6 +336,21 @@ function clapRing(g, a, already) {
   }
   g.fx('clap', { x, y, face: a.face });
   g.sound('thud', x);
+}
+
+function croakRing(g, a, mv, already) {
+  const x = a.x, y = a.y - 2, R = mv.croak;
+  for (const b of g.enemies(a)) {
+    const d = Math.hypot(b.x - x, (b.y - y) * 1.6);
+    if (b.dead || b.knocked || already.has(b.id) || d > R) continue;
+    const s = Math.sign(b.x - x) || a.face, k = 1 - d / R;
+    damage(g, b, 3 + 5 * k, { x: b.x - s * 4, y: b.y }, a.id, 'croak', { kb: { x: s * (3 + 6 * k), y: -2.5 - 3 * k } });
+    b.stun = Math.max(b.stun, 0.3 + 0.3 * k);
+  }
+  for (const l of g.limbs) { const d = Math.hypot(l.x - x, l.y - y); if (d < R) Body.setVelocity(l.body, { x: l.body.velocity.x + Math.sign(l.x - x) * 5 * (1 - d / R), y: l.body.velocity.y - 3 * (1 - d / R) }); }
+  g.fx('croak', { x, y, r: R, face: a.face });
+  g.shake = Math.max(g.shake, 4);
+  g.sound('croak', x);
 }
 
 // The titan's pound: a fist hammered down into the nearest downed rival, the floor cracking under
@@ -520,7 +551,7 @@ export function stepBullets(g, dt) {
     }
     const nx = b.x + b.vx, ny = b.y + b.vy;
     const candidates = [...statics];
-    for (const a of g.actors) if (!a.dead && !a.knocked && a.id !== b.owner && a.team !== b.team) candidates.push(a.body);
+    for (const a of g.actors) if (!a.dead && !a.knocked && a.swallowedBy == null && a.id !== b.owner && a.team !== b.team) candidates.push(a.body);
     for (const p of g.props) if (!p.held) candidates.push(p.body);
     for (const l of g.limbs) candidates.push(l.body);
     g.hz?.bulletBodies?.forEach(x => candidates.push(x));
@@ -663,6 +694,8 @@ export function breakBone(g, a, part) {
 
 export function damage(g, a, amount, point, ownerId, kind = 'punch', opts = {}) {
   if (!a || a.dead || amount <= 0) return 0;
+  // Inside the frog nothing reaches them.
+  if (a.swallowedBy != null) return 0;
   const cat = KIND[kind] || 'blunt';
   const owner = g.actor(ownerId);
   // Mid-requiem Nox is a blur of blood, and a swarm of bats has nothing to hit: fighters cannot touch him.
@@ -702,6 +735,8 @@ export function damage(g, a, amount, point, ownerId, kind = 'punch', opts = {}) 
   a.partDmg[part] = (a.partDmg[part] || 0) + amount;
   a.hp -= amount;
   feedRage(g, a, amount);
+  // Every blow on a full frog loosens his hold on whoever is inside.
+  if (a.belly != null) a.bellyT -= amount * 0.06;
   a.hurt = 0.16;
   if (!DOT.has(cat) || ownerId !== a.id) { a.lastHit = ownerId; a.lastHitTime = g.time; }
   a.lastHitKind = kind;
@@ -915,8 +950,12 @@ export function kill(g, a, ownerId, { kind = 'punch', kb = { x: 0, y: -2 }, over
 }
 
 export function power(g, a) {
-  if (isMelee(a.weapon) && !a.holding) { weaponAttack(g, a, true); return; }
-  if (a.dead || a.abilityCd > 0 || a.invincible > 0.8 || a.knocked || a.frozen > 0 || a.hitstun > 0 || a.act) return;
+  // The frog's K is his own: inhale, or spit out whoever is inside (even with a weapon in hand).
+  const frog = a.type === 5;
+  if (isMelee(a.weapon) && !a.holding && !(frog && a.belly != null)) { weaponAttack(g, a, true); return; }
+  if (a.dead || a.invincible > 0.8 || a.knocked || a.frozen > 0 || a.hitstun > 0 || a.act) return;
+  if (frog) { frogPower(g, a); return; }
+  if (a.abilityCd > 0) return;
   startSpecial(g, a);
 }
 

@@ -102,7 +102,7 @@ export function explode(g, x, y, owner, power = 1) {
   g.sound('explosion', x);
   const R = 150 * power;
   for (const a of g.actors) {
-    if (a.dead) continue;
+    if (a.dead || a.swallowedBy != null) continue;
     const d = dist(a, { x, y });
     if (d > R) continue;
     const k = 1 - d / (R * 1.15);
@@ -137,7 +137,7 @@ export function freezeBurst(g, x, y, owner, radius) {
   g.fx('frost', { x, y, n: 30, big: 1 });
   g.sound('freeze', x);
   for (const a of g.actors) {
-    if (a.dead || dist(a, { x, y }) > radius) continue;
+    if (a.dead || a.swallowedBy != null || dist(a, { x, y }) > radius) continue;
     a.freeze = (a.freeze || 0) + 1.1;
     a.burning = 0;
     pushActor(g, a, Math.sign(a.x - x) * 5, -3);
@@ -175,7 +175,7 @@ export function extendedAttack(g, a) {
     if (Math.random() < 0.5) g.fx('spray', { x: a.x + cx * 14, y: a.y + 5 + cy * 14, a: ang });
     g.sound('spray', a.x);
     for (const b of g.actors) {
-      if (b.dead || b.id === a.id) continue;
+      if (b.dead || b.swallowedBy != null || b.id === a.id) continue;
       const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy);
       if (d > 125 || (dx * cx + dy * cy) / (d || 1) < 0.82) continue;
       if (b.team !== a.team || b.burning > 0) {

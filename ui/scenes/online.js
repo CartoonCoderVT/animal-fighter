@@ -100,7 +100,7 @@ export class LobbyScene {
     const used = new Set(players.map(p => p.id));
     // The chosen number of bots fills free places; with nobody else in the room one still comes.
     let bots = Math.max(net.bots, players.length < 2 ? 1 : 0);
-    for (let id = 0; id < 4 && bots > 0; id++) if (!used.has(id)) { players.push({ id, type: (s.selected + id + 1) % 5, name: FIGHTERS[(s.selected + id + 1) % 5].name + ' BOT', bot: true }); bots--; }
+    for (let id = 0; id < 4 && bots > 0; id++) if (!used.has(id)) { players.push({ id, type: (s.selected + id + 1) % FIGHTERS.length, name: FIGHTERS[(s.selected + id + 1) % FIGHTERS.length].name + ' BOT', bot: true }); bots--; }
     try { net.start(players); s.startMatch(players, { mode: 'online' }); } catch (e) { s.toast(e.message); }
   }
   // The host cycles the number of bots, 0 to 3, and it is remembered.
@@ -124,7 +124,7 @@ export class LobbyScene {
     // Your own fighter can still be changed while the room waits.
     const me = this.shell.net.players.findIndex(p => p.id === this.shell.net.localId);
     const step = i.nav('left') ? -1 : i.nav('right') ? 1 : me >= 0 && hit(i, { x: VIEW_W / 2 - 150, y: 122 + me * 30, w: 300, h: 26 }) ? 1 : 0;
-    if (step) { this.shell.pickFighter((this.shell.selected + step + 5) % 5); this.shell.sound.play('ui_move'); }
+    if (step) { this.shell.pickFighter((this.shell.selected + step + FIGHTERS.length) % FIGHTERS.length); this.shell.sound.play('ui_move'); }
     if (hit(i, this.rects.leave)) this.leave();
     if (i.nav('ok')) { const k = this.items[this.focus]; if (k === 'start') this.start(); else if (k === 'bots') this.cycleBots(); else this.leave(); }
     if (i.nav('back')) this.leave();

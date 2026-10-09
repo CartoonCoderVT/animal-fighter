@@ -177,7 +177,7 @@ export function tickHazards(g, dt) {
     pr.y += 22;
     const bottom = pr.y + P.headH;
     for (const a of g.actors) {
-      if (a.dead) continue;
+      if (a.dead || a.swallowedBy != null) continue;
       const top = a.knocked ? a.y - 12 : a.body.position.y - HALF_H;
       if (a.x > P.x0 - 6 && a.x < P.x1 + 6 && bottom > top + 10 && a.y > P.rest) {
         a.hp = 0;
@@ -221,7 +221,7 @@ export function tickHazards(g, dt) {
   hz.grindCd -= dt;
   const pit = MAP.pit;
   for (const a of g.actors) {
-    if (a.dead) continue;
+    if (a.dead || a.swallowedBy != null) continue;
     if (inPit(a.x) && a.y + (a.knocked ? 0 : HALF_H) > pit.y0 + 10) {
       a.hp = 0;
       kill(g, a, a.lastHit != null && g.time - (a.lastHitTime ?? -9) < 6 ? a.lastHit : null, { kind: 'grind' });
@@ -242,7 +242,7 @@ export function tickHazards(g, dt) {
   pd.live = Math.max(0, pd.live - dt);
   if (ex > pd.x0 - 8 && ex < pd.x1 + 8 && ey > pd.y - 12) pd.live = 0.4;
   for (const a of g.actors) {
-    if (a.dead) continue;
+    if (a.dead || a.swallowedBy != null) continue;
     a.shockCd = Math.max(0, (a.shockCd || 0) - dt);
     const touching = Math.abs(ex - a.x) < 12 && ey > a.y - 22 && ey < a.y + HALF_H + 2;
     const wet = pd.live > 0 && a.ground && a.x > pd.x0 && a.x < pd.x1;

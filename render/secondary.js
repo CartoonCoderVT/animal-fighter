@@ -1,6 +1,7 @@
 // Secondary motion for tails and scarf ends: short verlet chains in character space (pixels,
 // facing right) that keep their drawn shape, wag, and lag behind the body's motion.
 import { CAST, ANCHOR, TAILS, SCARF, BEAST, TITAN, castFor } from './pixel-data.js';
+import { lookOf } from '../sim/fighters.js';
 import { S } from '../engine/const.js';
 
 // stiff: pull toward the drawn shape at the root (tip uses stiff * tip); grav: px/frame²;
@@ -59,19 +60,31 @@ class Chain {
   }
 }
 
+// The frog's borrowed tail or scarf moves like its owner's, hung from his own back.
+const copied = new Map();
+function specsOf(ch) {
+  if (SPECS[ch.id]) return SPECS[ch.id];
+  if (ch.copyOf == null || (!ch.scarf && (!ch.tail || ch.tail.blob))) return null;
+  if (!copied.has(ch.id)) {
+    const own = SPECS[CAST[ch.copyOf].id];
+    copied.set(ch.id, own.map(s => ch.scarf ? { ...s, root: ch.scarf.root, tube: ch.scarf } : { ...s, root: ch.anchor.tail, shape: ch.tail.shape, tube: ch.tail }));
+  }
+  return copied.get(ch.id);
+}
+
 export class Secondary {
   constructor() { this.map = new Map(); }
   clear() { this.map.clear(); }
 
   // Returns [{ pts, spec }] for the actor's loose chains this frame, or null to draw them static.
   update(a, frame, time, dt) {
-    const id = castFor(a.type, a.form).id, specs = SPECS[id];
+    const ch = castFor(a.type, lookOf(a)), id = ch.id, specs = specsOf(ch);
     if (!specs || frame.spin) { this.map.delete(a.id); return null; }
     let st = this.map.get(a.id);
     const [bdx = 0, bdy = 0] = frame.body || [];
     const rootOf = spec => [spec.root[0] + bdx, spec.root[1] + bdy];
-    if (!st || st.type !== a.type) {
-      st = { type: a.type, face: a.face || 1, vx: 0, vy: 0, chains: specs.map(s => new Chain(s, rootOf(s))), seed: (a.id || 0) * 2.3 };
+    if (!st || st.id !== id) {
+      st = { id, face: a.face || 1, vx: 0, vy: 0, chains: specs.map(s => new Chain(s, rootOf(s))), seed: (a.id || 0) * 2.3 };
       this.map.set(a.id, st);
     }
     if ((a.face || 1) !== st.face) { st.face = a.face || 1; for (const c of st.chains) c.mirror(); }

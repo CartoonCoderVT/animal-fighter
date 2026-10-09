@@ -6,6 +6,7 @@
 // Light comes from the top-left. Outlines are drawn around each part when it is composed,
 // so a front part (head, near arm) gets a dark line where it overlaps what is behind it.
 import { PARTS } from './pixel-parts.js';
+import { FROG_PALETTES, FROG_PARTS, FROG_TAILS } from './pixel-frog.js';
 
 const FAR = { 1: '2', 2: '3', 4: '5', 6: '7', 9: '8', x: 'y' };
 
@@ -19,6 +20,9 @@ const PALETTES = {
   // Juma's third form, the titan: scorched fur gone almost to rust, black rosettes, glowing cracks
   // of fury (v) under the hide, white-hot eyes.
   ocelotTitan: { o: '#160402', 1: '#e2843a', 2: '#a4461a', 3: '#68240c', 4: '#ecd2a4', 5: '#b88c5c', 6: '#d07060', 7: '#8e1e28', 8: '#1a0802', 9: '#4a1a08', e: '#120404', w: '#ffffff', f: '#fff4dc', g: '#fff2a0', m: '#3a0408', v: '#ff8a1e' },
+  // Don, the mafioso toad: warty olive skin, a pale throat, heavy-lidded golden eyes, a charcoal
+  // fedora with a red band (h/k/b/n) and a lit cigar (c/r).
+  frog: { o: '#0c1a10', 1: '#a9cf62', 2: '#6b9e3c', 3: '#3d6a2a', 4: '#ece6a8', 5: '#bfb46c', 6: '#ff7f9a', 7: '#a83048', 8: '#253f1c', 9: '#557f30', e: '#0a0a0a', w: '#ffffff', g: '#f2c83a', m: '#4a0a18', l: '#2c4a20', h: '#2c2834', k: '#4c4658', b: '#c02838', n: '#16131c', c: '#7a4a28', r: '#ff6a2a', y: '#c8b8a0' },
   bat: { o: '#2a2038', 1: '#ffffff', 2: '#e8e2f0', 3: '#bdb2d2', 4: '#ffffff', 5: '#e0d6ea', 6: '#ffb0c6', 7: '#e46e92', 8: '#4e3a6a', 9: '#6e5890', e: '#1e1420', w: '#ffffff', r: '#ffa0b8', x: '#e2445c', y: '#a82840' }
 };
 export const OVERLAY = { B: '#b4243a', K: '#5c1020', F: '#e8868a', O: '#f4ead2', U: '#7a4874', C: '#2a1a1c', D: '#4a2a22', I: '#c8f2ff', J: '#7fd0f0' };
@@ -49,7 +53,13 @@ export const SCARF = {
 
 const castOf = id => ({ id, palette: PALETTES[id], parts: PARTS[id], tail: TAILS[id] || null, scarf: id === 'bat' ? SCARF : null });
 // The fighters, by type. Alternate forms are casts of their own with their own anchors.
-export const CAST = Object.keys(PARTS).filter(id => id !== 'ocelotBeast' && id !== 'ocelotTitan').map(castOf);
+export const CAST = ['cat', 'rat', 'rabbit', 'ocelot', 'bat', 'frog'].map(castOf);
+// The frog sits low: no neck, the head on the front of a round body, legs folded wide.
+Object.assign(CAST[5], {
+  anchor: { head: [2, -8], body: [0, -2], armF: [4, -6], armB: [1, -7], footF: [3, -1], footB: [-3, -1], tail: [-4, -4], scarf: [0, -7] },
+  joint: { head: [2, -8], armF: [4, -6], armB: [1, -7], footF: [3, -2], footB: [-3, -2] },
+  eye: [4, -9], mouth: [8, -3]
+});
 // Juma's beast form is bigger: a taller chest carries the head higher and the shoulders wider.
 export const BEAST = {
   ...castOf('ocelotBeast'),
@@ -66,7 +76,21 @@ export const TITAN = {
   pivot: { arm: [5, 1] },
   eye: [5, -9]
 };
-export const castFor = (type, form) => (CAST[type]?.id === 'ocelot' && form ? (form === 'titan' ? TITAN : BEAST) : CAST[type]);
+// The frog's hybrid looks (pixel-frog.js), one per fighter he can swallow, by the victim's type.
+// They hang on the frog's own skeleton; a borrowed tail or scarf hangs off his back.
+const FROG_SCARF = { ...SCARF, root: [-3, -5] };
+export const FROG_LOOKS = ['frogCat', 'frogRat', 'frogRabbit', 'frogOcelot', 'frogBat'].map((id, t) => FROG_PARTS[id] && {
+  id, copyOf: t, palette: FROG_PALETTES[id], parts: FROG_PARTS[id], tail: FROG_TAILS[id] || null, scarf: id === 'frogBat' ? FROG_SCARF : null,
+  anchor: CAST[5].anchor, joint: CAST[5].joint, eye: CAST[5].eye, mouth: CAST[5].mouth
+});
+// The look of a fighter's body: Juma's forms, or the frog's borrowed looks ('c0'..'c4').
+export const castFor = (type, form) => {
+  const ch = CAST[type];
+  if (!form || !ch) return ch;
+  if (ch.id === 'ocelot') return form === 'titan' ? TITAN : BEAST;
+  if (ch.id === 'frog' && form[0] === 'c') return FROG_LOOKS[+form.slice(1)] || ch;
+  return ch;
+};
 const anchorsOf = ch => ch?.anchor || ANCHOR;
 const jointsOf = ch => ch?.joint || JOINT;
 
@@ -353,7 +377,7 @@ export function composeChars(ch, frame = {}, opts = {}) {
       continue;
     }
     if (step === 'blob') {
-      if (bodyOn && ch.tail?.blob) { const [bdx = 0, bdy = 0] = frame.body || []; g.stamp(BLOB_TAIL, anchorsOf(ch).tail[0] + bdx - 3, ANCHOR.tail[1] + bdy - 2); }
+      if (bodyOn && ch.tail?.blob) { const [bdx = 0, bdy = 0] = frame.body || []; g.stamp(ch.tail.rows || BLOB_TAIL, anchorsOf(ch).tail[0] + bdx - 3, anchorsOf(ch).tail[1] + bdy - 2); }
       continue;
     }
     if (!want(step) || (step === 'scarf' && !ch.parts.scarf)) continue;
@@ -374,10 +398,11 @@ export function composeChars(ch, frame = {}, opts = {}) {
 }
 
 const paletteCache = new Map();
-const mixHex = (a, b, t) => {
+// A function declaration, so the frog's looks can mix colours while the module is still loading.
+function mixHex(a, b, t) {
   const A = [1, 3, 5].map(i => parseInt(a.slice(i, i + 2), 16)), B = [1, 3, 5].map(i => parseInt(b.slice(i, i + 2), 16));
   return '#' + A.map((v, i) => Math.round(v + (B[i] - v) * t).toString(16).padStart(2, '0')).join('');
-};
+}
 // Palette with optional state tints in the variant string: char1-3, ice, xray, flash.
 export function paletteFor(ch, variant = '') {
   const key = ch.id + variant;

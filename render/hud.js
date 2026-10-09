@@ -2,7 +2,7 @@
 import { VIEW_W, VIEW_H, S, clamp } from '../engine/const.js';
 import { P } from '../engine/palette.js';
 import { drawText, measure } from '../engine/font.js';
-import { FIGHTERS } from '../sim/fighters.js';
+import { FIGHTERS, lookOf, styleOf, BELLY } from '../sim/fighters.js';
 import { TOUCH_BUTTONS } from '../engine/input.js';
 import { WEAPON_INFO } from '../sim/weapons.js';
 import { seeded } from '../engine/const.js';
@@ -54,7 +54,7 @@ export class HUD {
   draw(g, state, figures, { localId, mode, dt, touch, killsToWin = 5, countdown = 0, time = 0 }) {
     // floating tags
     for (const a of state.actors) {
-      if (a.dead) continue;
+      if (a.dead || a.swallowedBy != null) continue;
       const f = FIGHTERS[a.type];
       const p = this.r.worldToView(a.x, a.y), z = VIEW_W / this.r.cam.sw;
       // Juma's bigger forms carry their tag higher, over their heads.
@@ -76,6 +76,13 @@ export class HUD {
         g.fillStyle = k >= 1 && a.form !== 'titan' && Math.floor(time * 16) % 2 ? '#ffffff' : (Math.floor(time * 10) % 2 ? c.light : c.base);
         g.fillRect(x - w / 2, y + 3, Math.round(w * k), 1);
       }
+      // The frog with someone inside: how long until they break out, in the colour of who it is.
+      if (a.type === 5 && a.belly != null) {
+        const v = state.actors.find(b => b.id === a.belly), k = clamp((a.bellyT || 0) / BELLY.hold, 0, 1);
+        g.fillStyle = '#0b0812'; g.fillRect(x - w / 2 - 1, y + 3, w + 2, 2);
+        g.fillStyle = k < 0.25 && Math.floor(time * 12) % 2 ? '#ffffff' : v ? FIGHTERS[v.type].color : '#9be05a';
+        g.fillRect(x - w / 2, y + 3, Math.round(w * k), 1);
+      }
       if (a.frozen > 0) drawText(g, 'CONGELADO', x, y + (a.type === 3 ? 7 : 5), { color: '#bdeeff', outline: '#0b0812', align: 'center' });
       // A live game's fighters keep their last count; it only shows while the combo is running.
       const chain = a.chainT !== undefined && state.time - a.chainT >= 1.1 ? 0 : a.chain;
@@ -87,7 +94,7 @@ export class HUD {
     }
     // Rivals outside the camera view get an arrow on the screen edge.
     for (const a of state.actors) {
-      if (a.dead || a.id === localId || mode === 'sandbox') continue;
+      if (a.dead || a.id === localId || mode === 'sandbox' || a.swallowedBy != null) continue;
       const p = this.r.worldToView(a.x, a.y);
       if (p.x >= 0 && p.x < VIEW_W && p.y >= 30 && p.y < VIEW_H) continue;
       const x = clamp(p.x, 10, VIEW_W - 10), y = clamp(p.y, 44, VIEW_H - 12);
@@ -114,7 +121,7 @@ export class HUD {
       g.beginPath(); g.rect(cx + 3, 8, 22, 22); g.clip();
       // The titan towers out of the frame: lower her so the face shows.
       const titan = a.form === 'titan';
-      this.r.drawPreview(g, a.type, cx + (titan ? 5 : 13), titan ? 45 : 34, { density: 1, key: 'hud' + a.id, dt: 0, form: a.form || null });
+      this.r.drawPreview(g, a.type, cx + (titan ? 5 : 13), titan ? 45 : 34, { density: 1, key: 'hud' + a.id, dt: 0, form: lookOf(a) });
       g.restore();
       if (a.dead) { g.fillStyle = 'rgba(10,6,16,0.6)'; g.fillRect(cx + 3, 8, 22, 22); drawText(g, Math.max(1, Math.ceil(a.respawn)) + '', cx + 14, 14, { color: '#f0d2b0', align: 'center', outline: '#0b0812' }); }
       drawText(g, a.name, cx + 29, 9, { color: local ? '#fff1c8' : '#d8cde8' });
@@ -128,6 +135,11 @@ export class HUD {
       } else {
         bar(g, cx + 29, 21, 58, 3, a.hp / a.maxHp, a.hp < a.maxHp * 0.3 ? '#ee6b6b' : '#8fd694');
         bar(g, cx + 29, 27, 58, 1, cd, cd >= 1 ? '#f2c35b' : '#8a7aa8');
+        // The frog's belly: who he has inside and how long they have left in there.
+        if (a.type === 5 && a.belly != null) {
+          const v = state.actors.find(b => b.id === a.belly);
+          bar(g, cx + 29, 29, 58, 1, clamp((a.bellyT || 0) / BELLY.hold, 0, 1), v ? FIGHTERS[v.type].color : '#9be05a');
+        }
       }
       if (mode !== 'sandbox' && mode !== 'attract') {
         for (let k = 0; k < killsToWin; k++) {
@@ -160,6 +172,16 @@ export class HUD {
       panel(g, VIEW_W / 2 - 80, 140, 160, 34, { accent: '#ee6b6b' });
       drawText(g, `VOLTA EM ${Math.max(1, Math.ceil(me.respawn))}…`, VIEW_W / 2, 146, { color: '#f0d8c3', scale: 2, align: 'center' });
     }
+    // Swallowed: the inside of the frog, and every button pressed brings the way out closer.
+    if (me && !me.dead && me.swallowedBy != null) {
+      const frog = state.actors.find(b => b.id === me.swallowedBy), k = 1 - clamp((frog?.bellyT ?? 0) / BELLY.hold, 0, 1);
+      const shake = Math.floor(time * 20) % 2;
+      panel(g, VIEW_W / 2 - 110, 150, 220, 40, { accent: '#9be05a', fill: '#14200ee6' });
+      drawText(g, 'DENTRO DO SAPO!', VIEW_W / 2 + (shake ? 1 : 0), 156, { color: '#c8f080', scale: 2, align: 'center', outline: '#0b0812' });
+      drawText(g, 'APERTE TUDO PARA SAIR', VIEW_W / 2, 174, { color: '#f0e4d0', align: 'center', alpha: 0.6 + Math.sin(time * 10) * 0.4 });
+      g.fillStyle = '#0b0812'; g.fillRect(VIEW_W / 2 - 80, 184, 160, 4);
+      g.fillStyle = '#9be05a'; g.fillRect(VIEW_W / 2 - 79, 185, Math.round(158 * k), 2);
+    }
     if (me && !me.dead && me.knocked) drawText(g, 'APERTE PULO PARA LEVANTAR', VIEW_W / 2, 330, { color: '#f0d2b0', outline: '#0b0812', align: 'center', alpha: 0.6 + Math.sin(time * 8) * 0.4 });
     if (mode === 'sandbox') drawText(g, 'LABORATÓRIO', VIEW_W - 8, VIEW_H - 14, { color: '#cbb6d8', outline: '#0b0812', align: 'right' });
     else if (mode !== 'attract') drawText(g, `PRIMEIRO A ${killsToWin}`, VIEW_W - 8, VIEW_H - 14, { color: '#cbb6d8', outline: '#0b0812', align: 'right' });
@@ -170,7 +192,7 @@ export class HUD {
       const scale = n > 0 ? 6 : 5;
       drawText(g, label, VIEW_W / 2, VIEW_H / 2 - 30, { color: n > 0 ? '#f2c35b' : '#ff8f6a', outline: '#1a1020', shadow: '#402b43', scale, align: 'center', alpha: n > 0 ? clamp(k * 3, 0, 1) : 1 });
     }
-    if (touch) this.drawTouch(g, state.actors.find(a => a.id === localId)?.type);
+    if (touch) { const me = state.actors.find(a => a.id === localId); this.drawTouch(g, me && styleOf(me)); }
   }
 
   // Juma's fury bar. Fire runs along the fill; past two thirds it shakes and throws up flames, full

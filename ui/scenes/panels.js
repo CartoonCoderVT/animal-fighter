@@ -75,7 +75,8 @@ export class HelpScene extends Overlay {
         'Extintor congela e empurra; congelado, um golpe forte estilhaça. Rolar apaga o fogo e cancela dano de queda.',
         'A prensa desce a cada 9 segundos (ou com o botão vermelho). O fosso no meio tritura. O cabo elétrico eletrifica a poça.',
         'Atire na corrente da carga para derrubá-la. Botijão atingido vira foguete. Lâmpadas quebram com tiro.',
-        'Juma não tem botão de transformação: cada pancada que leva enche a barra de FÚRIA. Cheia, ela vira a FERA; cheia de novo, a TITÃ, enorme e com muita vida.'
+        'Juma não tem botão de transformação: cada pancada que leva enche a barra de FÚRIA. Cheia, ela vira a FERA; cheia de novo, a TITÃ, enorme e com muita vida.',
+        'Don Sapone engole: segure K para sugar. Com alguém na pança ele vira um híbrido e luta como o engolido; K cospe, S+K usa o especial dele. Quem está dentro aperta tudo para sair.'
       ];
       let yy = y;
       for (const t of tips) yy += paragraph(g, '· ' + t, x, yy, 428, '#d8cde8') + 6;

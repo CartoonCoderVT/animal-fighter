@@ -3,6 +3,7 @@
 // piercing beam, and the blood marks floating over rivals. Everything is derived from observable state (move, progress, act
 // time), so remote peers draw the same thing. Without gore the blood turns to violet shadow.
 import { MOVES } from '../sim/moves.js';
+import { styleOf } from '../sim/fighters.js';
 import { slotPoint } from './pixel-data.js';
 import { seeded } from '../engine/const.js';
 
@@ -210,7 +211,8 @@ function aura(g, P, fx, fy, face, k, t, scale) {
 // Blood art for one fighter this frame. a: actor or snapshot; frame from frameFor. Returns where
 // the scythe's head is when one is out, so it can come apart in blood once it is gone.
 export function drawBloodArt(g, a, frame, fx, fy, t, { scale = 1, gore = 2, presence = 1, mask = null } = {}) {
-  if (a.type !== 4 || !frame?.armF || (a.severed || []).includes('armF')) return;
+  // Nox's style, his own or swallowed by the frog.
+  if (styleOf(a) !== 4 || !frame?.armF || (a.severed || []).includes('armF')) return;
   const P = bloodPal(gore), face = a.face || 1, h = armOf(frame, fx, fy, face, scale);
   if (a.act === 'requiem') {
     // Every cut is a scythe stroke through the rival; the drop from above swings it down once more.

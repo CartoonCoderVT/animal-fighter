@@ -3,6 +3,7 @@
 // from observable actor state only, so the host simulation (hit location, ragdoll start pose)
 // and every remote renderer agree without sending poses over the network.
 import { MOVES } from '../sim/moves.js';
+import { styleOf } from '../sim/fighters.js';
 
 const crouch = { head: [0, 3], body: [0, 1], armF: [0, 2], armB: [0, 2], footF: [1, 0], footB: [-1, 0] };
 
@@ -375,7 +376,56 @@ export const FRAMES = {
   hurtB1: { head: [1, 1, 11.25], body: [1, 1], armF: [0, 0, 35], armB: [0, 0, 45], footF: [1, 0], footB: [-2, -1], tailDeg: -8 },
   // In the air: folded around the blow, legs thrown forward and arms flung up.
   hurtA0: { head: [-2, 0, -22.5], body: [-1, 0], armF: [0, -2, -150], armB: [-1, -2, 140], footF: [2, -2, -33.75], footB: [1, -2, -22.5], tailDeg: 34 },
-  hurtA1: { head: [-1, 0, -11.25], body: [0, 0], armF: [0, -1, -120], armB: [-1, -1, 110], footF: [1, -1, -11.25], footB: [0, -2], tailDeg: 20 }
+  hurtA1: { head: [-1, 0, -11.25], body: [0, 0], armF: [0, -1, -120], armB: [-1, -1, 110], footF: [1, -1, -11.25], footB: [0, -2], tailDeg: 20 },
+  // Don, the frog. He stands like a boss: low and wide, one fist out, the other on his gut. His
+  // blows are all body: the whole head swings into a slap, the throat sac drives the croak.
+  fStance1: { head: [1, 1], body: [0, 1], armF: [2, 0, -60], armB: [1, -1, -100], footF: [4, 0], footB: [-4, 0] },
+  fStance2: { head: [1, 2], body: [0, 2], armF: [2, 1, -60], armB: [1, 0, -100], footF: [4, 0], footB: [-4, 0] },
+  fSlA: { head: [-1, 1, -11.25], body: [-1, 1], armF: [-2, -1, 125], armB: [1, 0, -40], footF: [4, 0], footB: [-3, 0], tailDeg: -10 },
+  fSlX: { head: [2, 0, 11.25], body: [2, 0], armF: [4, -1, -100], armB: [-1, 0, 40], footF: [4, 0], footB: [-3, -1, 22.5], tailDeg: 10 },
+  fSlI: { head: [3, 1, 11.25], body: [2, 1], armF: [5, 1, -60], armB: [-1, 0, 50], footF: [4, 0], footB: [-3, 0], tailDeg: 14 },
+  fSlR: { head: [1, 1], body: [1, 1], armF: [2, 1, -50], armB: [0, 0, -60], footF: [4, 0], footB: [-3, 0] },
+  fSl2A: { head: [-1, 1, -11.25], body: [-1, 1], armB: [-2, -1, 130], armF: [2, 0, 30], footF: [4, 0], footB: [-3, 0], tailDeg: -10 },
+  fSl2X: { head: [2, 0, 11.25], body: [2, 0], armB: [5, -1, -100], armF: [-1, 0, 40], footF: [4, 0], footB: [-3, -1, 22.5], front: 'armB', tailDeg: 10 },
+  fSl2I: { head: [3, 1, 11.25], body: [2, 1], armB: [6, 1, -60], armF: [-1, 0, 50], footF: [4, 0], footB: [-3, 0], front: 'armB', tailDeg: 14 },
+  fLhA: { head: [-2, 1, -11.25], body: [-1, 1], armF: [0, 1, 20], armB: [0, 0, 20], footF: [4, 0], footB: [-3, 0], tailDeg: -10 },
+  fLhX: { head: [3, 0], body: [2, 0], armF: [2, 0, -40], armB: [1, 0, -20], footF: [5, 0], footB: [-3, -1, 22.5], tailDeg: 12 },
+  fLhR: { head: [1, 1], body: [1, 1], armF: [1, 1, -30], armB: [0, 0, -40], footF: [4, 0], footB: [-3, 0] },
+  fBpA1: { head: [-2, 2, -11.25], body: [-2, 1], armF: [-4, -3, 150], armB: [2, 0, -50], footF: [4, 0], footB: [-4, 0], tailDeg: -16 },
+  fBpA2: { head: [-3, 2, -22.5], body: [-3, 1], armF: [-5, -4, 170], armB: [2, 0, -60], footF: [4, 0], footB: [-4, 0], tailDeg: -20 },
+  fBpX: { head: [3, -1, 11.25], body: [3, -1], armF: [7, -3, -110], armB: [-2, 0, 60], footF: [5, 0], footB: [-4, -2, 33.75], tailDeg: 18 },
+  fBpI: { head: [4, 1, 22.5], body: [3, 1], armF: [8, 0, -75], armB: [-2, 0, 70], footF: [5, 0], footB: [-4, -1, 22.5], tailDeg: 22 },
+  fBpF: { head: [3, 2, 11.25], body: [2, 2], armF: [6, 2, -30], armB: [-1, 0, 40], footF: [5, 0], footB: [-4, 0], tailDeg: 12 },
+  fSpA: { head: [0, 4], body: [0, 3], armF: [1, 2, 40], armB: [-1, 2, 50], footF: [3, 0], footB: [-3, 0], tailDeg: -18 },
+  fSpX: { head: [1, -3, -11.25], body: [1, -3], armF: [0, -3, -160], armB: [0, -3, 160], footF: [5, -6, -90], footB: [2, -4, -45], tailDeg: 20 },
+  fSpI: { head: [1, -4, -22.5], body: [1, -4], armF: [1, -4, -170], armB: [-1, -4, 170], footF: [5, -8, -112.5], footB: [3, -5, -67.5], tailDeg: 24 },
+  fGrA: { head: [-2, 1, -11.25], body: [-1, 1], armF: [-1, 0, 40], armB: [0, 0, 30], footF: [4, 0], footB: [-3, 0], tailDeg: -12 },
+  fGrX: { head: [3, 0], body: [2, 0], armF: [1, 0, -30], armB: [0, 0, -20], footF: [5, 0], footB: [-3, -1, 22.5], tailDeg: 10 },
+  fGrK: { head: [2, -2, -11.25], body: [2, -2], armF: [-2, -2, 70], armB: [-3, -2, 60], footF: [6, -5, -90], footB: [4, -4, -78.75], tailDeg: 22 },
+  fGrI: { head: [3, -1, 11.25], body: [3, -1], armF: [-2, -1, 80], armB: [-3, -1, 70], footF: [7, -4, -78.75], footB: [5, -3, -67.5], tailDeg: 24 },
+  fCrA: { head: [-1, 3, -11.25], body: [0, 2], armF: [3, 1, -70], armB: [-3, 1, 70], footF: [4, 0], footB: [-4, 0], tailDeg: -14 },
+  fCrX: { head: [0, -2, -22.5], body: [0, -1], armF: [4, -2, -130], armB: [-4, -2, 130], footF: [5, 0], footB: [-5, 0], tailDeg: 16 },
+  fCrR: { head: [0, 1], body: [0, 1], armF: [2, 0, -70], armB: [-1, 0, 50], footF: [4, 0], footB: [-4, 0] },
+  fSqA: { head: [0, -3, -11.25], body: [0, -3], armF: [2, -4, -160], armB: [-2, -4, 160], footF: [3, -4], footB: [-3, -4], tailDeg: -18 },
+  fSqI: { head: [2, 4, 11.25], body: [0, 3], armF: [5, 2, -90], armB: [-5, 2, 90], footF: [6, 0, -22.5], footB: [-6, 0, 22.5], tailDeg: 26 },
+  fAsA: { head: [-1, 0, -11.25], body: [-1, 0], armF: [-2, -2, 135], armB: [1, -1, -60], footF: [2, -2], footB: [-2, -2], tailDeg: -12 },
+  fAsX: { head: [2, 0, 11.25], body: [1, 0], armF: [4, -1, -95], armB: [-1, -1, 50], footF: [2, -2], footB: [-2, -2], tailDeg: 10 },
+  fAs2X: { head: [2, 0, 11.25], body: [1, 0], armB: [5, -1, -95], armF: [-1, -1, 50], footF: [2, -2], footB: [-2, -2], front: 'armB', tailDeg: 10 },
+  fAlX: { head: [3, 0, 11.25], body: [1, 0], armF: [0, -1, 40], armB: [-1, -1, 30], footF: [1, -3], footB: [-2, -3], tailDeg: 14 },
+  fStA: { head: [0, -1], body: [0, -1], armF: [1, -3, -150], armB: [-1, -3, 150], footF: [2, -5], footB: [-2, -5], tailDeg: -16 },
+  fStI: { head: [0, -1, 11.25], body: [0, 0], armF: [2, -3, -170], armB: [-2, -3, 170], footF: [1, 3], footB: [-1, 3], tailDeg: 20 },
+  // The boss pose on the select screen: planted wide, one fist out, the other hand on his gut.
+  fHero1: { head: [2, 1, 11.25], body: [1, 1], armF: [5, -1, -95], armB: [1, 0, -150], footF: [5, 0], footB: [-4, 0] },
+  fHero2: { head: [2, 2, 11.25], body: [1, 2], armF: [5, 0, -95], armB: [1, 1, -150], footF: [5, 0], footB: [-4, 0] },
+  fBall: { head: [0, 3], body: [0, 2], armF: [1, 1, 30], armB: [-1, 1, 40], footF: [2, -2], footB: [-2, -2] },
+  // Breathing in like a vacuum: leaning back on wide feet, arms thrown wide, jaws gaping.
+  fInh1: { head: [-2, 0, -11.25], body: [-1, 0], armF: [3, -2, -140], armB: [-2, -2, 150], footF: [5, 0], footB: [-4, 0], tailDeg: -20 },
+  fInh2: { head: [-2, 1, -11.25], body: [-1, 1], armF: [3, -1, -130], armB: [-2, -1, 140], footF: [5, 0], footB: [-4, 0], tailDeg: -16 },
+  // The gulp: head thrown up as it goes down, then the whole body squashed around the lump.
+  fGulp1: { head: [0, -2, -22.5], body: [0, -1], armF: [2, -2, -160], armB: [-2, -2, 160], footF: [3, 0], footB: [-3, 0], tailDeg: 10 },
+  fGulp2: { head: [1, 3], body: [0, 2], armF: [4, 1, -80], armB: [-3, 1, 80], footF: [5, 0], footB: [-5, 0], tailDeg: -6 },
+  fSpitA: { head: [-3, 2, -22.5], body: [-2, 1], armF: [0, 1, 60], armB: [-1, 0, 70], footF: [4, 0], footB: [-4, 0], tailDeg: -18 },
+  fSpitX: { head: [4, 0, 11.25], body: [2, 0], armF: [-1, 0, 50], armB: [-2, 0, 60], footF: [5, 0], footB: [-4, -1, 22.5], tailDeg: 18 }
 };
 
 // Hitstun sequences: [until progress, frame, face].
@@ -461,7 +511,19 @@ const KEYS = {
   tQuake: [[0, 'tQkA', 'Angry'], [0.3, 'tQkA', 'Open'], [0.44, 'tSmX', 'Open'], [0.5, 'tQkI', 'Open'], [0.82, 'tSmF', 'Angry'], [0.94, 'tR', '']],
   tPound: [[0, 'tPdA', 'Angry'], [0.24, 'tPdI', 'Open'], [0.38, 'tPdA2', 'Angry'], [0.5, 'tPdI2', 'Open'], [0.64, 'tPdA', 'Angry'], [0.76, 'tPdI', 'Open'], [0.92, 'tR', '']],
   tAirClaw: [[0, 'tAcA', 'Angry'], [0.36, 'tAcI', 'Open']],
-  tAirSmash: [[0, 'tAsA', 'Angry'], [0.32, 'tAsA', 'Open'], [0.42, 'tAsI', 'Open']]
+  tAirSmash: [[0, 'tAsA', 'Angry'], [0.32, 'tAsA', 'Open'], [0.42, 'tAsI', 'Open']],
+  // The frog: snappy slaps, a tongue that is out and back in a blink, the giant palm held back.
+  fSlap: [[0, 'fSlA', 'Angry'], [0.3, 'fSlX', 'Open'], [0.42, 'fSlI', 'Angry'], [0.75, 'fSlR', '']],
+  fSlap2: [[0, 'fSl2A', 'Angry'], [0.3, 'fSl2X', 'Open'], [0.44, 'fSl2I', 'Angry'], [0.75, 'fSlR', '']],
+  fLash: [[0, 'fLhA', 'Angry'], [0.2, 'fLhX', 'Wide'], [0.62, 'fLhR', 'Angry']],
+  fBigPalm: [[0, 'fBpA1', 'Angry'], [0.22, 'fBpA2', 'Angry'], [0.42, 'fBpX', 'Open'], [0.5, 'fBpI', 'Open'], [0.72, 'fBpF', 'Angry'], [0.9, 'fSlR', '']],
+  fSpring: [[0, 'fSpA', 'Angry'], [0.36, 'fSpX', 'Open'], [0.46, 'fSpI', 'Open'], [0.8, 'fall', 'Angry']],
+  fGrapple: [[0, 'fGrA', 'Angry'], [0.12, 'fGrX', 'Wide'], [0.42, 'fGrK', 'Open'], [0.6, 'fGrI', 'Open'], [0.86, 'fSlR', 'Angry']],
+  fCroak: [[0, 'fCrA', 'Puff'], [0.4, 'fCrX', 'Wide'], [0.8, 'fCrR', 'Angry']],
+  fSquash: [[0, 'fSqA', 'Angry'], [0.46, 'fSqI', 'Open'], [0.84, 'crouch', 'Angry']],
+  fAirSlap: [[0, 'fAsA', 'Angry'], [0.24, 'fAsX', 'Open'], [0.46, 'fAsA', 'Angry'], [0.56, 'fAs2X', 'Open']],
+  fAirLash: [[0, 'fAsA', 'Angry'], [0.22, 'fAlX', 'Wide'], [0.7, 'fall', 'Angry']],
+  fStomp: [[0, 'fStA', 'Angry'], [0.36, 'fStI', 'Open']]
 };
 export const keyFor = (kind, p) => { const k = KEYS[kind]; if (!k) return null; let r = k[0]; for (const e of k) if (p >= e[0]) r = e; return r; };
 
@@ -604,6 +666,10 @@ export function frameFor(a, time = 0) {
   if (act === 'meteor') return pick(titan ? 'tAsA' : 'bLeapDn', 'Open');
   if (act === 'slamLand') return pick(titan ? 'tQkI' : 'bLand', 'Open');
   if (act === 'stomp') return pick('stomp', 'Angry');
+  // The frog's inhale, gulp and spit.
+  if (act === 'inhale') return pick(t12 % 2 ? 'fInh1' : 'fInh2', 'Wide');
+  if (act === 'gulp') return (a.actT ?? 0) < 0.3 ? pick('fGulp1', 'Puff') : pick('fGulp2', (a.actT ?? 0) < 0.45 ? 'Puff' : 'Blink');
+  if (act === 'spit') return (a.actT ?? 0) < 0.12 ? pick('fSpitA', 'Puff') : pick('fSpitX', (a.actT ?? 0) < 0.3 ? 'Wide' : 'Angry');
   if (act === 'chase') return pick('chase', 'Angry');
   if (a.frozen > 0) return pick('hurt', 'Hurt');
   // Reeling from a hit beats everything else; launched hard, it tumbles instead.
@@ -633,13 +699,19 @@ export function frameFor(a, time = 0) {
     if (p > 0.86) return pick('jSwR', 'Angry');
     return pick(['jFlA', 'jFlB', 'jFlC', 'jFlD'][Math.floor((time + seed) * 30) % 4], Math.floor((time + seed) * 15) % 2 ? 'Open' : 'Angry');
   }
+  if (a.attack > 0 && kind === 'fAirSpin') {
+    const p = 1 - a.attack / MOVES.fAirSpin.dur;
+    if (p < 0.12) return pick('fAsA', 'Angry');
+    if (p > 0.88) return pick('fall', 'Angry');
+    return { frame: { ...FRAMES.jSpin, spin: Math.floor((time + seed) * 20) * (a.face || 1) }, expr: 'Open', name: 'jSpin' };
+  }
   if (a.attack > 0 && kind === 'jAirSpin') {
     const p = 1 - a.attack / MOVES.jAirSpin.dur;
     if (p < 0.12) return pick('nVxA', 'Angry');
     if (p > 0.88) return pick('vortex', 'Angry');
     return { frame: { ...FRAMES.jSpin, spin: Math.floor((time + seed) * 20) * (a.face || 1) }, expr: 'Angry', name: 'jSpin' };
   }
-  if (a.attack > 0 && KEYS[kind] && MOVES[kind] && (a.type === 4 || kind !== 'dashAtk')) {
+  if (a.attack > 0 && KEYS[kind] && MOVES[kind] && (styleOf(a) === 4 || kind !== 'dashAtk')) {
     const [, name, expr] = keyFor(kind, Math.max(0, Math.min(0.999, 1 - a.attack / MOVES[kind].dur)));
     return pick(name, expr);
   }
@@ -647,7 +719,7 @@ export function frameFor(a, time = 0) {
   if (a.attack > 0 && STRIKES[kind]) {
     const dur = MOVES[kind]?.dur || WEAPON_TIME[kind] || 0.3;
     const p = Math.max(0, Math.min(0.999, 1 - a.attack / dur));
-    const [names, expr] = BY_TYPE[kind]?.[a.type] || STRIKES[kind];
+    const [names, expr] = BY_TYPE[kind]?.[styleOf(a)] || STRIKES[kind];
     return pick(names[Math.floor(p * 3)], expr);
   }
   // Launched and still reeling: tumble head over heels.
@@ -670,8 +742,11 @@ export function frameFor(a, time = 0) {
   } else {
     const breath = Math.floor((time + seed) * 1.6) % 2;
     // Nox never stands neutral: low, claws up, leaning toward the fight.
-    base = a.type === 4 ? pick(breath ? 'nStance2' : 'nStance1', blink ? 'Blink' : 'Angry')
-      : a.type === 3 ? (a.form === 'titan' ? pick(breath ? 'tStance2' : 'tStance1', blink ? 'Blink' : 'Angry') : a.form === 'beast' ? pick(breath ? 'bStance2' : 'bStance1', blink ? 'Blink' : 'Angry') : pick(breath ? 'jStance2' : 'jStance1'))
+    // The frog stands like the fighter he swallowed.
+    const st = styleOf(a);
+    base = st === 4 ? pick(breath ? 'nStance2' : 'nStance1', blink ? 'Blink' : 'Angry')
+      : st === 5 ? pick(breath ? 'fStance2' : 'fStance1', blink ? 'Blink' : '')
+      : st === 3 ? (a.form === 'titan' ? pick(breath ? 'tStance2' : 'tStance1', blink ? 'Blink' : 'Angry') : a.form === 'beast' ? pick(breath ? 'bStance2' : 'bStance1', blink ? 'Blink' : 'Angry') : pick(breath ? 'jStance2' : 'jStance1'))
       : pick(breath ? 'idle2' : 'idle');
     base = { ...base, frame: { ...base.frame, tailDeg: Math.round(Math.sin((time + seed) * 1.7) * 2) * 3 } };
   }

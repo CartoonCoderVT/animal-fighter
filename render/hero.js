@@ -309,3 +309,101 @@ export class JumaHero {
     if (fw > 0 && fw < bw) dot(g, '#ffffff', bx + fw - 1, by, 1, 2);
   }
 }
+
+// Don's entrance, played from the moment he is picked:
+//   0.00  he cannonballs in from above, curled up and spinning, and lands on the pedestal in a
+//         big slimy splash, squashed flat;
+//   0.55  he rises, a fly buzzes past and his tongue snatches it out of the air: GLUP;
+//   1.45  the boss pose, looping: planted wide under the slats of light of a film-noir office,
+//         one fist out, his cigar smoking, blowing smoke rings; every few seconds the fly comes
+//         back and the tongue gets it again.
+const F_LAND = 0.42, F_RISE = 0.6, F_POSE = 1.45, F_CYCLE = 4.6;
+const SLIME = ['#c8f080', '#9be05a', '#6b9e3c', '#e8ffd0'];
+
+// A fly: a dark body and two flickering wings.
+function fly(g, x, y, t, s) {
+  dot(g, '#120d1e', x - s, y, 3 * s, 2 * s);
+  dot(g, '#7a2a3a', x + s, y, s, s);
+  g.globalAlpha = 0.75;
+  const up = Math.floor(t * 40) % 2;
+  dot(g, '#e8f4ff', x - s, y - (up ? 2 : 1) * s, 2 * s, s);
+  g.globalAlpha = 1;
+}
+
+export class FrogHero {
+  constructor(renderer) { this.r = renderer; }
+
+  draw(g, x, y, t, { density: s = 2, dt = 1 / 60 } = {}) {
+    // Film noir: slats of light from a window blind fall across the dark behind him.
+    const lit = clamp01((t - F_LAND) / 0.5);
+    if (lit > 0) {
+      for (let i = 0; i < 6; i++) {
+        g.globalAlpha = lit * (0.1 + (i % 2) * 0.04) * (0.9 + Math.sin(t * 0.7) * 0.1);
+        for (let k = 0; k < 4 * s; k++) dot(g, '#f2d890', x - 22 * s + i * 4 * s - k * 0.5, y - 74 * s + i * 10 * s + k, 40 * s, 1);
+      }
+      g.globalAlpha = 1;
+    }
+    let name = 'fHero1', expr = '', ox = 0, oy = 0, spin = 0, tongue = 0, flyAt = null;
+    const cyc = t > F_POSE ? (t - F_POSE) % F_CYCLE : -1;
+    if (t < F_LAND) {
+      // In from above, curled up and spinning.
+      const k = t / F_LAND;
+      ox = -(1 - k) * 40 * s; oy = -(1 - k * k) * 90 * s;
+      name = 'fBall'; expr = 'Angry'; spin = Math.floor(t * 18);
+    } else if (t < F_RISE) { name = 'fSqI'; expr = 'Open'; }
+    else if (t < F_POSE || cyc > 3) {
+      // The fly: in along a wobbling path, the tongue out to it, back in, the gulp.
+      const lt = t < F_POSE ? (t - F_RISE) / (F_POSE - F_RISE) : (cyc - 3) / (F_CYCLE - 3);
+      if (lt < 0.35) { name = 'fHero1'; expr = 'Angry'; const k = lt / 0.35; flyAt = [x + (60 - 26 * k) * s + Math.sin(t * 19) * 3 * s, y - (44 - 18 * k) * s + Math.cos(t * 23) * 3 * s]; }
+      else if (lt < 0.5) { name = 'fLhX'; expr = 'Wide'; tongue = Math.sin(((lt - 0.35) / 0.15) * Math.PI); }
+      else if (lt < 0.72) { name = 'fGulp1'; expr = 'Puff'; }
+      else { name = 'fHero2'; expr = 'Blink'; }
+    } else {
+      name = Math.floor((t - F_POSE) * 1.3) % 2 ? 'fHero2' : 'fHero1';
+      expr = (t % 3.3) < 0.12 ? 'Blink' : '';
+    }
+    const frame = { ...(FRAMES[name] || {}), ...(spin ? { spin } : {}) };
+    const fx = x + ox, fy = y + oy;
+    const a = this.actor ||= { id: 962, type: 5, face: 1, ground: true, vx: 0, vy: 0, attack: 0, act: null, copy: null, wounds: {}, severed: [], broken: {}, embedded: [], char: 0, hurt: 0 };
+    const f = { frame, expr, name };
+    const { s: sp } = figureSprite(a, f, t > F_LAND && t < F_LAND + 0.06 ? 'flash' : '', null);
+    // The light through the blinds rims him from the upper left.
+    if (lit > 0) { g.globalAlpha = lit; const rim = tintOf(sp, '#f2d890'); for (const [dx, dy] of [[-s, 0], [0, -s]]) drawFigure(g, rim, fx + dx, fy + dy, 1, s); g.globalAlpha = 1; }
+    drawFigure(g, sp, fx, fy, 1, s);
+    const ch = castFor(5, null);
+    if (tongue > 0) {
+      const m = ch.mouth || [8, -3];
+      this.r.tongueAt(g, figurePoint(frame, 'head', m[0], m[1], fx, fy, 1, s, ch), tongue * 34 * s, 1, s, -tongue * 18 * s);
+    }
+    if (flyAt) fly(g, flyAt[0], flyAt[1], t, s);
+    // Cigar smoke curling up off the ember, and a smoke ring now and then.
+    if (t > F_RISE && expr !== 'Wide' && expr !== 'Puff') {
+      const ember = figurePoint(frame, 'head', 11, -5, fx, fy, 1, s, ch);
+      dot(g, Math.floor(t * 6) % 3 ? '#ff6a2a' : '#ffe2a0', ember.x, ember.y, s, s);
+      for (let i = 0; i < 8; i++) {
+        const ph = (t * 0.5 + i / 8) % 1;
+        g.globalAlpha = (1 - ph) * 0.45;
+        dot(g, i % 2 ? '#c8c0d8' : '#a8a0c0', ember.x + Math.sin(t * 2 + i * 1.7 + ph * 5) * 3 * s * ph, ember.y - ph * 30 * s, s * (ph > 0.5 ? 2 : 1), s * (ph > 0.5 ? 2 : 1));
+      }
+      const rp = cyc >= 0 && cyc < 3 ? (cyc % 1.5) / 1.5 : -1;
+      if (rp >= 0) {
+        g.globalAlpha = (1 - rp) * 0.6;
+        const R = (2 + rp * 5) * s, cx2 = ember.x + 6 * s + rp * 14 * s, cy2 = ember.y - 4 * s - rp * 22 * s;
+        for (let i = 0; i < 20; i++) { const an = (i / 20) * Math.PI * 2; dot(g, '#e8e4f0', cx2 + Math.cos(an) * R, cy2 + Math.sin(an) * R * 0.5, s, s); }
+      }
+      g.globalAlpha = 1;
+    }
+    // The splash: slime thrown up all around as he lands, and a ring along the floor.
+    const sk = (t - F_LAND) / 0.6;
+    if (sk > 0 && sk < 1) {
+      const r3 = seeded(77);
+      g.globalAlpha = 1 - sk;
+      for (let i = 0; i < 26; i++) { const vx = (r3() - 0.5) * 4, vy = -2 - r3() * 3.5; dot(g, SLIME[i % 4], x + vx * sk * 26 * s, y - 2 * s + (vy * sk * 26 + sk * sk * 70) * s, s * (i % 3 ? 1 : 2), s); }
+      for (let i = 0; i < 48; i++) { const an = (i / 48) * Math.PI * 2; dot(g, '#c8f080', x + Math.cos(an) * 34 * ease(sk) * s, y - 2 * s + Math.sin(an) * 6 * ease(sk) * s); }
+      g.globalAlpha = 1;
+    }
+    // A slime puddle stays on the pedestal.
+    const pool = clamp01((t - F_LAND) / 0.4);
+    if (pool > 0) { const w = Math.round(ease(pool) * 22 * s); for (let i = -w; i <= w; i++) { const d = Math.abs(i) / (w || 1); dot(g, d > 0.85 ? '#3d6a2a' : '#6b9e3c', x + i, y - 1, 1, d < 0.6 ? 2 : 1); if (d < 0.5 && (i + Math.floor(t * 5)) % 9 === 0) dot(g, '#c8f080', x + i, y - 1); } }
+  }
+}

@@ -4,6 +4,7 @@ import { P } from '../engine/palette.js';
 import { MAP } from '../sim/map.js';
 import { drawText } from '../engine/font.js';
 import { bloodPal } from './blood-art.js';
+import { FIGHTERS } from '../sim/fighters.js';
 
 const mk = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
 const X = v => v * S;
@@ -15,6 +16,9 @@ const TOPS = [
 const BLOOD = [P.blood1, P.blood2, P.blood3, P.blood2, P.blood0];
 const ROCK = ['#5a5068', '#7a6e88', '#3e3648', '#9a8eaa'], STEAM = ['#e8e4f0', '#c8c0d8', '#a8a0c0'], EMBER = ['#ffffff', '#ffe2a0', '#ffb040', '#ff6a2a'];
 const DUST = ['#6a6078', '#8a7f95', '#4f475e'];
+const SLIME = ['#c8f080', '#9be05a', '#6b9e3c', '#ffffff'];
+// The colours of a fighter the frog copied (his own green when there is none).
+const copyCols = c => (c >= 0 && FIGHTERS[c] ? [FIGHTERS[c].color, '#ffffff', '#ffe2a0'] : SLIME);
 const FIRE = [P.fire0, P.fire1, P.fire2, P.fire3, P.fire4];
 const DEBRIS = {
   wood: ['#b07b4f', '#87553c', '#d6a46c'], glass: ['#bfe8f2', '#8cc0dc', '#ffffff'], metal: ['#8a87a2', '#5a5276', '#c4c0d8'],
@@ -310,6 +314,48 @@ export class FX {
         break;
       }
       // The beast's paws clapped together: a ring of force and a burst of light.
+      // The frog. The gulp: a wet slurp of slime and a ring closing in on him. The copy: a burst of
+      // stars in the colours of whoever he swallowed. The spit: a star where they shoot out.
+      case 'gulp':
+        this.rings.push({ x, y, life: 0.25, max: 0.25, r: 22, color: '#c8f080' });
+        this.burst('spark', x + (e.face || 1) * 8, y - 2, 12, { spread: 6.3, s: 2.2, life: 0.4, colors: SLIME, g: 0.12, drag: 0.94, rnd });
+        this.burst('blood', x + (e.face || 1) * 8, y, 6, { a: -Math.PI / 2, spread: 2.4, s: 1.6, life: 0.6, colors: ['#c8f080', '#9be05a'], g: 0.2, stick: true, rnd });
+        break;
+      case 'copyStar': {
+        const cols = copyCols(e.copy ?? -1);
+        this.flashes.push({ x, y: y - 6, life: 0.2, max: 0.2, kind: 'star', p: 4, a: Math.PI / 4, seed: e.id || 1, color: cols[0] });
+        this.rings.push({ x, y: y - 4, life: 0.35, max: 0.35, r: 34, color: cols[0] });
+        this.rings.push({ x, y: y - 4, life: 0.5, max: 0.5, r: 52, color: '#ffffff' });
+        this.burst('spark', x, y - 6, 22, { spread: 6.3, s: 3, life: 0.6, colors: cols, g: 0.04, drag: 0.94, em: true, rnd });
+        break;
+      }
+      case 'copyPoof':
+        this.burst('steam', x, y, 10, { spread: 6.3, s: 1.2, life: 0.6, colors: ['#e8e4f0', '#c8f080', '#a8a0c0'], em: true, g: -0.03, drag: 0.92, size: 2, grow: 0.05, rnd });
+        break;
+      case 'spitStar': {
+        const f = e.face || 1;
+        this.flashes.push({ x, y, life: 0.16, max: 0.16, kind: 'star', p: 3.4, a: f > 0 ? 0 : Math.PI, seed: e.id || 1, color: '#fff2a0' });
+        this.rings.push({ x, y, life: 0.25, max: 0.25, r: 20, color: '#ffffff' });
+        this.burst('spark', x, y, 14, { a: f > 0 ? 0 : Math.PI, spread: 1.4, s: 3.4, life: 0.4, colors: ['#ffffff', '#fff2a0', '#c8f080'], g: 0, em: true, rnd });
+        this.burst('blood', x, y, 8, { a: f > 0 ? -0.2 : Math.PI + 0.2, spread: 1, s: 2.6, life: 0.6, colors: ['#c8f080', '#9be05a'], g: 0.2, stick: true, rnd });
+        break;
+      }
+      case 'bigPalm': {
+        const f = e.face || 1;
+        this.flashes.push({ x, y, life: 0.16, max: 0.16, kind: 'star', p: 4.4, a: f > 0 ? 0 : Math.PI, seed: e.id || 1, color: '#e8ffd0' });
+        this.rings.push({ x, y, life: 0.22, max: 0.22, r: 18, color: '#ffffff' });
+        this.rings.push({ x, y, life: 0.34, max: 0.34, r: 30, color: '#9be05a' });
+        this.burst('spark', x, y, 14, { a: f > 0 ? 0 : Math.PI, spread: 2.2, s: 3, life: 0.35, colors: SLIME, g: 0.1, em: true, rnd });
+        break;
+      }
+      // The croak: the sound comes off him in rings, wobbling outward to the edge of its reach.
+      case 'croak': {
+        const R = X(e.r || 90);
+        for (let i = 0; i < 4; i++) this.rings.push({ x, y, life: 0.3 + i * 0.1, max: 0.3 + i * 0.1, r: R * (0.45 + i * 0.18), color: i % 2 ? '#ffffff' : '#c8f080' });
+        this.flashes.push({ x, y, life: 0.12, max: 0.12, kind: 'star', p: 2.6, a: Math.PI / 4, seed: e.id || 1, color: '#e8ffd0' });
+        this.burst('spark', x, y, 16, { spread: 6.3, s: 2.6, life: 0.35, colors: ['#ffffff', '#c8f080'], g: 0, em: true, rnd });
+        break;
+      }
       case 'clap':
         this.flashes.push({ x, y, life: 0.12, max: 0.12, kind: 'star', p: 3, a: Math.PI / 4, seed: e.id || 1, color: '#ffe2a0' });
         this.rings.push({ x, y, life: 0.3, max: 0.3, r: 30, color: '#ffffff' });

@@ -2,11 +2,11 @@
 // A running special lives in a.act; stepSpecial runs it each step and may lock movement.
 import { Body, Composite } from './physics.js';
 import { SPECIALS, NOX_AIR, airOf } from './moves.js';
-import { FIGHTERS, formOf, weightOf, RAGE_MAX, NEXT_FORM } from './fighters.js';
+import { FIGHTERS, formOf, weightOf, styleOf, RAGE_MAX, NEXT_FORM, BELLY } from './fighters.js';
 import { damage, startMove, landPlunge, markOf, drama } from './combat.js';
 import { MOVES } from './moves.js';
 import { knockdown, pushActor, ragdollOf, breakJoint, releaseHeld } from './ragdoll.js';
-import { damageProp } from './props.js';
+import { damageProp, dropWeapon } from './props.js';
 import { breakLamp } from './hazards.js';
 import { rnd, clamp } from '../engine/const.js';
 import { HALF_H } from '../render/rig.js';
@@ -33,8 +33,9 @@ export function endAct(g, a) {
 }
 
 export function startSpecial(g, a) {
-  if (a.type === 3) { jumaSpecial(g, a); return; }
-  const sp = SPECIALS[a.type];
+  const style = styleOf(a);
+  if (style === 3) { jumaSpecial(g, a); return; }
+  const sp = SPECIALS[style];
   const v = a.body.velocity;
   a.powerSeq = (a.powerSeq || 0) + 1;
   a.abilityCd = sp.cd;
@@ -79,7 +80,7 @@ export function startSpecial(g, a) {
 // After a launcher: leap straight at the airborne target, then open the air combo on arrival.
 // then: the move to throw on arrival (small Juma pouncing after a rival her string knocked away).
 export function startChase(g, a, prey, then = null) {
-  if (a.type === 4) { startSwarm(g, a, { prey, then: then || NOX_AIR[0] }); return; }
+  if (styleOf(a) === 4) { startSwarm(g, a, { prey, then: then || NOX_AIR[0] }); return; }
   setAct(a, 'chase', 0.42);
   a.chaseId = prey.id;
   a.chaseThen = then;
@@ -320,6 +321,9 @@ export function stepSpecial(g, a, input, pressed, dt) {
       return { lock: true, vx: v.x * 0.8, vy: a.ground ? v.y : Math.min(v.y, 0.6) };
     }
     case 'frenzy': return stepFrenzy(g, a, v);
+    case 'inhale': return stepInhale(g, a, input, v);
+    case 'gulp': return stepGulp(g, a, v);
+    case 'spit': return stepSpit(g, a, v);
     case 'clap': return stepClap(g, a, v);
     case 'crush': return stepCrush(g, a, v, dt);
     case 'charge': return stepCharge(g, a, v);
@@ -486,7 +490,7 @@ export function feedRage(g, a, amount) {
 }
 
 export function tickForm(g, a) {
-  if (a.type !== 3 || a.dead || a.knocked || a.frozen > 0 || a.act === 'morph') return;
+  if (a.type !== 3 || a.dead || a.knocked || a.frozen > 0 || a.act === 'morph' || a.swallowedBy != null) return;
   const next = NEXT_FORM[a.form || null];
   // A change cut short before the pop (a blast threw her down) starts over once she is back up.
   const cut = a.morphTo && a.form !== a.morphTo;
@@ -1002,4 +1006,170 @@ function bloodBeam(g, a) {
   g.shake = Math.max(g.shake, 5);
   g.flash = Math.max(g.flash, 0.15);
   g.sound('beam', a.x);
+}
+
+// ---- The frog ---------------------------------------------------------------------------
+// K inhales: a gale pours into his open mouth, dragging whoever is in front toward it, and the first
+// to reach it is swallowed whole. The rival stays alive inside him and he fights with their style
+// (and wears their looks) for as long as he keeps them down; K again spits them out as a living
+// cannonball, S+K throws the special he copied. The one inside mashes to fight their way out.
+export const INHALE = { min: 0.32, max: 1.4, reach: 125, band: 34, cd: 1.1, gulp: 0.6 };
+const SPIT = { at: 0.12, dur: 0.42, dmg: 10, v: 12.5 };
+
+export function frogPower(g, a) {
+  a.attack = 0; a.hits = null;
+  if (a.belly != null) {
+    if (a.input.down && a.copy != null) { if (!(a.abilityCd > 0)) startSpecial(g, a); return; }
+    a.powerSeq = (a.powerSeq || 0) + 1;
+    setAct(a, 'spit', SPIT.dur);
+    a.spat = false;
+    Body.setVelocity(a.body, { x: a.body.velocity.x * 0.3, y: a.ground ? a.body.velocity.y : Math.min(a.body.velocity.y, 0) });
+    return;
+  }
+  if (a.abilityCd > 0) return;
+  a.powerSeq = (a.powerSeq || 0) + 1;
+  setAct(a, 'inhale', INHALE.max);
+  a.tooBig = false;
+  Body.setVelocity(a.body, { x: a.body.velocity.x * 0.3, y: a.ground ? a.body.velocity.y : Math.min(a.body.velocity.y, 0) });
+  g.sound('inhale', a.x);
+}
+
+// The mouth, a little ahead of his face.
+const mouth = a => ({ x: a.x + a.face * 10, y: a.y - 2 });
+const swallowable = (a, b) => !b.dead && !b.knocked && b.swallowedBy == null && b.team !== a.team && !['requiem', 'swarm', 'morph'].includes(b.act) && !(b.iframes > 0 && b.dodge > 0);
+
+function stepInhale(g, a, input, v) {
+  const m = mouth(a), face = a.face, R = INHALE.reach;
+  const ahead = (x, y) => { const d = (x - m.x) * face; return d > -6 && d < R && Math.abs(y - m.y) < INHALE.band + d * 0.15 ? d : -1; };
+  for (const b of g.actors) {
+    if (b === a || !swallowable(a, b)) continue;
+    const d = ahead(b.x, b.y);
+    if (d < 0) continue;
+    // Juma's beast and titan are far too big to go down: they only lean into the wind.
+    const big = b.type === 3 && !!b.form;
+    if (big && d < 40 && !a.tooBig) { a.tooBig = true; g.text(b.x, b.y - 34, 'GRANDE DEMAIS!', '#ffb070'); }
+    if (!big && d < 14 && Math.abs(b.y - m.y) < 22) { gulp(g, a, b); return LOCK; }
+    // The pull grows as they get closer; far off they can still run against it.
+    const k = 1 - d / R, pull = (2.2 + 6.5 * k * k) * (big ? 0.3 : 1);
+    const bv = b.body.velocity;
+    Body.setVelocity(b.body, { x: bv.x + (-face * pull - bv.x) * (0.2 + 0.5 * k), y: bv.y + ((m.y - b.y) * 0.08 - bv.y) * 0.25 * k });
+    if (b.lagPos) b.lagVel = { x: -face * pull, y: 0 };
+    b.inhaled = g.time;
+    if (k > 0.55 && !big) { b.stun = Math.max(b.stun, 0.12); b.attack = 0; b.hits = null; }
+  }
+  for (const l of g.limbs) { const d = ahead(l.x, l.y); if (d >= 0) Body.setVelocity(l.body, { x: l.body.velocity.x - face * (1.4 + 3 * (1 - d / R)), y: l.body.velocity.y - 0.3 }); }
+  for (const p of g.props) { if (p.held || p.fixed || p.body.isStatic) continue; const d = ahead(p.x, p.y); if (d >= 0) Body.setVelocity(p.body, { x: p.body.velocity.x - face * (0.8 + 2.4 * (1 - d / R)), y: p.body.velocity.y - 0.2 }); }
+  // He keeps inhaling while K is held, a little at least, up to his breath.
+  if ((!input.power && a.actT > INHALE.min) || a.actT > a.actMax) { endAct(g, a); a.abilityCd = INHALE.cd; return null; }
+  return { lock: true, vx: v.x * 0.7, vy: a.ground ? v.y : Math.min(v.y, 1) };
+}
+
+// Swallowed whole: the rival vanishes into him, alive, and he takes on their style and looks.
+function gulp(g, a, b) {
+  // Whatever they had in their hands stays outside.
+  if (b.act) endAct(g, b);
+  if (b.holding || b.holdingLimb || b.holdJoint) releaseHeld(g, b);
+  if (b.weapon) dropWeapon(g, b, { fling: true });
+  if (b.belly != null) releaseVictim(g, b, 'pop');
+  b.swallowedBy = a.id;
+  b.hitlag = 0; b.lagPos = null; b.lagVel = null;
+  b.attack = 0; b.hits = null; b.hitstun = 0; b.stun = 0; b.dodge = 0; b.climbing = false; b.chase = null; b.comboTimer = 0; b.burning = 0; b.frozen = 0;
+  b.lastHit = a.id; b.lastHitTime = g.time;
+  a.belly = b.id;
+  a.bellyT = BELLY.hold;
+  a.copy = b.type === 5 ? null : b.type;
+  a.chase = null;
+  setAct(a, 'gulp', INHALE.gulp);
+  a.abilityCd = 0.6;
+  g.fx('gulp', { x: a.x, y: a.y, face: a.face, copy: a.copy ?? -1 });
+  g.text(a.x, a.y - 30, 'GLUP!', '#9be05a');
+  g.sound('gulp', a.x);
+  drama(g, 0.3, a, b);
+}
+
+function stepGulp(g, a, v) {
+  // Halfway through the gulp the borrowed style takes hold: a burst of stars and its name.
+  if (!a.copied && a.actT >= INHALE.gulp * 0.5) {
+    a.copied = true;
+    const victim = g.actor(a.belly);
+    // A frog swallowed by a frog: nothing to copy, just a very full frog.
+    if (victim) g.text(a.x, a.y - 40, victim.type === 5 ? 'SAPO NA PANÇA!' : 'COPIOU ' + FIGHTERS[victim.type].name.toUpperCase() + '!', FIGHTERS[victim.type].color);
+    g.fx('copyStar', { x: a.x, y: a.y, copy: a.copy ?? -1 });
+    g.sound('pop', a.x);
+  }
+  if (a.actT > a.actMax) { endAct(g, a); a.copied = false; return null; }
+  return { lock: true, vx: v.x * 0.6, vy: v.y };
+}
+
+function stepSpit(g, a, v) {
+  if (!a.spat && a.actT >= SPIT.at) { a.spat = true; releaseVictim(g, a, 'spit'); }
+  if (a.actT > a.actMax) { endAct(g, a); return null; }
+  return { lock: true, vx: v.x * 0.7, vy: v.y };
+}
+
+// The rival leaves the frog: spat out as a cannonball, fighting their way out, or simply popping
+// free when he is knocked down or killed. Either way he loses the style he borrowed.
+export function releaseVictim(g, a, how) {
+  const b = g.actor(a.belly);
+  a.belly = null; a.copy = null; a.bellyT = 0; a.copied = false;
+  if (!b || b.swallowedBy !== a.id) return;
+  b.swallowedBy = null;
+  b.ghostClear = true;
+  const face = a.face || 1, m = mouth(a);
+  g.fx('copyPoof', { x: a.x, y: a.y, face });
+  if (how === 'spit') {
+    Body.setPosition(b.body, { x: clamp(m.x + face * 6, 14, 946), y: a.y - 4 });
+    Body.setVelocity(b.body, { x: 0, y: 0 });
+    b.x = b.body.position.x; b.y = b.body.position.y; b.prevFeet = b.y + HALF_H;
+    b.invincible = 0; b.iframes = 0;
+    const w = weightOf(b);
+    damage(g, b, SPIT.dmg, { x: b.x - face * 4, y: b.y }, a.id, 'spit', { kb: { x: face * SPIT.v * w, y: -4 * w }, knock: true, force: true });
+    // The body is a projectile: it hits whoever it flies into.
+    const r = ragdollOf(g, b);
+    for (const l of r ? Object.values(r.limbs) : []) { l.owner = a.id; l.throwTime = g.time + 1.4; }
+    g.fx('spitStar', { x: m.x, y: m.y, face });
+    g.text(m.x, m.y - 26, 'PTUI!', '#9be05a');
+    g.sound('spit', a.x);
+    Body.setVelocity(a.body, { x: -face * 2, y: a.body.velocity.y });
+  } else {
+    const up = how === 'escape';
+    Body.setPosition(b.body, { x: clamp(a.x + (up ? -face * 10 : 0), 14, 946), y: a.y - 8 });
+    Body.setVelocity(b.body, { x: up ? -face * 4 : 0, y: -7 });
+    b.x = b.body.position.x; b.y = b.body.position.y; b.prevFeet = b.y + HALF_H;
+    b.iframes = 0.6; b.invincible = Math.max(b.invincible || 0, 0.6);
+    if (up) {
+      a.stun = Math.max(a.stun, 0.7); a.hitstun = Math.max(a.hitstun || 0, 0.5); a.hitstunMax = Math.max(a.hitstunMax || 0, a.hitstun); a.hitHeavy = true;
+      g.text(b.x, b.y - 30, 'ESCAPOU!', FIGHTERS[b.type].color);
+      g.sound('spit', a.x);
+    }
+  }
+}
+
+// Each step for the one inside: carried along unseen and untouchable, mashing to break out.
+export function stepSwallowed(g, b, input, pressed, dt) {
+  const a = g.actor(b.swallowedBy);
+  if (!a || a.dead || a.knocked || a.belly !== b.id) {
+    if (a && a.belly === b.id) { releaseVictim(g, a, 'pop'); return; }
+    b.swallowedBy = null; b.ghostClear = true;
+    return;
+  }
+  Body.setPosition(b.body, { x: a.body.position.x, y: a.body.position.y });
+  Body.setVelocity(b.body, { x: 0, y: 0 });
+  b.body.collisionFilter.mask = 0;
+  b.face = a.face;
+  let mash = 0;
+  for (const k of ['attack', 'jump', 'power', 'dodge', 'grab', 'left', 'right']) if (pressed(k)) mash++;
+  if (mash) { a.bellyT -= BELLY.mash * mash; a.wobble = 0.18; }
+}
+
+// Each step for a frog with someone inside: slowly they wear their way out on their own.
+export function tickBelly(g, a, dt) {
+  if (a.belly == null || a.dead) return;
+  // Whoever was inside is gone some other way (crushed with him, left the match): he is empty.
+  const b = g.actor(a.belly);
+  if (!b || b.dead || b.swallowedBy !== a.id) { a.belly = null; a.copy = null; a.bellyT = 0; a.copied = false; return; }
+  a.wobble = Math.max(0, (a.wobble || 0) - dt);
+  if (a.act === 'gulp' || a.act === 'spit') return;
+  a.bellyT -= dt;
+  if (a.bellyT <= 0 && !a.knocked) releaseVictim(g, a, 'escape');
 }

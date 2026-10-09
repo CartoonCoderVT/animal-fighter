@@ -1,13 +1,13 @@
 import { Body, Query, MASK, CAT, onewayBit, GRAV, approach } from './physics.js';
 import { MOVES, NOX_AIR } from './moves.js';
 import { MAP } from './map.js';
-import { FIGHTERS, speedOf, weightOf } from './fighters.js';
+import { FIGHTERS, speedOf, weightOf, styleOf } from './fighters.js';
 import { clamp } from '../engine/const.js';
 import { think } from './ai.js';
 import { attack, power, damage, breakBone, tickAttack } from './combat.js';
 import { interact, dropWeapon, detonateCharges, updateHolding } from './props.js';
 import { knockdown, recover, ragdollOf } from './ragdoll.js';
-import { stepSpecial, startSwarm, tickForm, tickTitan } from './specials.js';
+import { stepSpecial, startSwarm, tickForm, tickTitan, stepSwallowed, tickBelly } from './specials.js';
 import { HALF_H, FOOT } from '../render/rig.js';
 
 export { HALF_H };
@@ -106,6 +106,7 @@ export function stepActor(g, a, dt) {
   for (const k of TIMERS) a[k] = Math.max(0, (a[k] || 0) - dt);
   for (const k in a.drop) a.drop[k] = Math.max(0, a.drop[k] - dt);
   tickForm(g, a);
+  tickBelly(g, a, dt);
   if (a.frozen > 0) {
     a.frozen -= dt;
     if (a.frozen <= 0) { a.frozen = 0; g.fx('shatter', { x: a.x, y: a.y, n: 6, small: true }); g.text(a.x, a.y - 28, 'DESCONGELOU', '#bdeeff'); }
@@ -121,6 +122,8 @@ export function stepActor(g, a, dt) {
   if (!a.bot) for (const k of Object.keys(queued)) input[k] = true;
   a.queued = {};
   const pressed = k => input[k] && (!a.lastInput[k] || queued[k]);
+  // Swallowed: carried inside the frog, only mashing to get out.
+  if (a.swallowedBy != null) { stepSwallowed(g, a, input, pressed, dt); a.lastInput = { ...input }; return; }
 
   if (a.knocked) {
     a.knock -= dt;
@@ -223,6 +226,8 @@ export function stepActor(g, a, dt) {
     if (bolt && a.attack > MOVES[a.attackKind].dur * 0.5) vx = a.face * bolt;
     else if (a.dodge > 0 && a.dodgeKind === 'roll') vx = a.dodgeDir * 8 + sv;
     else if (a.dodge > 0.06 && a.dodgeKind === 'airdash') vx = a.dodgeDir * 8.5;
+    // Caught in the frog's inhale: the wind carries them; running against it only slows it down.
+    else if (g.time - (a.inhaled ?? -9) < 0.05) { if (move) vx += move * speed * 0.18; }
     else if (a.ground) {
       const target = move * speed + sv;
       if (move) {
@@ -253,7 +258,7 @@ export function stepActor(g, a, dt) {
   if (!a.climbing && a.jumpBuffer > 0 && control >= 1 && (a.jumpGrace > 0 || (a.airJumps > 0 && pressed('jump')))) {
     const doubleJump = a.jumpGrace <= 0;
     if (doubleJump) { a.airJumps--; vy = -9.6; g.fx('ring', { x: a.x, y: a.y + 24, size: 16, color: '#b8c8f0' }); }
-    else { vy = -10.8 * (legs === 2 ? 1 : 0.8) * (a.form === 'titan' ? 0.86 : a.form ? 0.9 : 1); g.fx('dust', { x: a.x, y: a.y + FOOT, n: a.form === 'titan' ? 9 : 5 }); }
+    else { vy = -10.8 * (legs === 2 ? 1 : 0.8) * (a.form === 'titan' ? 0.86 : a.form ? 0.9 : 1) * (a.type === 5 ? (a.belly != null ? 0.94 : 1.08) : 1); g.fx('dust', { x: a.x, y: a.y + FOOT, n: a.form === 'titan' ? 9 : 5 }); }
     vx += sv * 0.5;
     a.jumpBuffer = 0; a.jumpGrace = 0; a.jumpHeld = true; a.ground = false; a.jumpAt = g.time;
     g.sound('jump', a.x);
@@ -271,9 +276,9 @@ export function stepActor(g, a, dt) {
     if (a.jumpHeld && !input.jump) { if (vy < -2.5) vy *= 0.48; a.jumpHeld = false; }
     if (vy > 0) a.jumpHeld = false;
     // A bat hovers through his air string instead of dropping out from under it.
-    if (a.type === 4 && a.attack > 0 && NOX_AIR.includes(a.attackKind)) vy = Math.min(vy, 0.35);
+    if (styleOf(a) === 4 && a.attack > 0 && NOX_AIR.includes(a.attackKind)) vy = Math.min(vy, 0.35);
     // Nox glides, scarf streaming, while jump is held on the way down.
-    if (a.type === 4 && vy > 1.2 && input.jump && control >= 1) { vy = Math.min(vy, 1.7); a.gliding = true; }
+    if (styleOf(a) === 4 && vy > 1.2 && input.jump && control >= 1) { vy = Math.min(vy, 1.7); a.gliding = true; }
   }
 
   // Shift: standing still it parries; with a direction it dodges (roll on the ground, dash in
@@ -312,7 +317,7 @@ export function stepActor(g, a, dt) {
   // A move or special that just started set its own velocity (steps, lunges, leaps): keep it.
   if (was[0] !== a.attackSeq || was[1] !== a.powerSeq || was[2] !== a.act) { vx = body.velocity.x; vy = body.velocity.y; }
   if (pressed('grab') && canAct) interact(g, a);
-  if (pressed('bats') && canAct && a.type === 4 && !(a.batCd > 0) && !a.act && !a.climbing) startSwarm(g, a);
+  if (pressed('bats') && canAct && styleOf(a) === 4 && !(a.batCd > 0) && !a.act && !a.climbing) startSwarm(g, a);
   if (pressed('drop')) dropWeapon(g, a);
   if (pressed('detonate')) detonateCharges(g, a);
   a.lastInput = { ...input };

@@ -2,6 +2,7 @@
 // RotSprite-rotated single parts for ragdolls.
 import { CAST, composeChars, composePart, composeTubes, paletteFor, rotate, mirror, snapDeg, slotPoint, castFor } from './pixel-data.js';
 import { hexToRgb } from '../engine/palette.js';
+import { lookOf } from '../sim/fighters.js';
 
 // Sprite canvases stay in CPU memory: they are composited into the fighter's CPU canvas every
 // frame, and GPU-backed sources would force a slow readback each time.
@@ -52,8 +53,9 @@ export function variantOf(a, time) {
 export function figureSprite(a, f, variant = '', chains = null) {
   const severed = a.severed || [];
   const frame = chains ? { ...f.frame, tail: false, scarf: false } : f.frame;
-  const key = a.type + (a.form || '') + '|' + JSON.stringify(frame) + '|' + f.expr + '|' + variant + '|' + severed.join(',') + '|' + woundKey(a.wounds);
-  const ch = castFor(a.type, a.form);
+  const look = lookOf(a);
+  const key = a.type + (look || '') + '|' + JSON.stringify(frame) + '|' + f.expr + '|' + variant + '|' + severed.join(',') + '|' + woundKey(a.wounds);
+  const ch = castFor(a.type, look);
   let s = figures.get(key);
   if (!s) {
     const out = composeChars(ch, frame, { expr: f.expr, wounds: a.wounds, severed });
@@ -64,7 +66,7 @@ export function figureSprite(a, f, variant = '', chains = null) {
   if (chains && !severed.includes('body')) {
     const out = composeTubes(ch, chains);
     if (out) {
-      const okey = a.type + (a.form || '') + variant + '|' + out.x0 + ',' + out.y0 + '|' + out.rows.join('/');
+      const okey = a.type + (look || '') + variant + '|' + out.x0 + ',' + out.y0 + '|' + out.rows.join('/');
       overlay = overlays.get(okey);
       if (!overlay) { overlay = { canvas: toCanvas(out.rows, paletteFor(ch, variant)), flipped: null, x0: out.x0, y0: out.y0, w: out.w, h: out.h }; overlays.set(okey, overlay); }
     }

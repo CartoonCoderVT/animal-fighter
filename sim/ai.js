@@ -3,6 +3,7 @@ import { MAP, pathTo } from './map.js';
 import { rnd, dist, clamp } from '../engine/const.js';
 import { FOOT } from '../render/rig.js';
 import { MOVES, comboOf } from './moves.js';
+import { styleOf } from './fighters.js';
 import { MELEE, isMelee } from './weapons.js';
 
 const RANGED = a => a.weapon === 'pistol' || a.weapon === 'shotgun';
@@ -16,7 +17,9 @@ const SPECIAL_RANGE = [
   // the titan grabs whoever is in arm's reach, or claps at whoever is in front.
   (dx, dy, a) => (a.form === 'titan' ? Math.abs(dx) < 200 && Math.abs(dy) < 40 : a.form === 'beast' ? Math.abs(dx) > 50 && Math.abs(dx) < 220 && Math.abs(dy) < 90 : Math.abs(dx) > 16 && Math.abs(dx) < 110 && Math.abs(dy) < 24),
   // The blood beam: level along the floor, or down and ahead (about 30 degrees) from the air.
-  (dx, dy, a, t, g) => t && t.bloodMark >= 3 && g.time - (t.markT ?? -9) < 5 ? Math.abs(dx) < 70 && Math.abs(dy) < 40 : a.ground ? Math.abs(dx) > 30 && Math.abs(dx) < 320 && Math.abs(dy) < 16 : Math.abs(dx) < 300 && Math.abs(dy - Math.abs(dx) * 0.61) < 18
+  (dx, dy, a, t, g) => t && t.bloodMark >= 3 && g.time - (t.markT ?? -9) < 5 ? Math.abs(dx) < 70 && Math.abs(dy) < 40 : a.ground ? Math.abs(dx) > 30 && Math.abs(dx) < 320 && Math.abs(dy) < 16 : Math.abs(dx) < 300 && Math.abs(dy - Math.abs(dx) * 0.61) < 18,
+  // The frog breathes in at a rival a few steps ahead, level with his mouth.
+  (dx, dy) => Math.abs(dx) > 12 && Math.abs(dx) < 105 && Math.abs(dy) < 24
 ];
 
 export function nodeAt(g, x, feetY) {
@@ -54,6 +57,12 @@ export function think(g, a, dt) {
   const ai = (a.ai ||= { path: null, from: null, to: null, edge: null, airborne: false, stuck: 0, lastX: a.x, wait: rnd(0, 0.4), grabCd: 2, panicDir: 1 });
   ai.wait -= dt;
   ai.grabCd -= dt;
+  // Inside the frog: hammer every button to get out (a bot mashes about eight times a second).
+  if (a.swallowedBy != null) {
+    const k = ['attack', 'jump', 'power'][Math.floor(Math.random() * 3)];
+    if (Math.random() < 0.28) input[k] = !a.lastInput[k];
+    return input;
+  }
 
   if (a.burning > 0) {
     if (Math.random() < 0.02) ai.panicDir *= -1;
@@ -171,7 +180,7 @@ export function think(g, a, dt) {
     const meleeRange = a.weapon === 'extinguisher' ? 110 : armed ? MOVES[a.weapon + ':nLight'].range + 4 : natural;
     const facing = dx * a.face >= -4;
     input.attack = ranged ? Math.abs(dy) < 230 && Math.abs(dx) < 650 : Math.abs(dy) < 24 && Math.abs(dx) < meleeRange && facing && !target.knocked;
-    input.power = armed ? Math.abs(dy) < 26 && Math.abs(dx) < meleeRange + 10 && facing && Math.random() < 0.06 : a.abilityCd <= 0 && !a.act && !target.knocked && facing && SPECIAL_RANGE[a.type](dx, dy, a, target, g);
+    input.power = armed ? Math.abs(dy) < 26 && Math.abs(dx) < meleeRange + 10 && facing && Math.random() < 0.06 : a.abilityCd <= 0 && !a.act && !target.knocked && facing && SPECIAL_RANGE[styleOf(a)](dx, dy, a, target, g);
     // With a weapon, mix in the directional lights now and then: side to lunge in, down to lift.
     if (armed && input.attack && a.ground && Math.random() < 0.25) { aimed = true; if (Math.abs(dx) > meleeRange * 0.6) { input.right = dx > 0; input.left = dx < 0; } else input.down = Math.random() < 0.4; }
     // Follow a launched rival into the air and keep the combo going.
@@ -179,13 +188,24 @@ export function think(g, a, dt) {
       if (a.ground) input.jump = true;
       input.attack = Math.abs(dy) < 30;
     }
+    // The frog: keeps breathing in while a rival is still in front of him; with someone inside, uses
+    // their special when it fits (S+K), and spits them at whoever is in line before they break out.
+    if (a.type === 5 && !armed) {
+      const inLine = facing && Math.abs(dy) < 22 && Math.abs(dx) < 240;
+      if (a.act === 'inhale') input.power = facing && Math.abs(dx) < 130 && Math.abs(dy) < 40;
+      else if (a.belly != null && !a.act) {
+        const own = a.copy != null && a.abilityCd <= 0 && SPECIAL_RANGE[a.copy](dx, dy, a, target, g);
+        if (own && Math.random() < 0.08) { aimed = true; input.power = true; input.down = true; }
+        else input.power = inLine && !target.knocked && (a.bellyT < 2.5 || Math.random() < 0.006);
+      }
+    }
     // Nox closes long gaps as a swarm of bats.
-    if (a.type === 4 && !a.act && !(a.batCd > 0) && Math.hypot(dx, dy) > 110 && Math.hypot(dx, dy) < 320 && Math.random() < 0.015) input.bats = true;
+    if (styleOf(a) === 4 && !a.act && !(a.batCd > 0) && Math.hypot(dx, dy) > 110 && Math.hypot(dx, dy) < 320 && Math.random() < 0.015) input.bats = true;
     // Nox opens with the shadow cut from a few steps away.
-    if (a.type === 4 && a.ground && !a.act && !a.weapon && Math.abs(dx) > 28 && Math.abs(dx) < 64 && Math.abs(dy) < 16 && Math.random() < 0.05) { aimed = true; input.attack = !a.lastInput.attack; input.right = dx > 0; input.left = dx < 0; }
+    if (styleOf(a) === 4 && a.ground && !a.act && !a.weapon && Math.abs(dx) > 28 && Math.abs(dx) < 64 && Math.abs(dy) < 16 && Math.random() < 0.05) { aimed = true; input.attack = !a.lastInput.attack; input.right = dx > 0; input.left = dx < 0; }
     // Juma, small: the lightning pounce from a few steps away, the bite up close.
     // The beast: the charge from further off, the earthquake when rivals crowd her.
-    if (a.type === 3 && a.ground && !a.act && !a.weapon && Math.abs(dy) < 18 && !target.knocked) {
+    if (styleOf(a) === 3 && a.ground && !a.act && !a.weapon && Math.abs(dy) < 18 && !target.knocked) {
       const crowd = g.enemies(a).filter(b => !b.dead && !b.knocked && Math.abs(b.x - a.x) < 90 && Math.abs(b.y - a.y) < 30).length;
       if (a.form) {
         if (!(a.chargeCd > 0) && Math.abs(dx) > 50 && Math.abs(dx) < (a.form === 'titan' ? 200 : 140) && Math.random() < 0.03) { aimed = true; input.attack = !a.lastInput.attack; input.right = dx > 0; input.left = dx < 0; }

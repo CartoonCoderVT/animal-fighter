@@ -4,6 +4,7 @@
 // step: forward nudge so combo hits keep contact. Combo hits push a little, finishers a lot.
 // launch: sends the target up and opens a chase (J again leaps after them into an air combo).
 import { WEAPON_MOVES } from './weapons.js';
+import { styleOf } from './fighters.js';
 
 export const MOVES = {
   // Mingau
@@ -95,6 +96,27 @@ export const MOVES = {
   nAirCross: { dur: 0.3, hits: [0.3, 0.6], range: 36, band: 32, dmg: [5, 5], kind: 'scythe', kb: [[0.4, -0.6], [0.6, -0.8]], cd: 0.12, noSmear: true },
   // Side+J: the shadow cut. Nox breaks into bats, comes out past the rival, and the cut opens late.
   shadowCut: { dur: 0.36, hits: [0.3], range: 70, band: 22, dmg: [8], kind: 'blood', kb: [[0.6, -2.5]], cd: 0.3, pass: true, blink: 70, noSmear: true },
+  // The frog. Webbed palms that slap left and right, a tongue that snaps out faster than the eye and
+  // reels the rival in, a giant palm (the hand drawn twice its size on impact), and the legs of a
+  // spring that launch. reach: per-hit range where a move's hits differ.
+  fSlap: { dur: 0.2, hits: [0.38], range: 28, band: 24, dmg: [6], kind: 'slap', kb: [[1, 0]], cd: 0.1, step: 2.4 },
+  fSlap2: { dur: 0.22, hits: [0.4], range: 30, band: 24, dmg: [6], kind: 'slap', kb: [[1.2, 0]], cd: 0.1, step: 2.4 },
+  fLash: { dur: 0.3, hits: [0.3], range: 58, band: 22, dmg: [6], kind: 'tongue', kb: [[-2.8, 0]], cd: 0.14, hold: 0.45, tongue: 58, noSmear: true },
+  fBigPalm: { dur: 0.42, hits: [0.5], range: 36, band: 28, dmg: [11], kind: 'slap', kb: [[1.4, -0.5]], cd: 0.22, hold: 0.62, crumple: true, step: 3, lag: 1.5 },
+  fSpring: { dur: 0.38, hits: [0.44], range: 30, band: 30, dmg: [10], kind: 'kick', kb: [[1.2, -10.8]], cd: 0.28, launch: true, step: 1.5 },
+  // Side+J, the tongue-hook: it sticks to the rival 86 away and reels him in to a flying double knee;
+  // the string goes on from the giant palm. Missing, the tongue comes back slack.
+  fGrapple: { dur: 0.44, hits: [0.2, 0.6], range: 86, reach: [86, 30], band: 22, dmg: [4, 8], kind: 'tongue', kb: [[-0.5, 0], [1.6, -2.5]], cd: 0.28, hold: 0.45, tongue: 86, grapple: true, noSmear: true },
+  // S+J: the croak. The throat sac swells bigger than his head and bursts into a ring of sound.
+  fCroak: { dur: 0.6, hits: [0.48], range: 30, band: 30, dmg: [10], kind: 'croak', kb: [[3, -6]], cd: 0.5, knock: true, around: true, croak: 92, noSmear: true },
+  // S+J over a downed rival: a hop and the whole belly dropped on them.
+  fSquash: { dur: 0.6, hits: [0.5], range: 40, band: 40, dmg: [14], kind: 'belly', kb: [[0, 3]], cd: 0.5, pound: true, quake: 2, lag: 1.3 },
+  // His air string: two slaps, a corkscrew of kicks that holds the rival, the fly-catcher (the
+  // tongue yanks them under him) and the double stomp that spikes.
+  fAirSlap: { dur: 0.22, hits: [0.3, 0.62], range: 28, band: 26, dmg: [4, 4], kind: 'slap', kb: [[0.4, -0.5], [0.5, -0.5]], cd: 0.1 },
+  fAirSpin: { dur: 0.36, hits: [0.2, 0.4, 0.6, 0.8], range: 30, band: 30, dmg: [3, 3, 3, 4], kind: 'kick', kb: [[0, 0], [0, 0], [0, 0], [0.6, -1]], cd: 0.12, around: true, pull: true },
+  fAirLash: { dur: 0.3, hits: [0.32], range: 48, band: 30, dmg: [5], kind: 'tongue', kb: [[-2, 0.5]], cd: 0.12, tongue: 48, noSmear: true },
+  fStomp: { dur: 0.32, hits: [0.4], range: 30, band: 34, dmg: [11], kind: 'kick', kb: [[1.5, 9]], cd: 0.26, spike: true, bounce: true },
   // Everyone: the air string (the last one spikes down), the dash strike
   airA: { dur: 0.22, hits: [0.4], range: 28, band: 26, dmg: [7], kind: 'air', kb: [[1.5, 0]], cd: 0.12 },
   airB: { dur: 0.26, hits: [0.45], range: 28, band: 28, dmg: [8], kind: 'air', kb: [[1.8, 0]], cd: 0.14 },
@@ -103,21 +125,22 @@ export const MOVES = {
 };
 Object.assign(MOVES, WEAPON_MOVES);
 
-export const COMBOS = [['scratchA', 'scratchB', 'upper'], ['whipA', 'whipB', 'tailUp'], ['kickA', 'kickB', 'hopkick'], ['jSwipe', 'jSwipe2', 'jFlurry', 'jRake', 'jPounceUp'], ['bloodClaw', 'scytheReap', 'scytheSpin', 'scytheGuillotine', 'bloodSpikes']];
+export const COMBOS = [['scratchA', 'scratchB', 'upper'], ['whipA', 'whipB', 'tailUp'], ['kickA', 'kickB', 'hopkick'], ['jSwipe', 'jSwipe2', 'jFlurry', 'jRake', 'jPounceUp'], ['bloodClaw', 'scytheReap', 'scytheSpin', 'scytheGuillotine', 'bloodSpikes'], ['fSlap', 'fSlap2', 'fLash', 'fBigPalm', 'fSpring']];
 // S+J on the ground: each fighter's heavy blow.
-export const HEAVY = ['lowclaw', 'sweep', 'kick', 'jLow', 'vampKiss'];
+export const HEAVY = ['lowclaw', 'sweep', 'kick', 'jLow', 'vampKiss', 'fCroak'];
 export const AIR = ['airA', 'airB', 'spike'];
 export const NOX_AIR = ['nAirClaw', 'nAirVortex', 'nAirCross', 'nAirScythe'];
 export const JUMA_AIR = ['jAirClaw', 'jAirSpin', 'jAirDive'];
+export const FROG_AIR = ['fAirSlap', 'fAirSpin', 'fAirLash', 'fStomp'];
 export const BEAST_COMBO = ['bSlam', 'bHammer', 'bClap', 'bUpper'];
 export const BEAST_AIR = ['bAirClaw', 'bAirSmash'];
 export const TITAN_COMBO = ['tHook', 'tSmash', 'tUpper'];
 export const TITAN_AIR = ['tAirClaw', 'tAirSmash'];
 // The ground and air strings a fighter is on right now (Juma's depend on her form).
-export const comboOf = a => (a.type === 3 && a.form ? (a.form === 'titan' ? TITAN_COMBO : BEAST_COMBO) : COMBOS[a.type]);
-export const airOf = a => (a.type === 4 ? NOX_AIR : a.type === 3 ? (a.form === 'titan' ? TITAN_AIR : a.form === 'beast' ? BEAST_AIR : JUMA_AIR) : AIR);
+export const comboOf = a => { const s = styleOf(a); return s === 3 && a.form ? (a.form === 'titan' ? TITAN_COMBO : BEAST_COMBO) : COMBOS[s]; };
+export const airOf = a => { const s = styleOf(a); return s === 4 ? NOX_AIR : s === 5 ? FROG_AIR : s === 3 ? (a.form === 'titan' ? TITAN_AIR : a.form === 'beast' ? BEAST_AIR : JUMA_AIR) : AIR; };
 // Air moves and the dash strike hit with each fighter's natural weapon.
-export const NATURAL = ['claw', 'whip', 'kick', 'claw', 'blood'];
+export const NATURAL = ['claw', 'whip', 'kick', 'claw', 'blood', 'slap'];
 
 // Specials (K). Durations are upper bounds; most end on contact or landing.
 export const SPECIALS = [
@@ -130,5 +153,7 @@ export const SPECIALS = [
   { id: 'fury', cd: 7, dur: 1.0, pop: 0.6, titan: 1.7, titanPop: 1.15 },
   // Piercing blood: blood condensed into an orb (charge, open to hits), then fired as a beam
   // through the arena; diagonally down from the air. Three blood marks on a rival go supernova.
-  { id: 'beam', cd: 6, dur: 0.78, charge: 0.34 }
+  { id: 'beam', cd: 6, dur: 0.78, charge: 0.34 },
+  // The frog's K is his inhale (or the spit, with someone inside); S+K throws the special he copied.
+  { id: 'inhale', cd: 1.1 }
 ];

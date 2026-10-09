@@ -16,9 +16,10 @@ import { seeded } from '../engine/const.js';
 import { frameFor } from './anim.js';
 import { Secondary } from './secondary.js';
 import { drawBloodArt, drawMarks } from './blood-art.js';
-import { NoxHero, JumaHero } from './hero.js';
+import { NoxHero, JumaHero, FrogHero } from './hero.js';
 import { MOVES, COMBOS, comboOf } from '../sim/moves.js';
 import { castFor } from './pixel-data.js';
+import { lookOf, styleOf } from '../sim/fighters.js';
 import { isMelee, WEAPON_INFO } from '../sim/weapons.js';
 
 const mk = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
@@ -29,7 +30,7 @@ const FIG_W = 96, FIG_H = 80, FIG_X = 48, FIG_Y = 62;
 const WEAPON_SCALE = 0.7;
 // Nox's eye in head cells from the head pivot; the hand at the tip of the near arm.
 const EYE = [2, -6], HAND = [0, 3];
-const DEMO_ACT = ['pounce', 'ball', 'sky', 'morph', 'beam'];
+const DEMO_ACT = ['pounce', 'ball', 'sky', 'morph', 'beam', 'inhale'];
 // Juma's transformations, timed by the form she is turning into: when she swells, when she pops.
 const titanMorph = a => a.act === 'morph' && a.morphTo === 'titan';
 const MORPH_T = { beast: { swell: 0.12, pop: 0.6, end: 1.0 }, titan: { swell: 0.15, pop: 1.15, end: 1.7 } };
@@ -224,7 +225,7 @@ export class Renderer {
         fx = c.focusX + c.lead; fy = c.focusY - 14; zoomT = 1.6;
         let near = null, nd = Infinity;
         for (const b of state.actors) {
-          if (b.dead || b.id === me.id) continue;
+          if (b.dead || b.id === me.id || b.swallowedBy != null || me.swallowedBy === b.id) continue;
           const d = Math.abs(X(b.x) - px) + Math.abs(X(b.y) - py) * 1.5;
           if (d < nd) { nd = d; near = b; }
         }
@@ -359,7 +360,7 @@ export class Renderer {
       f.trail = list;
       if (fast && dt > 0 && (list.stepT = (list.stepT || 0) + dt) > 0.05) {
         list.stepT = 0;
-        list.push({ s: f.info.sprite, o: f.info.overlay, x: f.hx, y: f.hy, face: a.face || 1, life: 0.2, tint: a.perfectT > 0 ? '#bfe8ff' : a.type === 4 ? '#e2445c' : a.type === 3 ? JUMA_TRAIL[a.form || null] : null });
+        list.push({ s: f.info.sprite, o: f.info.overlay, x: f.hx, y: f.hy, face: a.face || 1, life: 0.2, tint: a.perfectT > 0 ? '#bfe8ff' : styleOf(a) === 4 ? '#e2445c' : a.type === 3 ? JUMA_TRAIL[a.form || null] : null });
       }
       for (const g of list) g.life -= dt;
       while (list.length && list[0].life <= 0) list.shift();
@@ -454,7 +455,8 @@ export class Renderer {
     // shadow and true silhouette rim lights, so internal limb edges never light up.
     const figures = [];
     for (const a of state.actors) {
-      if (a.dead || a.knocked) continue;
+      // Swallowed fighters are inside the frog: nothing of them shows.
+      if (a.dead || a.knocked || a.swallowedBy != null) continue;
       const fx = Math.round(a.x * S), fy = Math.round((a.y + FOOT) * S);
       const fc = this.figureCanvases(a.id);
       fc.body.g.clearRect(0, 0, FIG_W, FIG_H);
@@ -464,7 +466,7 @@ export class Renderer {
       figures.push({ a, hx: fx, hy: fy, cx: fx, cy: fy - 10, info, fc, x: fx - FIG_X + ox, y: fy - FIG_Y + oy });
     }
     this.updateTrails(figures, this.simDt);
-    for (const f of figures) if (f.a.type === 4 || f.a.type === 3) this.keyFx(f);
+    for (const f of figures) if (f.a.type >= 3 || styleOf(f.a) >= 3) this.keyFx(f);
 
     // Lights are gathered up front: rims and wall shadows need them.
     const L = this.light;
@@ -501,6 +503,7 @@ export class Renderer {
       if (f.a.invincible > 0.1 && Math.floor(t * 12) % 2) lg.globalAlpha = 0.55;
       lg.drawImage(f.fc.body.c, f.x, f.y);
       lg.globalAlpha = 1;
+      if (f.a.type === 5) this.drawTongue(lg, f.a, f.info.frame, f.hx + ox, f.hy + oy);
     }
     this.fx.drawLit(lg, ox, oy);
 
@@ -589,12 +592,14 @@ export class Renderer {
     // Frozen in the hitlag of a blow it took: the body shivers along the hit.
     if (a.hitlag > 0 && a.hitstun > 0) fx += (Math.floor(time * 60) % 2 ? 1 : -1) * (a.hitHeavy ? 2 : 1) * scale;
     fx += morphJitter(a, time) * scale;
+    // Someone kicking about inside the frog's belly shakes him.
+    if (a.wobble > 0) { fx += (Math.floor(time * 40) % 2 ? 1 : -1) * scale; fy += (Math.floor(time * 30) % 2 ? 0 : -1) * scale; }
     const f = frameFor(a, time), frame = f.frame;
     const chains = this.secondary.update(a, frame, time, this.simDt);
     const sprites = figureSprite(a, f, variantOf(a, this.time), chains), flash = morphFlash(a);
     const s = flash ? tintOf(sprites.s, flash) : sprites.s, overlay = sprites.overlay && flash ? tintOf(sprites.overlay, flash) : sprites.overlay;
     const severed = a.severed || [];
-    const ch = castFor(a.type, a.form), eye = ch.eye || EYE;
+    const ch = castFor(a.type, lookOf(a)), eye = ch.eye || EYE;
     const hand = figurePoint(frame, 'armF', HAND[0], HAND[1], fx, fy, face, scale, ch);
     const behind = a.weapon === 'extinguisher', bats = a.act === 'swarm';
     if (behind && !severed.includes('armF')) this.drawWeapon(g, a, frame, hand, face, scale);
@@ -611,6 +616,30 @@ export class Renderer {
     // Weapon smears are drawn later, over the lighting, so they read as bright streaks.
     const smear = f.smear && isMelee(a.weapon) && !severed.includes('armF') ? { sm: f.smear, frame } : null;
     return { eye: figurePoint(frame, 'head', eye[0], eye[1], fx, fy, face, scale, ch), hand, sprite: s, overlay, smear, frame, name: f.name };
+  }
+
+  // The frog's tongue: out in a blink to the move's reach, held there, and reeled back in.
+  tongueOf(a) {
+    const mv = a.attack > 0 ? MOVES[a.attackKind] : null;
+    if (!mv?.tongue) return 0;
+    const p = 1 - a.attack / mv.dur, h = mv.hits[0];
+    const k = p < h - 0.12 ? 0 : p < h ? (p - h + 0.12) / 0.12 : p < h + 0.16 ? 1 : p < h + 0.3 ? 1 - (p - h - 0.16) / 0.14 : 0;
+    return X(mv.tongue) * k;
+  }
+  drawTongue(g, a, frame, fx, fy, scale = 1) {
+    const len = this.tongueOf(a) * scale;
+    if (len < 2) return;
+    const face = a.face || 1, ch = castFor(a.type, lookOf(a)), m = ch.mouth || [8, -3];
+    this.tongueAt(g, figurePoint(frame, 'head', m[0], m[1], fx, fy, face, scale, ch), len, face, scale);
+  }
+  // A tongue from the mouth at o, len pixels ahead: a slight sag in the middle, a fat sticky tip.
+  tongueAt(g, o, len, face, scale = 1, dy = 0) {
+    const tip = { x: o.x + face * len, y: o.y + scale + dy }, mid = { x: o.x + face * len * 0.5, y: o.y + scale + dy * 0.5 + Math.min(2, len / 20) * scale };
+    this.tube(g, [o, mid, tip], 3 * scale, ['#4a0a18', '#ff7f9a', '#c83a5a']);
+    const tx = Math.round(tip.x), ty = Math.round(tip.y), r = Math.round(2 * scale);
+    g.fillStyle = '#4a0a18'; g.fillRect(tx - r - 1, ty - r - 1, r * 2 + 3, r * 2 + 3);
+    g.fillStyle = '#ff7f9a'; g.fillRect(tx - r, ty - r, r * 2 + 1, r * 2 + 1);
+    g.fillStyle = '#ffc0cc'; g.fillRect(tx - Math.round(r / 2), ty - r, Math.max(1, r), Math.max(1, Math.round(scale)));
   }
 
   // Thick pixel line along points (the electric cable).
@@ -784,7 +813,7 @@ export class Renderer {
       lg.drawImage(sh, Math.round(X(x) - sh.width / 2) + ox, X(top) - 2 + oy);
       lg.globalAlpha = 1;
     };
-    for (const a of state.actors) if (!a.dead && !a.knocked && a.act !== 'swarm') put(a.x, a.y + FOOT, a.act === 'ball' ? 16 : a.form === 'titan' ? 24 : a.form === 'beast' ? 15 : 11);
+    for (const a of state.actors) if (!a.dead && !a.knocked && a.act !== 'swarm' && a.swallowedBy == null) put(a.x, a.y + FOOT, a.act === 'ball' ? 16 : a.form === 'titan' ? 24 : a.form === 'beast' ? 15 : 11);
     for (const p of state.props) if (p.kind !== 'glass' && p.kind !== 'cargo') put(p.x, p.y + p.h / 2, X(p.w) + 2);
   }
 
@@ -928,8 +957,8 @@ export class Renderer {
       if (f.a.form && f.info?.eye && !(f.a.severed || []).includes('head')) add({ x: f.info.eye.x, y: f.info.eye.y, r: titan ? 14 : 10, color: titan ? '#fff2a0' : '#ffc040', i: titan ? 0.9 : 0.7, noRim: true });
       if (k > 0.05) add({ x: f.hx, y: f.hy - (titan ? 18 : 12), r: (titan ? 36 : 26) + k * 46, color: k > 0.8 ? '#ffe2a0' : titan ? '#ff5a1a' : '#ff8a3a', i: k * 1.3 });
     }
-    for (const f of figures) if (f.a.type === 4 && f.info?.eye) {
-      add({ x: f.info.eye.x, y: f.info.eye.y, r: 10, color: '#ff4f6e', i: 0.7, noRim: true });
+    for (const f of figures) if (styleOf(f.a) === 4 && f.info?.eye) {
+      if (f.a.type === 4) add({ x: f.info.eye.x, y: f.info.eye.y, r: 10, color: '#ff4f6e', i: 0.7, noRim: true });
       // The blood orb lights the claw up as it condenses.
       const at = f.a.actT ?? 0;
       if (f.a.act === 'swarm') add({ x: f.hx, y: f.hy - 12, r: 34, color: this.fx.gore === 0 ? '#9a5aff' : '#ff3048', i: 0.7 });
@@ -975,8 +1004,8 @@ export class Renderer {
     const st = state.time ?? t;
     for (const f of figures) if (f.a.type === 3) this.drawJuma(eg, f, ox, oy, st);
     for (const f of figures) {
-      if (f.a.type === 4 && f.a.act === 'swarm') this.drawSwarm(eg, f, ox, oy, st);
-      if (f.a.type === 4) {
+      if (styleOf(f.a) === 4 && f.a.act === 'swarm') this.drawSwarm(eg, f, ox, oy, st);
+      if (styleOf(f.a) === 4) {
         // When the scythe is put away it comes apart into blood where its head was.
         // It forms out of the blood over a few frames whenever it comes back into his hand.
         const pres = this.scythePresence.get(f.a.id) ?? 0;
@@ -1079,6 +1108,15 @@ export class Renderer {
       }
       if (!a.act && (a.rage || 0) > 70 && Math.random() < dt * ((a.rage - 70) / 4)) fx.burst('steam', x + rnd(-5, 5), y - 4, 1, { a: -Math.PI / 2, spread: 0.7, s: 0.8, life: 0.7, colors: ['#ff8a3a', '#e8e4f0', '#c8c0d8'], em: true, g: -0.05, drag: 0.94, size: 2, grow: 0.05 });
     }
+    // The frog breathing in: streaks of air rushing into his mouth.
+    for (const a of state.actors) {
+      if (a.dead || a.knocked || a.type !== 5 || a.act !== 'inhale') continue;
+      const f = a.face || 1, mx = X(a.x) + f * 8, my = X(a.y) - 2;
+      for (let i = 0; i < 3; i++) {
+        const d = rnd(14, 80), y = my + rnd(-1, 1) * (8 + d * 0.15);
+        fx.add({ k: 'spark', x: mx + f * d, y, vx: -f * (3.4 + d * 0.03), vy: (my - y) * 0.06, life: 0.18 + d / 400, c: ['#ffffff', '#d8eeff', '#a8c8e0'][i], s: 1, g: 0, b: 0, em: true, drag: 1, stick: false, grow: 0 });
+      }
+    }
     for (const f of state.fires || []) if (Math.random() < 0.9) fx.burst('fire', X(f.x) + rnd(-12, 12), X(f.y) - 2, 2, { a: -Math.PI / 2, spread: 0.7, s: 0.9, life: 0.6, colors: [P.fire0, P.fire1, P.fire2], g: -0.04, drag: 0.96, size: 2, em: true });
     for (const a of state.actors) {
       if (a.dead) continue;
@@ -1124,6 +1162,7 @@ export class Renderer {
   drawHero(g, type, x, y, t, { density = 2, dt = 1 / 60, key = 'hero' + type } = {}) {
     if (type === 4) { (this.noxHero ||= new NoxHero(this)).draw(g, x, y, t, { density, dt, gore: this.fx.gore }); return; }
     if (type === 3) { (this.jumaHero ||= new JumaHero(this)).draw(g, x, y, t, { density, dt }); return; }
+    if (type === 5) { (this.frogHero ||= new FrogHero(this)).draw(g, x, y, t, { density, dt }); return; }
     this.drawPreview(g, type, x, y, { density, mode: 'demo', key, face: 1, dt });
   }
 
@@ -1157,7 +1196,8 @@ export class Renderer {
     p.t += dt;
     a.attack = Math.max(0, a.attack - dt);
     if (p.actT > 0) { p.actT -= dt; a.actT = 0.8 - p.actT; if (DEMO_MOVES.includes(a.act)) a.x += face * dt * 60; if (p.actT <= 0) { a.act = null; a.x = 0; } }
-    if (mode !== 'demo') { a.attack = 0; a.act = null; a.form = form; }
+    // form: the look to show (Juma's form, or the frog's borrowed look 'c0'..'c4').
+    if (mode !== 'demo') { a.attack = 0; a.act = null; a.form = type === 5 ? null : form; a.copy = type === 5 && form ? +form.slice(1) : null; }
     else if (type === 3) this.jumaDemo(p);
     else if (p.t > p.next && !a.act) {
       const list = COMBOS[type];
@@ -1173,8 +1213,9 @@ export class Renderer {
     x += morphJitter(a, p.t) * density;
     if (overlay) drawFigure(g, overlay, x, y, face, density);
     drawFigure(g, s, x, y, face, density);
+    if (type === 5) this.drawTongue(g, a, f.frame, x, y, density);
     if (f.ball) this.drawBall(g, x, y, density, p.t);
-    if (type === 4 && !dim) drawBloodArt(g, a, f.frame, x, y, p.t, { scale: density, gore: this.fx.gore });
+    if (styleOf(a) === 4 && !dim) drawBloodArt(g, a, f.frame, x, y, p.t, { scale: density, gore: this.fx.gore });
     if (dim > 0) {
       const prev = g.globalAlpha;
       g.globalAlpha = prev * dim;

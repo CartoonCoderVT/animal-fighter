@@ -29,6 +29,12 @@ export const FIGHTERS = [
     desc: 'Vampiro de cachecol vermelho. Faz do sangue garra, chicote e lança, e bebe o troco.',
     ability: 'Sangue perfurante', icon: '⌁', stats: [4, 4, 5], hp: 110, speed: 5.1, weight: 0.8, cooldown: 6,
     detail: 'J: garra, ceifa, ciclone, guilhotina, estacas. S+J no combo: rasteira. K: sangue perfurante; com 3 marcas: RÉQUIEM. Todo golpe rouba vida.'
+  },
+  {
+    id: 'frog', name: 'Don Sapone', species: 'O SAPO', role: 'ENGOLE / COPIA', word: 'CROAC.', color: '#8cc65a',
+    desc: 'Chefão de chapéu e charuto. Engole os rivais vivos e vira uma aberração com o estilo deles.',
+    ability: 'Engolir · Cuspir', icon: '◉', stats: [3, 4, 5], hp: 125, speed: 4.9, weight: 0.95, cooldown: 7,
+    detail: 'J: tapas e língua. Segure K: suga e engole. Com alguém na pança: K cospe; S+K usa o especial do engolido.'
   }
 ];
 // Juma's forms. Each one is heavier and slower than the last, takes blows on a thicker hide
@@ -40,8 +46,17 @@ export const FORMS = {
   titan: { weight: 2.8, speed: 0.58, armor: 0.7, hp: 80, rage: 0 }
 };
 export const formOf = a => FORMS[a.form || null] || FORMS.null;
+// The fighting style a fighter is using: their own, or the one the frog swallowed. Moves, specials
+// and the habits that go with them follow the style; life, weight, speed and looks stay the fighter's.
+export const styleOf = a => a.copy ?? a.type;
+// The body a fighter is drawn with: Juma's forms, or the frog's borrowed looks ('c0'..'c4').
+export const lookOf = a => (a.type === 5 ? (a.copy != null && !(a.act === 'gulp' && !a.copied) ? 'c' + a.copy : null) : a.form || null);
 export const weightOf = a => FIGHTERS[a.type].weight * formOf(a).weight;
-export const speedOf = a => FIGHTERS[a.type].speed * formOf(a).speed;
+// The frog waddles a little slower with someone in his belly.
+export const speedOf = a => FIGHTERS[a.type].speed * formOf(a).speed * (a.belly != null ? 0.88 : 1);
+// The frog's belly: how long a swallowed rival stays in on their own, and how much each button
+// they mash takes off it.
+export const BELLY = { hold: 8, mash: 0.12 };
 // The fury bar: full at this much, and the form it turns her into.
 export const RAGE_MAX = 100;
 export const NEXT_FORM = { null: 'beast', beast: 'titan' };

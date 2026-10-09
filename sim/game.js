@@ -53,7 +53,8 @@ export class Game {
       weapon: null, ammo: 0, holding: null, lastInput: EMPTY_INPUT(), input: EMPTY_INPUT(), queued: {},
       respawn: 0, lastHit: null, lastHitTime: -9, jumpGrace: 0, jumpBuffer: 0, airJumps: 0, drop: {}, knocked: false, knock: 0, getup: 0,
       aim: 0, burning: 0, stats: { damage: 0, kills: 0, limbs: 0 }, powerSeq: 0, act: null, actT: 0, gliding: false,
-      form: null, rage: 0, morphTo: null, frenzy: null, biteCd: 0, chargeCd: 0, carry: null
+      form: null, rage: 0, morphTo: null, frenzy: null, biteCd: 0, chargeCd: 0, carry: null,
+      copy: null, belly: null, bellyT: 0, swallowedBy: null
     };
     body.plugin.actor = a;
     this.actors.push(a);
@@ -72,7 +73,8 @@ export class Game {
     a.input = { ...EMPTY_INPUT(), ...input };
   }
   actor(id) { return id === null || id === undefined ? undefined : this.actors.find(a => a.id === id); }
-  enemies(a) { return this.actors.filter(b => !b.dead && b.id !== a.id && b.team !== a.team); }
+  // Someone inside the frog is out of the fight until they come out.
+  enemies(a) { return this.actors.filter(b => !b.dead && b.id !== a.id && b.team !== a.team && b.swallowedBy == null); }
   closest(a, max = Infinity) { return this.enemies(a).sort((b, c) => dist(a, b) - dist(a, c)).find(b => dist(a, b) < max); }
 
   fx(type, data) {
@@ -172,7 +174,8 @@ export class Game {
       ai: null, attackCd: 0, holding: null, abilityCd: 1, knocked: false, knock: 0, getup: 0, dodge: 0, dodgeKind: null, climbing: false, drop: {},
       act: null, actT: 0, hits: null, gliding: false, holdingLimb: null, holdJoint: null, ghostClear: true, hitlag: 0, lagPos: null,
       parry: 0, parryLag: 0, counter: 0, perfectT: 0, chase: null, float: 0, airDodged: false, hitstun: 0, hitstunMax: 0, stunN: 0, bloodMark: 0, beamAir: false, bounced: false, bounceArm: 0, turnT: 0, batCd: 0, swarm: null,
-      form: null, rage: 0, morphTo: null, frenzy: null, biteCd: 0, chargeCd: 0, carry: null
+      form: null, rage: 0, morphTo: null, frenzy: null, biteCd: 0, chargeCd: 0, carry: null,
+      copy: null, belly: null, bellyT: 0, swallowedBy: null, copied: false, wobble: 0
     });
     this.fx('spawn', { x: a.x, y: a.y, color: FIGHTERS[a.type].color });
   }
@@ -294,7 +297,8 @@ export class Game {
         wounds: a.wounds, severed: a.severed, broken: a.broken, stumps: a.stumps, embedded: a.embedded, bleed: r(a.bleed), char: r(a.char),
         freeze: r(a.freeze), frozen: r(a.frozen), shock: r(a.shock), weapon: a.weapon, ammo: a.ammo, holding: a.holding,
         burning: r(a.burning || 0), holdingLimb: a.holdingLimb || null, respawn: r(a.respawn), skid: r(a.skid || 0), landImpact: r(a.landT > 0 ? a.landImpact : 0),
-        powerSeq: a.powerSeq, recoil: r(a.recoil || 0), stats: a.stats, form: a.form || null, rage: r(a.rage || 0), morphTo: a.morphTo || null, rip: a.frenzy?.prey != null ? 1 : 0, slamN: a.slamN || 0
+        powerSeq: a.powerSeq, recoil: r(a.recoil || 0), stats: a.stats, form: a.form || null, rage: r(a.rage || 0), morphTo: a.morphTo || null, rip: a.frenzy?.prey != null ? 1 : 0, slamN: a.slamN || 0,
+        copy: a.copy ?? null, belly: a.belly ?? null, bellyT: r(a.bellyT || 0), swallowedBy: a.swallowedBy ?? null, wobble: r2(a.wobble || 0), copied: !!a.copied
       })),
       props: this.props.map(p => ({ id: p.id, kind: p.kind, w: p.w, h: p.h, x: r(p.x), y: r(p.y), angle: r(p.angle * 100) / 100, hp: p.hp, armed: !!p.armed, fuse: p.fuse, burning: r(p.burning || 0), weapon: p.weapon, rocket: p.rocket > 0, chain: !!p.chain })),
       bullets: this.bullets.map(b => ({ id: b.id, x: r(b.x), y: r(b.y), px: r(b.px), py: r(b.py), word: b.word, color: b.color, vx: r(b.vx), vy: r(b.vy), kind: b.kind })),

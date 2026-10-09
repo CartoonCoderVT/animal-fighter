@@ -4,6 +4,7 @@
 import { S } from '../engine/const.js';
 import { CAST, SLOTS, ANCHOR, JOINT, PARENT, partCenter, partSize, snapDeg, castFor } from './pixel-data.js';
 import { frameFor } from './anim.js';
+import { lookOf } from '../sim/fighters.js';
 
 // The physics box is 16x34 world units; its center is the actor anchor and the soles sit FOOT below.
 export const HALF_H = 17;
@@ -52,7 +53,7 @@ export function poseFromFrame(type, frame, form = null) {
 }
 
 export function pose(a, time = 0) {
-  return poseFromFrame(a.type, frameFor(a, time).frame, a.form);
+  return poseFromFrame(a.type, frameFor(a, time).frame, lookOf(a));
 }
 
 // Offset from a part's center to its matrix pivot, in pixels, per fighter type (wounds are stored from the pivot).

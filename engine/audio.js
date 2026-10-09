@@ -51,7 +51,13 @@ const SFX = {
   pop: { wave: 'sine', f0: 220, f1: 520, dur: 0.12, noise: N(1200, 0.2, 'bandpass', 400), vol: 0.5 },
   quake: { wave: 'sine', f0: 52, f1: 24, dur: 0.6, noise: N(200, 0.6, 'lowpass', 60), vol: 1 },
   // A flurry of wings and squeaks.
-  bats: { wave: 'square', f0: 2600, f1: 1500, dur: 0.12, noise: N(1800, 0.3, 'bandpass', 600), vol: 0.45 }
+  bats: { wave: 'square', f0: 2600, f1: 1500, dur: 0.12, noise: N(1800, 0.3, 'bandpass', 600), vol: 0.45 },
+  // The frog: the long suck of air, the gulp going down, the spit, the croak and the wet slap.
+  inhale: { wave: 'sine', f0: 180, f1: 90, dur: 0.6, noise: N(900, 0.7, 'bandpass', 300), vol: 0.5 },
+  gulp: { wave: 'sine', f0: 260, f1: 70, dur: 0.22, noise: N(500, 0.18, 'lowpass', 150), vol: 0.75 },
+  spit: { wave: 'square', f0: 140, f1: 420, dur: 0.1, noise: N(1600, 0.16, 'bandpass', 700), vol: 0.7 },
+  croak: { wave: 'sawtooth', f0: 95, f1: 70, dur: 0.38, noise: N(240, 0.3, 'bandpass', 120), vol: 0.8 },
+  slap: { wave: 'sine', f0: 320, f1: 120, dur: 0.06, noise: N(2400, 0.08, 'bandpass', 900), vol: 0.75 }
 };
 
 const SONGS = {

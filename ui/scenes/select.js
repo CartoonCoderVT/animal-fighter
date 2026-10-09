@@ -18,7 +18,7 @@ function stage() {
   g.fillStyle = '#251a3a'; g.fillRect(0, 222, VIEW_W, 2);
   return (stageCache = c);
 }
-const SLOT = i => 64 + i * 128;
+const SLOT = i => 54 + i * 106;
 let spotCache = null;
 function spotlight() {
   if (spotCache) return spotCache;
@@ -51,11 +51,11 @@ export class SelectScene {
     // Time since the current fighter was picked, for his entrance.
     if (this.selOf !== this.index) { this.selOf = this.index; this.selT = 0; } else this.selT += dt;
     const i = this.shell.input, snd = this.shell.sound;
-    if (i.nav('left')) { this.index = (this.index + 4) % 5; snd.play('ui_move'); }
-    if (i.nav('right')) { this.index = (this.index + 1) % 5; snd.play('ui_move'); }
+    if (i.nav('left')) { this.index = (this.index + FIGHTERS.length - 1) % FIGHTERS.length; snd.play('ui_move'); }
+    if (i.nav('right')) { this.index = (this.index + 1) % FIGHTERS.length; snd.play('ui_move'); }
     for (const c of i.clicks) {
       if (c.down) continue;
-      for (let k = 0; k < 5; k++) if (Math.abs(c.x - SLOT(k)) < 52 && c.y > 110 && c.y < 236) { if (this.index === k) this.confirm(); else { this.index = k; snd.play('ui_move'); } }
+      for (let k = 0; k < FIGHTERS.length; k++) if (Math.abs(c.x - SLOT(k)) < 50 && c.y > 110 && c.y < 236) { if (this.index === k) this.confirm(); else { this.index = k; snd.play('ui_move'); } }
     }
     if (hit(i, this.confirmRect)) this.confirm();
     // Solo: one to three bots.
@@ -75,7 +75,7 @@ export class SelectScene {
     const label = this.code ? `CONVITE PARA A SALA ${this.code}` : { solo: 'JOGAR · SOLO', online: 'JOGAR · ONLINE', sandbox: 'LABORATÓRIO', browse: 'O CLUBE DO CAOS' }[this.next];
     drawText(g, label, 16, 12, { color: '#f68268' });
     drawText(g, 'ESCOLHA SEU LUTADOR', 16, 24, { color: '#fff1d6', scale: 2, shadow: '#3a2450' });
-    for (let k = 0; k < 5; k++) {
+    for (let k = 0; k < FIGHTERS.length; k++) {
       const x = SLOT(k), sel = k === this.index, f = FIGHTERS[k];
       // spotlight
       if (sel) {
@@ -91,7 +91,7 @@ export class SelectScene {
       for (let xx = -18; xx <= 18; xx++) g.fillRect(x + xx, 227 - (Math.abs(xx) < 12 ? 1 : 0), 1, 1);
       if (sel) r.drawHero(g, k, x, 227, this.selOf === k ? this.selT : 0, { density: 2, dt, key: 'sel' + k });
       else r.drawPreview(g, k, x, 227, { density: 2, mode: 'idle', key: 'sel' + k, face: 1, dt, dim: 0.6 });
-      drawText(g, f.name, x, 240, { color: sel ? '#fff1d6' : '#6a5e80', align: 'center', scale: sel ? 2 : 1, shadow: sel ? '#3a2450' : null });
+      drawText(g, f.name, sel ? Math.max(66, Math.min(VIEW_W - 66, x)) : x, 240, { color: sel ? '#fff1d6' : '#6a5e80', align: 'center', scale: sel ? 2 : 1, shadow: sel ? '#3a2450' : null });
     }
     const f = FIGHTERS[this.index];
     panel(g, 12, 262, VIEW_W - 24, 86, { accent: f.color });
