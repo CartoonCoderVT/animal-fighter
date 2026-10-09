@@ -39,8 +39,8 @@ export const darkBloodPal = gore => (gore === 0 ? DARK_BLOOD_PAL.shadow : DARK_B
 
 // The aura, mist, embers and bats. Without gore the blood turns to violet shadow.
 const FXPAL = {
-  blood: { core: '#ffe2d8', hot: '#ff3048', mid: '#c0102a', deep: '#760418', mist: '#3a0212', black: '#0a0208', bat: '#0e0612', wing: '#2a0a1a' },
-  shadow: { core: '#efe0ff', hot: '#b97aff', mid: '#7a2ac0', deep: '#3c1260', mist: '#1e0834', black: '#08040e', bat: '#0c0816', wing: '#1e0c34' }
+  blood: { core: '#ffe2d8', hot: '#ff3048', mid: '#c0102a', deep: '#760418', mist: '#3a0212', black: '#0a0208', bat: '#0e0612', wing: '#5a0418' },
+  shadow: { core: '#efe0ff', hot: '#b97aff', mid: '#7a2ac0', deep: '#3c1260', mist: '#1e0834', black: '#08040e', bat: '#0c0816', wing: '#2e1052' }
 };
 const fxPal = gore => (gore === 0 ? FXPAL.shadow : FXPAL.blood);
 
@@ -84,13 +84,14 @@ function rgb(hex) {
 }
 const mkCanvas = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d'); g.imageSmoothingEnabled = false; return { c, g, img: g.createImageData(w, h) }; };
 
-// A tiny bat: a body, wings up or down, a red eye.
-function bat(g, P, x, y, up, eye = true) {
+// A little bat: a black body, wings up or down with crimson-lit tips, a burning eye.
+function bat(g, P, x, y, up) {
   const bx = Math.round(x), by = Math.round(y), wy = up ? -1 : 1;
   g.fillStyle = P.bat; g.fillRect(bx - 1, by, 3, 2);
   g.fillRect(bx - 2, by + wy, 1, 1); g.fillRect(bx + 2, by + wy, 1, 1);
-  g.fillStyle = P.wing; g.fillRect(bx - 3, by + wy * 2, 1, 1); g.fillRect(bx + 3, by + wy * 2, 1, 1);
-  if (eye) { g.fillStyle = P.hot; g.fillRect(bx, by, 1, 1); }
+  g.fillStyle = P.mid; g.fillRect(bx - 3, by + wy * 2, 1, 1); g.fillRect(bx + 3, by + wy * 2, 1, 1);
+  g.fillStyle = P.wing; g.fillRect(bx - 2, by + wy * 2, 1, 1); g.fillRect(bx + 2, by + wy * 2, 1, 1);
+  g.fillStyle = P.hot; g.fillRect(bx, by, 1, 1);
 }
 
 // The renderer calls drawBack on its lit layer before his sprite (the mist is lit by the scene),
@@ -135,7 +136,7 @@ export class DarkNoxFX {
       this.flashes.push({ who, t: 0, life: 0.14 });
       this.rings.push({ who, t: 0, life: 0.5, r: 78, color: P.hot, thick: 2 });
       // Spikes of blood stabbing out all round him and drawing back.
-      for (let i = 0; i < 14; i++) this.parts.push({ k: 'spike', who, a: (i / 14) * Math.PI * 2 + Math.random() * 0.25, len: 26 + Math.random() * 26, t: 0, life: 0.34 + Math.random() * 0.08 });
+      for (let i = 0; i < 9; i++) this.parts.push({ k: 'spike', who, a: (i / 9) * Math.PI * 2 + (Math.random() - 0.5) * 0.4, len: 20 + Math.random() * 22, t: 0, life: 0.3 + Math.random() * 0.08 });
       for (let i = 0; i < 18; i++) {
         const a = (i / 18) * Math.PI * 2 + Math.random() * 0.3, sp = 70 + Math.random() * 80;
         this.parts.push({ k: 'bat', x: s.cx, y: s.cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp * 0.7 - 30, t: 0, life: 0.55 + Math.random() * 0.35, seed: Math.random() * 9 });
@@ -241,8 +242,8 @@ export class DarkNoxFX {
     if (k > 0.02 && s.mask && !(a.act === 'swarm' || a.act === 'blink')) {
       const W = s.mw, H = s.mh, N = W * H, m = s.mask, D = s.dist, P = fxPal(this.gore);
       const flare = a.act === 'darkRise' && (a.actT ?? 0) >= POP ? 1 - ((a.actT ?? 0) - POP) / (RISE - POP) : 0;
-      const beat = heartbeat(t), R = Math.min(5, Math.round(1 + 3 * k + flare * 1.5));
-      // Distance from his silhouette in rings, alternating plus and box steps for a rounder halo.
+      const beat = heartbeat(t), R = 3, span = Math.max(1, s.y1 - s.y0), waist = s.y0 + span * 0.62;
+      // Distance from his silhouette in rings, a plus step then a box step for a rounder halo.
       for (let i = 0; i < N; i++) D[i] = m[i] ? 0 : 255;
       for (let r = 1; r <= R; r++) {
         const box = r % 2 === 0;
@@ -259,30 +260,39 @@ export class DarkNoxFX {
       const gd = s.glow.img.data;
       d.fill(0); gd.fill(0);
       const set = (i, hex) => { const [r, gg, b] = rgb(hex), q = i * 4; d[q] = r; d[q + 1] = gg; d[q + 2] = b; d[q + 3] = 255; };
-      // The hot rim also glows: it is painted again over the lighting (drawFront).
+      // What glows is painted again over the lighting (drawFront); the mist stays lit by the scene.
       const hot = (i, hex) => { set(i, hex); const [r, gg, b] = rgb(hex), q = i * 4; gd[q] = r; gd[q + 1] = gg; gd[q + 2] = b; gd[q + 3] = 255; };
-      const seed = (a.id || 0) * 17.3, rise = t * 16;
-      const tongue = 2 + (6 + flare * 6) * k;
+      // The halo: a glowing rim of blood against him, strongest from the waist up, a dark-red
+      // haze round that, and a few motes of mist.
       for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-        const i = y * W + x;
-        if (m[i]) continue;
-        const dd = D[i], b = bayer(x, y);
-        // Flame noise scrolling upward; the halo is thicker where it is high.
-        const n = noise(x * 0.42 + seed, (y + rise) * 0.3);
-        if (dd === 1) { if (b < 0.3 + 0.45 * beat * k + flare) hot(i, P.hot); else set(i, P.mid); }
-        else if (dd === 2) { if (b < 0.35 + 0.5 * n) set(i, b < 0.25 * k + flare * 0.4 ? P.mid : P.deep); }
-        else if (dd <= R) { if (b < (0.75 - (dd - 2) * 0.2) * n) set(i, dd === 3 && n > 0.6 ? P.deep : P.mist); }
-        else {
-          // Tongues of dark flame licking up off him, broken into wisps at the tips.
-          const H2 = Math.floor(tongue * (0.35 + 0.9 * noise(x * 0.3 + seed + 40, t * 2.2)));
-          for (let j = 1; j <= H2 && y + j < H; j++) {
-            const xx = x + (Math.sin((y + rise) * 0.55 + x) > 0.6 ? 1 : 0);
-            const below = D[(y + j) * W + Math.min(W - 1, xx)];
-            if (below > 2) continue;
-            const u = j / (H2 + 1);
-            if (n > 0.3 + u * 0.55 && b < 1.05 - u * 0.6) set(i, u < 0.35 ? P.deep : u < 0.7 ? P.mist : P.black);
-            break;
-          }
+        const i = y * W + x, dd = D[i];
+        if (!dd || dd > R) continue;
+        const b = bayer(x, y), up = y < waist;
+        if (dd === 1) {
+          if (up || b < 0.5 * k + flare) hot(i, b < 0.2 + 0.5 * beat * k + flare ? P.hot : P.mid);
+          else set(i, P.deep);
+        } else if (dd === 2) { if (b < (up ? 0.55 : 0.3) * k + flare * 0.5) set(i, P.deep); }
+        else if (b < (up ? 0.22 : 0.1) * k) set(i, P.mist);
+      }
+      // Tongues of dark flame licking up off the top of him, column by column: a glowing root,
+      // dark red, then black-red tips broken into wisps; they flicker and climb.
+      const seed = (a.id || 0) * 17.3, tall = (2.5 + 5 * k + flare * 7) * k;
+      for (let x = 0; x < W; x++) {
+        let yt = -1;
+        for (let y = 0; y < H; y++) if (D[y * W + x] <= 2) { yt = y; break; }
+        if (yt < 0 || yt > waist) continue;
+        const n1 = noise(x * 0.27 + seed, t * 3.2), n2 = noise(x * 0.7 + seed + 9, t * 6.1);
+        const h = Math.round(tall * (n1 * 0.85 + n2 * 0.5) - 1.5);
+        for (let j = 1; j <= h && yt - j >= 0; j++) {
+          const i = (yt - j) * W + x, u = j / h, b = bayer(x, yt - j);
+          if (u <= 0.3) hot(i, P.mid);
+          else if (u <= 0.65) set(i, P.deep);
+          else if (b < 0.6) set(i, u > 0.9 ? P.black : P.mist);
+        }
+        // Now and then a wisp tears off the tip and drifts up.
+        if (h > 2 && n2 > 0.62) {
+          const yy = yt - h - 2 - Math.floor(((t * 2.4 + n1 * 3) % 1) * 4);
+          if (yy >= 0) set(yy * W + x, P.mist);
         }
       }
       L.g.putImageData(L.img, 0, 0);
@@ -316,7 +326,7 @@ export class DarkNoxFX {
     if (s.mask && !hidden) {
       const W = s.mw, H = s.mh, m = s.mask, span = Math.max(1, s.y1 - s.y0 + 1);
       let mode = null, line = 0;
-      if (a.act === 'darkRise' && at < POP) { mode = 'rise'; line = s.y1 + 1 - Math.round(ease(at / POP) * (span + 1)); }
+      if (a.act === 'darkRise' && at < POP) { mode = 'rise'; line = s.y1 + 1 - Math.round(Math.pow(at / POP, 0.85) * (span + 1)); }
       // He turns back halfway through the fade; the dark then drains off him from the head down.
       else if (a.act === 'darkFade' && a.form !== 'dark') { mode = 'fade'; line = s.y0 + Math.round(ease(clamp01((at - FADE * 0.5) / (FADE * 0.45))) * (span + 1)); }
       const pop = s.popT < 0.1;
@@ -333,7 +343,7 @@ export class DarkNoxFX {
           const dy = y - line;
           if (dy === 0 || dy === -1 && bayer(x, y) < 0.5) set(i, dy === 0 ? P.hot : P.mid);
           else if (dy > 0 && (dy > 2 || bayer(x, y) < 0.4 + dy * 0.25)) {
-            const A = f.fc.alpha, q = i * 4, c = mode === 'rise' ? darkOf((A[q] << 16) | (A[q + 1] << 8) | A[q + 2]) : null;
+            const A = f.fc.alpha, q = i * 4, c = darkOf((A[q] << 16) | (A[q + 1] << 8) | A[q + 2]);
             set(i, c || (dy < 3 ? P.deep : '#140818'));
           }
         }
@@ -393,11 +403,9 @@ export class DarkNoxFX {
       for (let y = -r; y <= r; y++) {
         const half = Math.sqrt(Math.max(0, r * r - y * y)), yy = cy + Math.round(y * 0.85);
         for (let x = -Math.round(half); x <= Math.round(half); x++) {
-          const edge = Math.abs(Math.hypot(x, y) - r);
-          const px = cx + x;
-          if (edge < 1.2) { g.fillStyle = P.hot; g.fillRect(px, yy, 1, 1); continue; }
-          if (edge < 3 && bayer(px, yy) < 0.5) { g.fillStyle = P.deep; g.fillRect(px, yy, 1, 1); continue; }
-          if (bayer(px, yy) < dens * (1 - Math.hypot(x, y) / (r * 1.6))) { g.fillStyle = P.black; g.fillRect(px, yy, 1, 1); }
+          const px = cx + x, v = dens * (1 - Math.hypot(x, y) / (r * 1.5)), b = bayer(px, yy);
+          if (b < v) { g.fillStyle = P.black; g.fillRect(px, yy, 1, 1); }
+          else if (b < v + 0.12) { g.fillStyle = P.deep; g.fillRect(px, yy, 1, 1); }
         }
       }
       // His silhouette stays lit in crimson inside the black.
@@ -471,10 +479,11 @@ export class DarkNoxFX {
       } else if (p.k === 'spike') {
         const s = this.at.get(p.who);
         if (!s) continue;
-        const out = u < 0.25 ? ease(u / 0.25) : 1 - (u - 0.25) / 0.75, L = p.len * out, ca = Math.cos(p.a), sa = Math.sin(p.a) * 0.8;
-        for (let d = 6; d < L; d += 1) {
-          const wd = Math.max(1, Math.round(3 * (1 - d / L)));
-          dot(d > L - 2 ? P.core : wd > 1 ? P.mid : P.hot, s.cx + ca * d - wd / 2, s.cy + sa * d - wd / 2, wd);
+        const out = u < 0.2 ? ease(u / 0.2) : 1 - (u - 0.2) / 0.8, L = p.len * out, ca = Math.cos(p.a), sa = Math.sin(p.a) * 0.8;
+        for (const pass of [0, 1]) for (let d = 5; d < L; d += 0.7) {
+          const wd = Math.max(1, Math.round(4 * (1 - d / L))), x = s.cx + ca * d - wd / 2, y = s.cy + sa * d - wd / 2;
+          if (!pass) dot(P.black, x - 1, y - 1, wd + 2);
+          else dot(d > L - 2 ? P.core : wd > 2 ? P.deep : wd > 1 ? P.mid : P.hot, x, y, wd);
         }
       } else if (p.k === 'smoke') {
         const r = Math.round(p.r + u * 3), cx = Math.round(p.x), cy = Math.round(p.y), lim = 0.55 * (1 - u);
