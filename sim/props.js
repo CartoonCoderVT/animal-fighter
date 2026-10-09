@@ -355,7 +355,7 @@ export function tickProps(g, dt) {
     f.cd -= dt;
     if (f.cd <= 0) {
       f.cd = 0.45;
-      for (const a of g.actors) if (!a.dead && Math.abs(a.x - f.x) < 38 && Math.abs(a.y - f.y) < 55 && !(a.dodge > 0)) { a.burning = 3.5; a.burnOwner = f.owner; }
+      for (const a of g.actors) if (!a.dead && a.swallowedBy == null && Math.abs(a.x - f.x) < 38 && Math.abs(a.y - f.y) < 55 && !(a.dodge > 0)) { a.burning = 3.5; a.burnOwner = f.owner; }
     }
   }
   g.fires = g.fires.filter(f => f.life > 0);

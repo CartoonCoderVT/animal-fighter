@@ -94,7 +94,7 @@ export class Game {
     this.release();
     const pt = { x, y };
     let body = null;
-    const actor = this.actors.find(a => !a.dead && !a.knocked && Query.point([a.body], pt).length);
+    const actor = this.actors.find(a => !a.dead && !a.knocked && a.swallowedBy == null && Query.point([a.body], pt).length);
     if (actor) {
       knockdown(this, actor, { velocity: { x: 0, y: -1 }, time: 2.5 });
       const r = ragdollOf(this, actor);

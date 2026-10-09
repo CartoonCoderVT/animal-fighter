@@ -107,6 +107,8 @@ export function attack(g, a) {
     // The shadow cut opens the string at the reap; the phantom reap picks it up at the guillotine;
     // Juma's pounce goes on into the storm of claws, her cross into the rake.
     a.combo = chaining ? (a.attackKind === 'shadowCut' || a.attackKind === 'batStrike' ? 1 : a.attackKind === 'scytheDash' ? 3 : a.attackKind === 'jBolt' ? 2 : a.attackKind === 'jCross' ? 3 : a.attackKind === 'fGrapple' ? 3 : (a.combo + 1) % list.length) : 0;
+    // A string can outlive the style it began in (the frog swallowing mid-combo): start the new one over.
+    if (!list[a.combo]) a.combo = 0;
     id = list[a.combo];
   }
   // Nox's strings never drop to distance: a rival knocked out of reach of the next blow is chased
@@ -344,8 +346,8 @@ function croakRing(g, a, mv, already) {
     const d = Math.hypot(b.x - x, (b.y - y) * 1.6);
     if (b.dead || b.knocked || already.has(b.id) || d > R) continue;
     const s = Math.sign(b.x - x) || a.face, k = 1 - d / R;
-    damage(g, b, 3 + 5 * k, { x: b.x - s * 4, y: b.y }, a.id, 'croak', { kb: { x: s * (3 + 6 * k), y: -2.5 - 3 * k } });
-    b.stun = Math.max(b.stun, 0.3 + 0.3 * k);
+    const dealt = damage(g, b, 3 + 5 * k, { x: b.x - s * 4, y: b.y }, a.id, 'croak', { kb: { x: s * (3 + 6 * k), y: -2.5 - 3 * k } });
+    if (dealt > 0 && !b.dead && !b.knocked && b.form !== 'titan') b.stun = Math.max(b.stun, 0.3 + 0.3 * k);
   }
   for (const l of g.limbs) { const d = Math.hypot(l.x - x, l.y - y); if (d < R) Body.setVelocity(l.body, { x: l.body.velocity.x + Math.sign(l.x - x) * 5 * (1 - d / R), y: l.body.velocity.y - 3 * (1 - d / R) }); }
   g.fx('croak', { x, y, r: R, face: a.face });

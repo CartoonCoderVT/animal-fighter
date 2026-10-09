@@ -183,7 +183,8 @@ export function releaseHeld(g, a) {
 }
 
 export function knockdown(g, a, { velocity = { x: 0, y: -2 }, time = 1.6 } = {}) {
-  if (a.dead) return;
+  // Inside the frog nothing can knock them down.
+  if (a.dead || a.swallowedBy != null) return;
   if (a.knocked) {
     a.knock = Math.min(3, a.knock + time * 0.35);
     pushActor(g, a, velocity.x * 0.7, velocity.y * 0.7);

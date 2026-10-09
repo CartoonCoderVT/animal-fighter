@@ -587,7 +587,8 @@ function weaponFrame(mv, p, seed, time) {
   if (air && A.style !== 'spin') { f.footF = [1, -2]; f.footB = [-1, -1]; }
   // Snap to the rotation steps the sprites use, so repeated frames hit the sprite cache.
   const snap = d => Math.round(d / 11.25) * 11.25;
-  for (const k of ['armF', 'armB']) if (f[k]) f[k] = [f[k][0], f[k][1], snap(f[k][2])];
+  // Offsets snap to whole pixels too: thrusts ease the arm out by fractions, and sprites are pixel grids.
+  for (const k of ['armF', 'armB']) if (f[k]) f[k] = [Math.round(f[k][0]), Math.round(f[k][1]), snap(f[k][2])];
   if (smear?.cur !== undefined) smear.cur = snap(smear.cur);
   return { frame: f, expr: 'Angry', name: 'w:' + mv.slot, smear };
 }

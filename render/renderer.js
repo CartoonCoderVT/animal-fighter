@@ -335,8 +335,9 @@ export class Renderer {
     const a = f.a, name = f.info.name || '', last = this.keyPose.get(a.id);
     const hand = f.info.hand, face = a.face || 1;
     // Juma's smears and glints are amber, the beast's a hot orange, the titan's molten; Nox's are blood.
-    const juma = a.type === 3, beast = juma && !!a.form, titan = juma && a.form === 'titan';
-    const c = juma ? (titan ? { c1: '#ffe08a', c2: '#ff4a1a' } : beast ? { c1: '#ffb070', c2: '#ff6a2a' } : { c1: '#fff1c8', c2: '#ffd27a' }) : {};
+    // The frog's (and whatever style he borrowed besides these) are slime green.
+    const st = styleOf(a), juma = st === 3, beast = juma && !!a.form, titan = juma && a.form === 'titan';
+    const c = juma ? (titan ? { c1: '#ffe08a', c2: '#ff4a1a' } : beast ? { c1: '#ffb070', c2: '#ff6a2a' } : { c1: '#fff1c8', c2: '#ffd27a' }) : st === 4 ? {} : { c1: '#e8ffd0', c2: '#9be05a' };
     if (last && last.name !== name && this.simDt > 0) {
       const dust = (x, dir, n) => this.fx.burst('dust', x, f.hy - 1, n, { a: dir > 0 ? -0.35 : Math.PI + 0.35, spread: 0.7, s: beast ? 2 : 1.5, life: beast ? 0.6 : 0.45, colors: ['#8a7f95', '#6a6078', '#a89cb8'], g: -0.02, drag: 0.9, size: 2 });
       if (/X2?$/.test(name)) {
@@ -943,7 +944,7 @@ export class Renderer {
     }
     if (hz && (hz.press.state === 'warn' || hz.press.state === 'slam')) add({ x: 600, y: 206, r: 110, color: '#ff3a3a', i: 0.6 + Math.sin(t * 18) * 0.4, kind: 'point', occlude: true });
     for (const f of state.fires || []) add({ x: X(f.x), y: X(f.y) - 8, r: 64, color: '#ff9a45', i: 0.85 + Math.sin(t * 31 + f.x) * 0.15, occlude: true });
-    for (const a of state.actors) if (!a.dead && a.burning > 0) add({ x: X(a.x), y: X(a.y) - 6, r: 50, color: '#ff9a45', i: 0.8 });
+    for (const a of state.actors) if (!a.dead && a.swallowedBy == null && a.burning > 0) add({ x: X(a.x), y: X(a.y) - 6, r: 50, color: '#ff9a45', i: 0.8 });
     for (const p of state.props) if (p.rocket || p.burning > 0) add({ x: X(p.x), y: X(p.y), r: 54, color: '#ffae5a', i: 0.8 });
     for (const b of state.bullets || []) add({ x: X(b.x), y: X(b.y), r: b.word ? 22 : 14, color: b.word ? b.color : '#ffe2a0', i: 0.6, noRim: !!b.word });
     if (hz) {
@@ -1119,7 +1120,7 @@ export class Renderer {
     }
     for (const f of state.fires || []) if (Math.random() < 0.9) fx.burst('fire', X(f.x) + rnd(-12, 12), X(f.y) - 2, 2, { a: -Math.PI / 2, spread: 0.7, s: 0.9, life: 0.6, colors: [P.fire0, P.fire1, P.fire2], g: -0.04, drag: 0.96, size: 2, em: true });
     for (const a of state.actors) {
-      if (a.dead) continue;
+      if (a.dead || a.swallowedBy != null) continue;
       if (a.burning > 0 && Math.random() < 0.8) fx.burst('fire', X(a.x) + rnd(-5, 5), X(a.y) + rnd(-12, 12), 1, { a: -Math.PI / 2, spread: 0.6, s: 0.8, life: 0.5, colors: [P.fire0, P.fire1, P.fire2], g: -0.05, size: 2, em: true });
       if (a.frozen > 0 && Math.random() < 0.08) fx.burst('frost', X(a.x) + rnd(-6, 6), X(a.y) + rnd(-14, 10), 1, { s: 0.3, life: 0.8, colors: [P.ice0], g: 0.01, em: true });
       if (a.bleed > 0.3 && this.fx.gore && Math.random() < dt * (2 + a.bleed * 2)) fx.burst('blood', X(a.x) + rnd(-4, 4), X(a.y) + rnd(-10, 6), 2 + Math.round(a.bleed), { a: -Math.PI / 2, spread: 1.4, s: 1.6, life: 0.8, colors: [P.blood2, P.blood1, P.blood3], stick: true, size: 1 });

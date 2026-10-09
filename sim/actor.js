@@ -334,7 +334,7 @@ const GHOST_ACTS = ['chase', 'ride', 'pounce', 'kickoff', 'plunge', 'requiem', '
 function updateMask(g, a, vy) {
   const b = a.body;
   let mask = MASK.actor;
-  if (a.ghostClear && !g.actors.some(o => o !== a && !o.dead && !o.knocked && Math.abs(o.body.position.x - b.position.x) < 16 && Math.abs(o.body.position.y - b.position.y) < HALF_H * 2)) a.ghostClear = false;
+  if (a.ghostClear && !g.actors.some(o => o !== a && !o.dead && !o.knocked && o.swallowedBy == null && Math.abs(o.body.position.x - b.position.x) < 16 && Math.abs(o.body.position.y - b.position.y) < HALF_H * 2)) a.ghostClear = false;
   if (a.ghostClear || a.dodge > 0 || GHOST_ACTS.includes(a.act) || (a.attack > 0 && MOVES[a.attackKind]?.pass)) mask &= ~CAT.actor;
   // A rider follows the head under it, so catwalks it would land on are not in its way.
   if (!a.climbing && a.act !== 'ride') {

@@ -1036,7 +1036,7 @@ export function frogPower(g, a) {
 
 // The mouth, a little ahead of his face.
 const mouth = a => ({ x: a.x + a.face * 10, y: a.y - 2 });
-const swallowable = (a, b) => !b.dead && !b.knocked && b.swallowedBy == null && b.team !== a.team && !['requiem', 'swarm', 'morph'].includes(b.act) && !(b.iframes > 0 && b.dodge > 0);
+const swallowable = (a, b) => !b.dead && !b.knocked && b.swallowedBy == null && b.team !== a.team && !['requiem', 'swarm', 'morph'].includes(b.act) && !(b.iframes > 0 && b.dodge > 0) && !(b.invincible > 0);
 
 function stepInhale(g, a, input, v) {
   const m = mouth(a), face = a.face, R = INHALE.reach;
@@ -1057,8 +1057,11 @@ function stepInhale(g, a, input, v) {
     b.inhaled = g.time;
     if (k > 0.55 && !big) { b.stun = Math.max(b.stun, 0.12); b.attack = 0; b.hits = null; }
   }
-  for (const l of g.limbs) { const d = ahead(l.x, l.y); if (d >= 0) Body.setVelocity(l.body, { x: l.body.velocity.x - face * (1.4 + 3 * (1 - d / R)), y: l.body.velocity.y - 0.3 }); }
-  for (const p of g.props) { if (p.held || p.fixed || p.body.isStatic) continue; const d = ahead(p.x, p.y); if (d >= 0) Body.setVelocity(p.body, { x: p.body.velocity.x - face * (0.8 + 2.4 * (1 - d / R)), y: p.body.velocity.y - 0.2 }); }
+  // Loose limbs and props drift toward him too, at a gentle pace that never builds up (they would
+  // shove him around or slam into things), and stop once they reach his face.
+  const drift = (body, d, top) => { const bv = body.velocity, to = -face * top * (0.4 + 0.6 * (1 - d / R)); Body.setVelocity(body, { x: bv.x + (to - bv.x) * 0.2, y: bv.y - 0.15 }); };
+  for (const l of g.limbs) { const d = ahead(l.x, l.y); if (d > 16) drift(l.body, d, 4); }
+  for (const p of g.props) { if (p.held || p.fixed || p.body.isStatic) continue; const d = ahead(p.x, p.y); if (d > 24) drift(p.body, d, 3); }
   // He keeps inhaling while K is held, a little at least, up to his breath.
   if ((!input.power && a.actT > INHALE.min) || a.actT > a.actMax) { endAct(g, a); a.abilityCd = INHALE.cd; return null; }
   return { lock: true, vx: v.x * 0.7, vy: a.ground ? v.y : Math.min(v.y, 1) };
@@ -1077,6 +1080,8 @@ function gulp(g, a, b) {
   b.lastHit = a.id; b.lastHitTime = g.time;
   a.belly = b.id;
   a.bellyT = BELLY.hold;
+  // A new style starts a fresh string.
+  a.combo = 0; a.comboTimer = 0;
   a.copy = b.type === 5 ? null : b.type;
   a.chase = null;
   setAct(a, 'gulp', INHALE.gulp);
@@ -1111,10 +1116,11 @@ function stepSpit(g, a, v) {
 // free when he is knocked down or killed. Either way he loses the style he borrowed.
 export function releaseVictim(g, a, how) {
   const b = g.actor(a.belly);
-  a.belly = null; a.copy = null; a.bellyT = 0; a.copied = false;
+  a.belly = null; a.copy = null; a.bellyT = 0; a.copied = false; a.wobble = 0; a.combo = 0; a.comboTimer = 0;
   if (!b || b.swallowedBy !== a.id) return;
   b.swallowedBy = null;
   b.ghostClear = true;
+  b.burning = 0;
   const face = a.face || 1, m = mouth(a);
   g.fx('copyPoof', { x: a.x, y: a.y, face });
   if (how === 'spit') {
@@ -1164,11 +1170,11 @@ export function stepSwallowed(g, b, input, pressed, dt) {
 
 // Each step for a frog with someone inside: slowly they wear their way out on their own.
 export function tickBelly(g, a, dt) {
+  a.wobble = Math.max(0, (a.wobble || 0) - dt);
   if (a.belly == null || a.dead) return;
   // Whoever was inside is gone some other way (crushed with him, left the match): he is empty.
   const b = g.actor(a.belly);
-  if (!b || b.dead || b.swallowedBy !== a.id) { a.belly = null; a.copy = null; a.bellyT = 0; a.copied = false; return; }
-  a.wobble = Math.max(0, (a.wobble || 0) - dt);
+  if (!b || b.dead || b.swallowedBy !== a.id) { a.belly = null; a.copy = null; a.bellyT = 0; a.copied = false; a.wobble = 0; return; }
   if (a.act === 'gulp' || a.act === 'spit') return;
   a.bellyT -= dt;
   if (a.bellyT <= 0 && !a.knocked) releaseVictim(g, a, 'escape');
