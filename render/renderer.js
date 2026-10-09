@@ -3,7 +3,7 @@
 import { VIEW_W, VIEW_H, S, clamp, rnd } from '../engine/const.js';
 import { P, hexToRgb } from '../engine/palette.js';
 import { drawText } from '../engine/font.js';
-import { MAP, useMap } from '../sim/map.js';
+import { MAP, MAPS, useMap } from '../sim/map.js';
 import { drawCastleHazards, drawCastleProp, castleLights } from './castle-render.js';
 import { surfaceY } from '../sim/physics.js';
 import { World } from './world.js';
@@ -145,8 +145,11 @@ export class Renderer {
 
   // Switch the art, the moonlight and the fixed lights to another arena (once its art is ready).
   useArena(id) {
-    if (this.arena === id || !this.worlds[id]) return;
+    if (!Object.hasOwn(MAPS, id)) id = 'depot';
+    // The arena's geometry follows the state at once (an online guest has no Game of its own to set
+    // it); its art, lights and effects switch over once they have loaded.
     useMap(id);
+    if (this.arena === id || !this.worlds[id]) return;
     this.arena = id;
     this.world = this.worlds[id];
     this.light.setMap();

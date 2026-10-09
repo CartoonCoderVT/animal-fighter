@@ -35,6 +35,7 @@ export function drawCastleProp(lg, p, ox, oy, t, art) {
     case 'gargoyle': art.drawGargoyle(lg, x, X(p.y) + oy, -1, { glow: look.glow || 0, t }); break;
     case 'chandelier': {
       const c = MAP.chandelier, a = p.angle || 0, h = p.h / 2;
+      if (!c) break;
       const tx = X(p.x + Math.sin(a) * h) + ox, ty = X(p.y - Math.cos(a) * h) + oy;
       if (p.chain) art.drawChain(lg, X(c.x) + ox, X(c.anchorY) + oy, tx, ty);
       art.drawChandelier(lg, tx, ty, a, { lit: !!look.lit, t });
