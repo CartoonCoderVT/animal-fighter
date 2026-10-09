@@ -184,7 +184,11 @@ export class Shell {
         // Teleports are instant, never a slide: Lola's skips (counted in skips) and long jumps.
         if (!b || Math.hypot(a.x - b.x, a.y - b.y) > 180 || a.skips !== b.skips) return a;
         const lerpA = (x, y) => x + Math.atan2(Math.sin(y - x), Math.cos(y - x)) * t;
-        return { ...a, x: b.x + (a.x - b.x) * t, y: b.y + (a.y - b.y) * t, angle: Number.isFinite(a.angle) && Number.isFinite(b.angle) ? lerpA(b.angle, a.angle) : a.angle };
+        const out = { ...a, x: b.x + (a.x - b.x) * t, y: b.y + (a.y - b.y) * t, angle: Number.isFinite(a.angle) && Number.isFinite(b.angle) ? lerpA(b.angle, a.angle) : a.angle };
+        // DARK NOX's flying scythe: its spin is sent unwrapped, so it turns the right way between snapshots.
+        const f = a.fam, h = b.fam;
+        if (f && h && Math.hypot(f.x - h.x, f.y - h.y) < 120) out.fam = { ...f, x: h.x + (f.x - h.x) * t, y: h.y + (f.y - h.y) * t, ang: h.ang + (f.ang - h.ang) * t };
+        return out;
       });
     }
     // The cut-in and the stopped world are timed by the time stop's own clock: smooth it too.

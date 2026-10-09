@@ -1,7 +1,8 @@
 // Specials (K) and the moves everyone shares: aerial stomp and carrying a downed fighter.
 // A running special lives in a.act; stepSpecial runs it each step and may lock movement.
 import { Body, Composite } from './physics.js';
-import { SPECIALS, NOX_AIR, JUMA_AIR, LOLA_AIR, DARK } from './moves.js';
+import { SPECIALS, JUMA_AIR, LOLA_AIR, DARK, noxAir } from './moves.js';
+import { freeScythe } from './nox.js';
 import { FIGHTERS } from './fighters.js';
 import { damage, startMove, landPlunge, markOf, drama } from './combat.js';
 import { MOVES } from './moves.js';
@@ -110,6 +111,8 @@ function becomeDark(g, a) {
   a.formT = DARK.time;
   a.blood = DARK.max;
   a.abilityCd = 0.6;
+  // The scythe leaves his hand and flies on its own (sim/nox.js).
+  freeScythe(g, a);
   const x = a.x, y = a.y, R = 96;
   for (const b of enemiesNear(g, a, b => !b.knocked && Math.abs(b.x - x) < R && Math.abs(b.y - y) < 60)) {
     const s = Math.sign(b.x - x) || a.face, f = 1 - Math.abs(b.x - x) / R;
@@ -135,7 +138,7 @@ export function startDarkFade(g, a) {
 // After a launcher: leap straight at the airborne target, then open the air combo on arrival.
 // then: the move to throw on arrival (small Juma pouncing after a rival her string knocked away).
 export function startChase(g, a, prey, then = null) {
-  if (a.type === 4) { startSwarm(g, a, { prey, then: then || NOX_AIR[0] }); return; }
+  if (a.type === 4) { startSwarm(g, a, { prey, then: then || noxAir(a)[0] }); return; }
   if (a.type === 2) { startBlink(g, a, prey, then || LOLA_AIR[0]); return; }
   setAct(a, 'chase', 0.42);
   a.chaseId = prey.id;
@@ -272,7 +275,7 @@ export function stepSpecial(g, a, input, pressed, dt) {
       a.face = b.x >= a.x ? 1 : -1;
       if (d < 10 || a.actT > a.actMax) {
         endAct(g, a);
-        const then = a.chaseThen || (a.type === 4 ? NOX_AIR[0] : a.type === 3 ? (a.form === 'beast' ? 'bAirSmash' : JUMA_AIR[0]) : 'airA');
+        const then = a.chaseThen || (a.type === 4 ? noxAir(a)[0] : a.type === 3 ? (a.form === 'beast' ? 'bAirSmash' : JUMA_AIR[0]) : 'airA');
         a.chaseThen = null;
         if (b.ground) Body.setVelocity(a.body, { x: a.face, y: 0 });
         else {
@@ -731,7 +734,7 @@ function stepSwarm(g, a) {
   a.ground = !!(prey && prey.ground && Math.abs(prey.y - a.y) < 4);
   g.fx('batSwarm', { x: a.x, y: a.y, arrive: 1, n: 18 });
   g.fx('ring', { x: a.x, y: a.y, size: 26, color: '#ff4a64' });
-  startMove(g, a, sw.then || 'batStrike');
+  startMove(g, a, sw.then || (a.form === 'dark' ? 'dFrenzy' : 'batStrike'));
   return LOCK;
 }
 

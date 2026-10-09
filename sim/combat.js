@@ -5,7 +5,8 @@ import { S, rnd, clamp } from '../engine/const.js';
 import { knockdown, pushActor, buildRagdoll, ragdollOf, breakJoint, gib, makeLimb, releaseHeld, pinLimb, addStump } from './ragdoll.js';
 import { extendedAttack, dropWeapon, damageProp } from './props.js';
 import { hazardBulletHit } from './hazards.js';
-import { MOVES, HEAVY, AIR, NOX_AIR, JUMA_AIR, BEAST_AIR, LOLA_AIR, NATURAL, SET, BURST, DARK, comboOf } from './moves.js';
+import { MOVES, HEAVY, AIR, NOX_AIR, DARK_AIR, JUMA_AIR, BEAST_AIR, LOLA_AIR, NATURAL, SET, BURST, DARK, POOL, comboOf, noxAir } from './moves.js';
+import { spill } from './nox.js';
 import { MAP } from './map.js';
 import { startSpecial, startStomp, throwCarried, startChase, endAct, startPlunge, startSwarm, startBite, startCharge } from './specials.js';
 import { isMelee, WEAPON_INFO, weaponSlot } from './weapons.js';
@@ -77,14 +78,14 @@ export function attack(g, a) {
   const prey = a.chase && g.time < a.chase.until ? g.actor(a.chase.id) : null;
   if (prey && !prey.dead && !prey.knocked && !prey.ground) { a.chase = null; startChase(g, a, prey); return; }
   let id;
-  const list = comboOf(a), chaining = a.comboTimer > 0 && (list.includes(a.attackKind) || ['shadowCut', 'scytheDash', 'batStrike', 'jBolt', 'lSkip', 'lFan', 'lRain'].includes(a.attackKind));
-  const nox = a.type === 4, side = a.input.left || a.input.right, tapped = g.time - (a.dirTap ?? -9) < 0.2;
+  const list = comboOf(a), chaining = a.comboTimer > 0 && (list.includes(a.attackKind) || ['shadowCut', 'scytheDash', 'batStrike', 'dPhantom', 'jBolt', 'lSkip', 'lFan', 'lRain'].includes(a.attackKind));
+  const nox = a.type === 4, dark = nox && a.form === 'dark', side = a.input.left || a.input.right, tapped = g.time - (a.dirTap ?? -9) < 0.2;
   // A bot's steering makes fresh taps of its own: its knife branches follow its plan instead.
   const tapSet = tapped && (!a.bot || !!a.ai?.lola?.plan);
   const juma = a.type === 3, beast = juma && a.form === 'beast', lola = a.type === 2;
   if (a.dashStrike) id = 'dashAtk';
   else if (!a.ground && !a.climbing) {
-    const air = nox ? NOX_AIR : beast ? BEAST_AIR : juma ? JUMA_AIR : lola ? LOLA_AIR : AIR, prev = air.indexOf(a.attackKind);
+    const air = nox ? noxAir(a) : beast ? BEAST_AIR : juma ? JUMA_AIR : lola ? LOLA_AIR : AIR, prev = air.indexOf(a.attackKind);
     // Lola, a fresh tap of a direction in her air string: the ring of knives; then the dive.
     if (lola && a.comboTimer > 0 && (a.attackKind === 'lAirCut' || a.attackKind === 'lAirSpin') && side && tapSet && !(a.setCd > 0)) { a.setCd = SET.cd; id = 'lAirRing'; }
     else if (lola && a.comboTimer > 0 && a.attackKind === 'lAirRing') id = 'lAirDive';
@@ -95,10 +96,12 @@ export function attack(g, a) {
     else if (juma && !chaining && !(a.biteCd > 0)) { startBite(g, a); return; }
     // Lola out of her string: the rain of knives (now and then; else the low cut).
     else if (lola && chaining && !(a.setCd > 0)) { a.setCd = SET.cd; id = 'lRain'; }
+    // DARK NOX: out of his string the harvest, over a downed rival the scythe's execution, else the kiss.
+    else if (dark) id = chaining ? 'dHarvest' : downedNear(g, a) ? 'dExecute' : 'dKiss';
     else id = nox && chaining ? 'scytheSweep' : nox && downedNear(g, a) ? 'execute' : HEAVY[a.type];
   }
-  else if (nox && !chaining && side) { a.face = a.input.right ? 1 : -1; id = 'shadowCut'; }
-  else if (nox && chaining && side && tapped && a.attackKind !== 'scytheDash') { a.face = a.input.right ? 1 : -1; id = 'scytheDash'; }
+  else if (nox && !chaining && side) { a.face = a.input.right ? 1 : -1; id = dark ? 'dPhantom' : 'shadowCut'; }
+  else if (nox && chaining && side && tapped && a.attackKind !== 'scytheDash' && a.attackKind !== 'dPhantom') { a.face = a.input.right ? 1 : -1; id = dark ? 'dPhantom' : 'scytheDash'; }
   // Lola skips through time to a rival a long way off (on a short cooldown, else the string). Inside
   // her string a fresh tap of a direction is the wall of knives instead.
   else if (lola && chaining && side && tapSet && !(a.setCd > 0)) { a.setCd = SET.cd; id = 'lFan'; }
@@ -112,7 +115,7 @@ export function attack(g, a) {
     // The shadow cut opens the string at the reap; the phantom reap picks it up at the guillotine;
     // Juma's pounce goes on into the storm of claws, Lola's skip and wall of knives into the dance of
     // knives, her rain of knives into the stab in the back.
-    a.combo = chaining ? (a.attackKind === 'shadowCut' || a.attackKind === 'batStrike' ? 1 : a.attackKind === 'scytheDash' || a.attackKind === 'lRain' ? 3 : a.attackKind === 'jBolt' || a.attackKind === 'lSkip' || a.attackKind === 'lFan' ? 2 : (a.combo + 1) % list.length) : 0;
+    a.combo = chaining ? (a.attackKind === 'shadowCut' || a.attackKind === 'batStrike' || a.attackKind === 'dPhantom' ? 1 : a.attackKind === 'scytheDash' || a.attackKind === 'lRain' ? 3 : a.attackKind === 'jBolt' || a.attackKind === 'lSkip' || a.attackKind === 'lFan' ? 2 : (a.combo + 1) % list.length) : 0;
     id = list[a.combo];
   }
   // Nox's strings never drop to distance: a rival knocked out of reach of the next blow is chased
@@ -259,6 +262,7 @@ function reaches(a, mv, x, y, pad = 0, low = !!mv.low) {
 // DARK NOX: the same moves, far more destructive and reaching much further (made once per move).
 const darkMoves = new Map();
 export function darkMove(mv) {
+  if (mv.dark) return mv;
   let d = darkMoves.get(mv);
   if (d) return d;
   d = { ...mv, dark: true, range: Math.round(mv.range * DARK.range), band: Math.round(mv.band * DARK.band), dmg: mv.dmg.map(x => x * DARK.dmg), kb: mv.kb.map(([x, y]) => [x * DARK.kb, y * (y < 0 ? 1.1 : DARK.kb)]) };
@@ -273,16 +277,21 @@ export function darkMove(mv) {
 export const moveOf = (a, mv) => (mv && a.form === 'dark' ? darkMove(mv) : mv);
 
 // Nox's blows make the rival bleed, and the blood they lose is his (tickStatuses).
-function bleedFor(g, nox, b, amount) {
+export function bleedFor(g, nox, b, amount) {
   b.bleed = Math.min(6, (b.bleed || 0) + amount);
   b.bleedBy = nox.id; b.bleedByT = g.time;
 }
 // Nox drinks what a rival bleeds from his blows: it fills his meter (not while he is DARK NOX).
 function drink(g, nox, b, amount) {
   if (nox.form === 'dark' || nox.act === 'darkRise') return;
-  const was = nox.blood || 0;
-  nox.blood = Math.min(DARK.max, was + amount * DARK.drink);
   if (Math.hypot(b.x - nox.x, b.y - nox.y) < 520) g.fx('drain', { x: b.x, y: b.y - 4, tx: nox.x, ty: nox.y - 4, n: 2 });
+  fillBlood(g, nox, amount * DARK.drink);
+}
+// Points into Nox's blood meter (from a bleeding rival or a pool on the floor); full, he says so.
+export function fillBlood(g, nox, pts) {
+  if (nox.form === 'dark' || nox.act === 'darkRise') return;
+  const was = nox.blood || 0;
+  nox.blood = Math.min(DARK.max, was + pts);
   if (was < DARK.max && nox.blood >= DARK.max) {
     g.text(nox.x, nox.y - 38, 'SANGUE CHEIO! K', '#ff3a5a');
     g.fx('ring', { x: nox.x, y: nox.y, size: 34, color: '#ff3a5a' });
@@ -347,7 +356,7 @@ export function strike(g, a, mv, i) {
       else { b.bounced = true; b.bounceArm = g.time; b.bounceBy = a.id; b.float = 0; shove(b, side * kb[0], 12); }
     }
     // Air strings rise with the rival: the attacker is carried along with them, so the next hit connects.
-    if (vamp && !a.ground && NOX_AIR.includes(a.attackKind)) shove(a, a.body.velocity.x * 0.5, Math.min(a.body.velocity.y, -0.6));
+    if (vamp && !a.ground && (NOX_AIR.includes(a.attackKind) || DARK_AIR.includes(a.attackKind))) shove(a, a.body.velocity.x * 0.5, Math.min(a.body.velocity.y, -0.6));
     else if (!vamp && !a.ground && !mv.spike && !b.knocked && (AIR.includes(a.attackKind) || JUMA_AIR.includes(a.attackKind) || LOLA_AIR.includes(a.attackKind))) shove(a, b.body.velocity.x * 0.9, Math.min(a.body.velocity.y, b.body.velocity.y));
     if (mv.drain) {
       a.hp = Math.min(a.maxHp, a.hp + dealt * (mv.drain + feast * 0.1));
@@ -526,7 +535,7 @@ function parried(g, a, o, point) {
 }
 
 // Dodging through a blow at the last moment.
-function perfectDodge(g, a) {
+export function perfectDodge(g, a) {
   a.perfect = true;
   a.perfectT = 0.45;
   g.text(a.x, a.y - 34, 'ESQUIVA!', '#c8f0ff');
@@ -536,7 +545,7 @@ function perfectDodge(g, a) {
   g.sound('swing', a.x);
 }
 
-function cutCorpse(g, limb) {
+export function cutCorpse(g, limb) {
   const r = limb.ragdoll;
   const j = r.joints.find(j => !j.broken && (j.child === limb.part || j.parent === limb.part));
   if (j) breakJoint(g, r, j, 'cut');
@@ -798,6 +807,9 @@ export function damage(g, a, amount, point, ownerId, kind = 'punch', opts = {}) 
   if (owner && owner !== a && !DOT.has(cat) && !opts.solo) { owner.lastPrey = a.id; owner.lastPreyT = g.time; }
   const gore = g.settings.gore ?? 2;
   if (gore && !DOT.has(cat)) g.fx('blood', { x: point.x, y: point.y, dx: (opts.kb?.x || 0) * 0.4, dy: -1.5, n: Math.round(Math.min(40, amount * (gore === 2 ? 1.5 : 0.5))), s: cat === 'cut' ? 4.5 : 3 });
+  // The blood a blow draws ends up on the floor (Nox drinks it there).
+  const spilt = cat === 'cut' || cat === 'grind' ? 1 : cat === 'pierce' ? 0.8 : cat === 'blunt' && amount >= 8 && kind !== 'fall' ? 0.5 : 0;
+  if (spilt) spill(g, point.x + (opts.kb?.x || 0) * 2, point.y, amount * POOL.spill * spilt);
 
   if (cat === 'blunt' && limbOf(part) && a.partDmg[part] >= 42 && amount >= 12) breakBone(g, a, part);
   if (cat === 'cut') a.bleed = Math.min(6, a.bleed + amount * 0.05);
@@ -931,6 +943,7 @@ export function sever(g, a, part, owner) {
   if (part === 'head') { a.hp = 0; kill(g, a, owner, { kind: 'decap' }); }
   if (part === 'armF') { a.weapon = null; releaseHeld(g, a); }
   g.fx('blood', { x: a.x, y: a.y, dx: -a.face * 2, dy: -4, n: 26, s: 5 });
+  spill(g, a.x, a.y, 5);
   g.text(a.x, a.y - 30, 'CRAC!', '#e99598');
   g.sound('squish', a.x);
   if (owner != null) { const o = g.actor(owner); if (o) o.stats.limbs++; }
@@ -962,6 +975,8 @@ export function kill(g, a, ownerId, { kind = 'punch', kb = { x: 0, y: -2 }, over
   a.act = null;
   a.hits = null;
   if (a.weapon) dropWeapon(g, a);
+  // The dead bleed out where they fall: a pool for Nox (nothing from a frozen statue).
+  if (kind !== 'shatter') spill(g, a.x, a.y, kind === 'grind' || kind === 'crush' || kind === 'explosion' ? 12 : 7);
   for (const e of a.embedded) if (e.kind === 'blade') { /* the blade stays in the corpse */ }
   const gore = g.settings.gore ?? 2;
   if (kind === 'shatter') {
@@ -1021,6 +1036,7 @@ export function tickStatuses(g, dt) {
       a.bleedTick = 0.5;
       const owner = a.lastHit != null && g.time - (a.lastHitTime ?? -9) < 8 ? a.lastHit : a.id;
       const lost = damage(g, a, a.bleed * 0.5, { x: a.x, y: a.y }, owner, 'bleed', { kb: { x: 0, y: 0 }, force: true, environment: true });
+      if (lost) spill(g, a.x + rnd(-4, 4), a.y, lost * 0.6);
       const nox = a.bleedBy != null && g.time - (a.bleedByT ?? -9) < 10 ? g.actor(a.bleedBy) : null;
       if (lost && nox && nox !== a && nox.type === 4 && !nox.dead) drink(g, nox, a, lost);
     }

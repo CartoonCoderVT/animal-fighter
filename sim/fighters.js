@@ -1,3 +1,4 @@
+import { DARK } from './moves.js';
 // stats: [DANO, MOBILIDADE, ESPECIAL] out of 5.
 export const FIGHTERS = [
   {
@@ -33,4 +34,5 @@ export const FIGHTERS = [
 ];
 // Juma's beast form is far heavier and slower than she is.
 export const weightOf = a => FIGHTERS[a.type].weight * (a.form === 'beast' ? 1.9 : 1);
-export const speedOf = a => FIGHTERS[a.type].speed * (a.form === 'beast' ? 0.66 : 1);
+// DARK NOX is quicker on his feet.
+export const speedOf = a => FIGHTERS[a.type].speed * (a.form === 'beast' ? 0.66 : a.form === 'dark' ? DARK.speed : 1);

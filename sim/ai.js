@@ -3,7 +3,7 @@ import { MAP, pathTo } from './map.js';
 import { inPit } from './physics.js';
 import { rnd, dist, clamp } from '../engine/const.js';
 import { FOOT } from '../render/rig.js';
-import { MOVES, DARK, comboOf } from './moves.js';
+import { MOVES, DARK, POOL, comboOf } from './moves.js';
 import { MELEE, isMelee } from './weapons.js';
 
 const RANGED = a => a.weapon === 'pistol' || a.weapon === 'shotgun';
@@ -127,6 +127,14 @@ export function think(g, a, dt) {
     }
   }
 
+  // Nox, thirsty and with nobody in his face: off to drink a pool of blood on his floor.
+  if (a.type === 4 && a.form !== 'dark' && (a.blood || 0) < DARK.max && !a.act && a.ground && Math.hypot(dx, dy) > 120 && g.pools?.length) {
+    const feet = a.y + FOOT;
+    const pool = g.pools.filter(p => p.amt > 2 && Math.abs(p.y - feet) < 6 && Math.abs(p.x - a.x) < 260 && (!mine || (p.x > mine.x0 - 4 && p.x < mine.x1 + 4)) && !inPit(p.x))
+      .sort((p, q) => q.amt / (40 + Math.abs(q.x - a.x)) - p.amt / (40 + Math.abs(p.x - a.x)))[0];
+    if (pool && Math.abs(pool.x - a.x) > POOL.reach * 0.5) moveTo = pool.x;
+  }
+
   // Hazard avoidance overrides the plan.
   if (MAP.id === 'depot') {
     const P = MAP.press, pr = g.hz.press;
@@ -176,7 +184,8 @@ export function think(g, a, dt) {
 
   // Combat
   {
-    const natural = MOVES[comboOf(a)[0]].range * (a.form === 'dark' ? DARK.range : 1) + 4;
+    // As DARK NOX his scythe strikes a step further than his claws reach.
+    const natural = MOVES[comboOf(a)[0]].range + (a.form === 'dark' ? 18 : 0) + 4;
     const armed = isMelee(a.weapon);
     const meleeRange = a.weapon === 'extinguisher' ? 110 : armed ? MOVES[a.weapon + ':nLight'].range + 4 : natural;
     const facing = dx * a.face >= -4;
@@ -192,7 +201,7 @@ export function think(g, a, dt) {
     // Nox closes long gaps as a swarm of bats.
     if (a.type === 4 && !a.act && !(a.batCd > 0) && Math.hypot(dx, dy) > 110 && Math.hypot(dx, dy) < 320 && Math.random() < 0.015) input.bats = true;
     // Nox opens with the shadow cut from a few steps away.
-    if (a.type === 4 && a.ground && !a.act && !a.weapon && Math.abs(dx) > 28 && Math.abs(dx) < 64 && Math.abs(dy) < 16 && Math.random() < 0.05) { input.attack = !a.lastInput.attack; input.right = dx > 0; input.left = dx < 0; }
+    if (a.type === 4 && a.ground && !a.act && !a.weapon && Math.abs(dx) > 28 && Math.abs(dx) < (a.form === 'dark' ? 96 : 64) && Math.abs(dy) < 16 && Math.random() < 0.05) { input.attack = !a.lastInput.attack; input.right = dx > 0; input.left = dx < 0; }
     // Juma, small: the lightning pounce from a few steps away, the bite up close.
     // The beast: the charge from further off, the earthquake when rivals crowd her.
     if (a.type === 3 && a.ground && !a.act && !a.weapon && Math.abs(dy) < 18 && !target.knocked) {

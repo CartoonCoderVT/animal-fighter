@@ -546,6 +546,9 @@ export class Renderer {
     lg.drawImage(this.fx.floorDecals, ox, oy);
     lg.drawImage(this.world.fronts, ox, oy);
     if (hz) { if (hz.map === 'castle') drawCastleHazards(lg, hz, ox, oy, state.time ?? t, this.castleArt); else this.drawHazards(lg, hz, ox, oy, t); }
+    // The pools of blood on the floors (Nox drinks them).
+    // (A remote game sends them as [x, y, amt, by]; the local game holds them as objects.)
+    if (state.pools?.length && this.darkNox?.drawPools) this.darkNox.drawPools(lg, state.pools.map(p => (Array.isArray(p) ? p : [p.x, p.y, p.amt, p.by])), state.actors, ox, oy, state.time ?? t);
     this.drawContactShadows(lg, state, ox, oy);
     for (const p of state.props) this.drawProp(lg, p, ox, oy, t);
     this.drawLimbs(lg, state, ox, oy, t);
@@ -557,6 +560,8 @@ export class Renderer {
       lg.drawImage(f.fc.body.c, f.x, f.y);
       lg.globalAlpha = 1;
     }
+    // DARK NOX's scythe flying on its own, over the fighters.
+    if (this.darkNox?.drawFamiliar) for (const a of state.actors) if (a.fam) this.darkNox.drawFamiliar(lg, a, ox, oy, state.time ?? t, false);
     this.fx.drawLit(lg, ox, oy);
 
     // ---- lighting
@@ -992,6 +997,7 @@ export class Renderer {
       if (k > 0.05) add({ x: f.hx, y: f.hy - 12, r: 26 + k * 46, color: k > 0.8 ? '#ffe2a0' : '#ff8a3a', i: k * 1.3 });
     }
     if (this.darkNoxMod) for (const f of figures) if (f.a.type === 4 && (f.a.form === 'dark' || f.a.act === 'darkRise')) for (const l of this.darkNoxMod.darkLights(f, t) || []) add(l);
+    if (this.darkNoxMod?.familiarLights) for (const a of state.actors) if (a.fam) for (const l of this.darkNoxMod.familiarLights(a, t) || []) add(l);
     for (const f of figures) if (f.a.type === 4 && f.info?.eye) {
       add({ x: f.info.eye.x, y: f.info.eye.y, r: 10, color: '#ff4f6e', i: 0.7, noRim: true });
       // The blood orb lights the claw up as it condenses.
@@ -1044,6 +1050,7 @@ export class Renderer {
     if (this.darkNox) {
       for (const f of figures) if (f.a.type === 4 && (f.a.form === 'dark' || f.a.act === 'darkRise' || f.a.act === 'darkFade')) this.darkNox.drawFront(eg, f, ox, oy, st);
       this.darkNox.drawEffects(eg, ox, oy, st);
+      if (this.darkNox.drawFamiliar) for (const a of state.actors) if (a.fam) this.darkNox.drawFamiliar(eg, a, ox, oy, st, true);
     }
     for (const f of figures) {
       if (f.a.type === 4 && f.a.act === 'swarm') this.drawSwarm(eg, f, ox, oy, st);

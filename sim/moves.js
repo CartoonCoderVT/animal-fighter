@@ -102,6 +102,19 @@ export const MOVES = {
   nAirCross: { dur: 0.3, hits: [0.3, 0.6], range: 36, band: 32, dmg: [5, 5], kind: 'scythe', kb: [[0.4, -0.6], [0.6, -0.8]], cd: 0.12, noSmear: true },
   // Side+J: the shadow cut. Nox breaks into bats, comes out past the rival, and the cut opens late.
   shadowCut: { dur: 0.36, hits: [0.3], range: 70, band: 22, dmg: [8], kind: 'blood', kb: [[0.6, -2.5]], cd: 0.3, pass: true, blink: 70, noSmear: true },
+  // DARK NOX: the scythe flies free (sim/nox.js) and he fights bare-clawed, fast and savage. Each of
+  // these blows has the scythe striking along with it (FAM_PLAN). dark: already DARK NOX's own numbers.
+  dRend: { dur: 0.2, hits: [0.4], range: 34, band: 26, dmg: [6], kind: 'blood', kb: [[1, 0]], cd: 0.06, step: 3, dark: true },
+  dRake: { dur: 0.22, hits: [0.4], range: 34, band: 28, dmg: [6], kind: 'blood', kb: [[0.6, -1.5]], cd: 0.06, dark: true },
+  dFrenzy: { dur: 0.42, hits: [0.15, 0.35, 0.55, 0.75], range: 32, band: 28, dmg: [2.5, 2.5, 2.5, 3], kind: 'blood', kb: [[0.2, 0], [0.2, 0], [0.2, 0], [0.8, -1]], cd: 0.08, hold: 0.5, flurry: true, dark: true },
+  dReap: { dur: 0.32, hits: [0.35], range: 34, band: 32, dmg: [7], kind: 'blood', kb: [[0.6, -3]], cd: 0.1, hold: 0.55, dark: true },
+  dHarvest: { dur: 0.46, hits: [0.4], range: 72, band: 30, dmg: [10], kind: 'blood', kb: [[1, -10.5]], cd: 0.22, launch: true, spikes: [16, 30, 44, 58, 72], noSmear: true, dark: true },
+  dAirClaw: { dur: 0.22, hits: [0.3, 0.62], range: 32, band: 28, dmg: [4, 4], kind: 'blood', kb: [[0.4, -0.5], [0.5, -0.5]], cd: 0.08, dark: true },
+  dAirVortex: { dur: 0.38, hits: [0.2, 0.45, 0.7], range: 34, band: 34, dmg: [3, 3, 3], kind: 'blood', kb: [[0, 0], [0, 0], [0.6, -1]], cd: 0.1, around: true, pull: true, dark: true },
+  dAirDive: { dur: 0.32, hits: [0.42], range: 34, band: 36, dmg: [9], kind: 'blood', kb: [[1.5, 9]], cd: 0.22, spike: true, bounce: true, around: true, dark: true },
+  dKiss: { dur: 0.42, hits: [0.3, 0.66], range: 30, band: 24, dmg: [6, 9], kind: 'fang', kb: [[0.4, 0], [4.5, -2.5]], cd: 0.35, drain: 0.75, step: 4, feast: true, noSmear: true, dark: true },
+  dExecute: { dur: 0.46, hits: [0.55], range: 44, band: 36, dmg: [14], kind: 'blood', kb: [[0, 2]], cd: 0.45, execute: true, noSmear: true, dark: true },
+  dPhantom: { dur: 0.32, hits: [0.3], range: 90, band: 24, dmg: [8], kind: 'blood', kb: [[0.6, -2.5]], cd: 0.2, pass: true, blink: 90, noSmear: true, dark: true },
   // Everyone: the air string (the last one spikes down), the dash strike
   airA: { dur: 0.22, hits: [0.4], range: 28, band: 26, dmg: [7], kind: 'air', kb: [[1.5, 0]], cd: 0.12 },
   airB: { dur: 0.26, hits: [0.45], range: 28, band: 28, dmg: [8], kind: 'air', kb: [[1.8, 0]], cd: 0.14 },
@@ -115,12 +128,15 @@ export const COMBOS = [['scratchA', 'scratchB', 'upper'], ['whipA', 'whipB', 'ta
 export const HEAVY = ['lowclaw', 'sweep', 'lLow', 'jLow', 'vampKiss'];
 export const AIR = ['airA', 'airB', 'spike'];
 export const NOX_AIR = ['nAirClaw', 'nAirVortex', 'nAirCross', 'nAirScythe'];
+export const DARK_COMBO = ['dRend', 'dRake', 'dFrenzy', 'dReap', 'dHarvest'];
+export const DARK_AIR = ['dAirClaw', 'dAirVortex', 'dAirDive'];
 export const JUMA_AIR = ['jAirClaw', 'jAirSpin', 'jAirDive'];
 export const LOLA_AIR = ['lAirCut', 'lAirSpin', 'lAirDive'];
 export const BEAST_COMBO = ['bSlam', 'bHammer', 'bUpper'];
 export const BEAST_AIR = ['bAirSmash'];
-// The ground string a fighter is on right now (Juma's depends on her form).
-export const comboOf = a => (a.type === 3 && a.form === 'beast' ? BEAST_COMBO : COMBOS[a.type]);
+// The ground string a fighter is on right now (Juma's and Nox's depend on their form).
+export const comboOf = a => (a.type === 3 && a.form === 'beast' ? BEAST_COMBO : a.type === 4 && a.form === 'dark' ? DARK_COMBO : COMBOS[a.type]);
+export const noxAir = a => (a.form === 'dark' ? DARK_AIR : NOX_AIR);
 // Air moves and the dash strike hit with each fighter's natural weapon.
 export const NATURAL = ['claw', 'whip', 'knife', 'claw', 'blood'];
 
@@ -138,11 +154,41 @@ export const SPECIALS = [
 ];
 
 // Nox's blood: every blow of his makes the rival bleed (`bleed`, twice that as DARK NOX), and he drinks
-// what they bleed into his meter (`drink` points per point of bleeding damage, up to `max`). Full, K
-// makes him DARK NOX: `rise` seconds of transformation (he turns at `pop`), then `time` seconds with blows
-// `dmg`x as hard, `kb`x the push and `range`x / `band`x the reach, taking `armor`x the damage; K is then
+// what they bleed into his meter (`drink` points per point of bleeding damage, up to `max`), and the pools
+// of blood on the floors near him (POOL). Full, K makes him DARK NOX: `rise` seconds of transformation
+// (he turns at `pop`), then `time` seconds (kept through death: the clock waits while he is down) of his
+// own frenzied moveset with the scythe flying free (FAM), any other blow of his `dmg`x as hard, `kb`x the
+// push and `range`x / `band`x the reach, taking `armor`x the damage, `speed`x as fast on his feet; K is then
 // his blood beam every `beamCd` s. `fade`: turning back.
-export const DARK = { max: 100, bleed: 0.3, drink: 3, rise: 1.0, pop: 0.6, time: 12, fade: 0.5, dmg: 1.45, kb: 1.3, range: 1.8, band: 1.45, armor: 0.85, beamCd: 2.2 };
+export const DARK = { max: 100, bleed: 0.3, drink: 2, rise: 1.0, pop: 0.6, time: 30, fade: 0.5, dmg: 1.45, kb: 1.3, range: 1.8, band: 1.45, armor: 0.85, speed: 1.15, beamCd: 2.2 };
+
+// Pools of blood on the floors (sim/nox.js): `spill` of a blow per point of damage that draws blood, up
+// to `max` each, at most `cap` of them, drops landing within `merge` of one join it; they dry `dry` a
+// second. Nox drinks the ones within `reach` x `reachY` of him (`reachDark` x `reachDarkY` as DARK NOX),
+// `rate` a second from each of the `sips` nearest (`rateDark` as DARK NOX): `meter` points of his meter
+// per point drunk; as DARK NOX it heals him (`heal` hp per point).
+export const POOL = { spill: 0.35, max: 20, cap: 32, merge: 10, dry: 0.1, min: 0.25, reach: 80, reachY: 50, reachDark: 140, reachDarkY: 80, rate: 5, rateDark: 10, sips: 2, meter: 0.4, heal: 0.35 };
+
+// DARK NOX's scythe let loose (sim/nox.js): on its own it darts at whoever is within `reach` of him every
+// `cd` s (`first` s after he turns), at `speed` a step, and cuts (`dmg`, `kb`, `hold` s of hitstun, `r`
+// wide); `give` s to reach them before it gives up. With his dark blows it strikes along (FAM_PLAN).
+export const FAM = { reach: 150, cd: 1.0, first: 0.5, speed: 9, dmg: 4, kb: [2.2, -2], hold: 0.26, r: 24, give: 0.5 };
+// When the scythe strikes in each of his dark blows (`at`, fraction of the move) and how: `cross` through
+// the rival from behind Nox to the far side, `reap` up from under them, `spin` around them, `chop` down
+// from above, `whirl` a wide circle around Nox, `orbit` a tight one, `hook` from behind them toward him.
+export const FAM_PLAN = {
+  dRend: [{ at: 0.6, k: 'cross', dmg: 5, kb: [2, -1.5], hold: 0.4 }],
+  dRake: [{ at: 0.62, k: 'reap', dmg: 5, kb: [0.6, -4], hold: 0.5 }],
+  dFrenzy: [{ at: 0.3, k: 'spin', dmg: 3, kb: [0, -0.5], hold: 0.55 }, { at: 0.72, k: 'spin', dmg: 3, kb: [0.3, -0.5], hold: 0.55 }],
+  dReap: [{ at: 0.7, k: 'chop', dmg: 7, kb: [0.5, 3], hold: 0.6, crumple: true }],
+  dHarvest: [{ at: 0.6, k: 'whirl', dmg: 8, kb: [6, -6], knock: true }],
+  dAirClaw: [{ at: 0.75, k: 'cross', dmg: 4, kb: [0.6, -1.5], hold: 0.4 }],
+  dAirVortex: [{ at: 0.3, k: 'orbit', dmg: 3, pull: true, hold: 0.45 }, { at: 0.6, k: 'orbit', dmg: 3, pull: true, hold: 0.45 }, { at: 0.9, k: 'orbit', dmg: 3, pull: true, hold: 0.45 }],
+  dAirDive: [{ at: 0.3, k: 'chop', dmg: 6, kb: [1, 9], spike: true }],
+  dKiss: [{ at: 0.2, k: 'hook', dmg: 3, pull: true, hold: 0.5 }],
+  dExecute: [{ at: 0.45, k: 'chop', dmg: 9, down: true }],
+  dPhantom: [{ at: 0.75, k: 'cross', dmg: 6, kb: [1.5, -3], hold: 0.4 }]
+};
 
 // Breaking a combo: while reeling from a hit, Shift opens `window` seconds of parry; time it to the next
 // blow and it is parried and the string ends there. Whether it worked or not, Shift does nothing again

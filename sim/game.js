@@ -12,6 +12,7 @@ import { HALF_H, BODY_W } from '../render/rig.js';
 import { MELEE, isMelee } from './weapons.js';
 import { SPECIALS } from './moves.js';
 import { stepTimeStop } from './timestop.js';
+import { tickNox, spill, freeScythe, famSnapshot } from './nox.js';
 
 export { EMPTY_INPUT, FIGHTERS };
 
@@ -37,6 +38,8 @@ export class Game {
     this.shake = 0; this.hitstop = 0; this.flash = 0; this.slowmo = 0; this.drama = 0; this.slowAcc = 0; this.timeScale = 1; this.scaleAcc = 0; this.grab = null;
     // Lola's ZA WARUDO: while set, only she and her knives move (sim/timestop.js).
     this.timeStop = null; this.knives = []; this.barrages = [];
+    // Pools of blood on the floors (sim/nox.js).
+    this.pools = [];
     this.spawns = MAP.spawns;
     players.forEach((p, i) => this.addActor({ ...p, id: p.id ?? i, x: p.x ?? this.spawns[i % 4][0], y: p.y ?? this.spawns[i % 4][1] }));
     if (!players.length) this.addActor({ id: 0, type: 0, x: this.spawns[0][0], y: this.spawns[0][1], name: 'Você', bot: false });
@@ -173,19 +176,21 @@ export class Game {
     Body.setVelocity(a.body, { x: 0, y: 0 });
     Body.setAngle(a.body, 0);
     if (!Composite.allBodies(this.engine.world).includes(a.body)) Composite.add(this.engine.world, a.body);
-    // Lola keeps whatever her watch had wound up when she went down; Nox the blood he had drunk (none
-    // if he went down as DARK NOX).
+    // Lola keeps whatever her watch had wound up when she went down; Nox the blood he had drunk, and
+    // DARK NOX stays DARK NOX (his clock waited while he was down).
     const abilityCd = a.type === 2 ? Math.max(1, a.abilityCd) : 1;
-    const blood = a.form === 'dark' ? 0 : a.blood || 0;
+    const dark = a.form === 'dark', blood = a.blood || 0, formT = dark ? a.formT : 0;
     Object.assign(a, {
       x: spot[0], y: spot[1], hp: a.maxHp, dead: false, invincible: 1.7, wounds: {}, partDmg: {}, severed: [], broken: {}, stumps: [], embedded: [],
       bleed: 0, char: 0, freeze: 0, frozen: 0, shock: 0, stun: 0, burning: 0, weapon: null, buff: 0, team: a.originalTeam,
       ai: null, attackCd: 0, holding: null, abilityCd, knocked: false, knock: 0, getup: 0, dodge: 0, dodgeKind: null, climbing: false, drop: {},
       act: null, actT: 0, hits: null, gliding: false, holdingLimb: null, holdJoint: null, ghostClear: true, hitlag: 0, lagPos: null,
       parry: 0, parryLag: 0, counter: 0, perfectT: 0, chase: null, float: 0, airDodged: false, hitstun: 0, hitstunMax: 0, stunN: 0, bloodMark: 0, beamAir: false, bounced: false, bounceArm: 0, turnT: 0, batCd: 0, swarm: null,
-      form: null, formT: 0, biteCd: 0, chargeCd: 0, skipCd: 0, setCd: 0, carry: null, wPose: null, blood
+      form: dark ? 'dark' : null, formT, biteCd: 0, chargeCd: 0, skipCd: 0, setCd: 0, carry: null, wPose: null, blood
     });
     this.fx('spawn', { x: a.x, y: a.y, color: FIGHTERS[a.type].color });
+    // His scythe forms again beside him.
+    if (dark) freeScythe(this, a, true);
   }
 
   step(dt = 1 / 60) {
@@ -225,6 +230,7 @@ export class Game {
 
     // The step Lola clicks her watch on ends right there: nothing else may move (or hit her).
     for (const a of this.actors) { stepActor(this, a, dt); if (this.timeStop) return; }
+    tickNox(this, dt);
     stepBullets(this, dt);
     tickHazards(this, dt);
     tickProps(this, dt);
@@ -257,6 +263,8 @@ export class Game {
       l.life -= dt;
       l.x = l.body.position.x; l.y = l.body.position.y; l.angle = l.body.angle;
       l.bleed = Math.max(0, l.bleed - dt * 0.35);
+      // Severed parts drip onto the floor while they still bleed.
+      if (l.bleed > 1 && (l.drip = (l.drip ?? 0.3) - dt) <= 0) { l.drip = 0.5; spill(this, l.x, l.y, 0.4); }
       if (l.propGrace > 0 && (l.propGrace -= dt) <= 0) l.body.collisionFilter.mask = MASK.limb;
       l.shock = Math.max(0, (l.shock || 0) - dt);
       if (l.life <= 0 || l.y > 700) this.removeLimb(l);
@@ -310,7 +318,7 @@ export class Game {
         freeze: r(a.freeze), frozen: r(a.frozen), shock: r(a.shock), weapon: a.weapon, ammo: a.ammo, holding: a.holding,
         burning: r(a.burning || 0), holdingLimb: a.holdingLimb || null, respawn: r(a.respawn), skid: r(a.skid || 0), landImpact: r(a.landT > 0 ? a.landImpact : 0),
         powerSeq: a.powerSeq, recoil: r(a.recoil || 0), stats: a.stats, form: a.form || null, formT: r(a.formT || 0),
-        wPose: a.wPose || null, wPoseT: r2(a.wPoseT || 0), skips: a.skips || 0, blood: r(a.blood || 0)
+        wPose: a.wPose || null, wPoseT: r2(a.wPoseT || 0), skips: a.skips || 0, blood: r(a.blood || 0), fam: famSnapshot(a.fam, r, r2)
       })),
       props: this.props.map(p => ({ id: p.id, kind: p.kind, w: p.w, h: p.h, x: r(p.x), y: r(p.y), angle: r(p.angle * 100) / 100, hp: p.hp, armed: !!p.armed, fuse: p.fuse, burning: r(p.burning || 0), weapon: p.weapon, rocket: p.rocket > 0, chain: !!p.chain, look: p.look })),
       // Lola's laid knives also send where they point, how far out of her hand they are (k) and how
@@ -322,6 +330,7 @@ export class Game {
       effects: this.effects.map(e => ({ ...e })),
       fires: this.fires.map(f => ({ id: f.id, x: f.x, y: f.y, life: r(f.life) })),
       pins: this.pins.map(p => ({ x: p.x, y: p.y })),
+      pools: this.pools.map(p => [r(p.x), p.y, r(p.amt), p.by]),
       hazards: hazardSnapshot(this)
     };
   }
