@@ -45,6 +45,8 @@ export function removeProp(g, p) {
 
 export function damageProp(g, p, amount, owner) {
   if (!g.props.includes(p) || p.held) return;
+  // Arena things with their own behaviour (the castle's candles, armor, walls...: sim/castle.js).
+  if (p.hit) { p.hit(g, p, amount, owner); return; }
   if (THROWABLES.includes(p.kind)) {
     p.hp -= amount;
     if (p.hp <= 0) {
@@ -234,7 +236,7 @@ export function detonateCharges(g, a) {
   for (const p of charges) { removeProp(g, p); explode(g, p.x, p.y, a.id); }
 }
 
-const pickable = p => !p.held && !['glass', 'shard', 'cargo'].includes(p.kind) && !p.fixed;
+const pickable = p => !p.held && !['glass', 'shard', 'cargo', 'chandelier'].includes(p.kind) && !p.fixed && !p.decor;
 
 export function interact(g, a) {
   if (a.dead) return;
@@ -376,6 +378,9 @@ export function propCollision(g, b1, b2, pair) {
     const p = body.plugin.prop;
     if (!p || p.held) continue;
     const a = other.plugin.actor, prop2 = other.plugin.prop, limb = other.plugin.limb;
+    // The castle's decor is not solid: something thrown into it breaks it, nothing else happens.
+    if (p.decor) { if (prop2 && !prop2.decor && body.isSensor && prop2.body.speed > 4) damageProp(g, p, 12, prop2.owner); continue; }
+    if (other.isSensor) continue;
     if (p.kind === 'glass') {
       if (a && a.body.speed > 4.5) damageProp(g, p, 60, a.id);
       if (prop2 && prop2.body.speed > 4) damageProp(g, p, 50, prop2.owner);

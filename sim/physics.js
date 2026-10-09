@@ -4,8 +4,10 @@ export const M = globalThis.Matter;
 export const { Engine, Bodies, Body, Composite, Constraint, Events, Query, Vector } = M;
 
 export const CAT = { world: 1, actor: 2, prop: 4, limb: 8, bullet: 16, cable: 1 << 20, sensor: 1 << 21 };
+// Each one-way platform has its own collision bit (bits 5..19), so an arena has at most 15 of them.
 export const onewayBit = i => 32 << i;
-export const ALL_ONEWAY = MAP.oneway.reduce((m, _, i) => m | onewayBit(i), 0);
+export const MAX_ONEWAY = 15;
+export const ALL_ONEWAY = Array.from({ length: MAX_ONEWAY }, (_, i) => onewayBit(i)).reduce((m, b) => m | b, 0);
 export const MASK = {
   actor: CAT.world | CAT.actor | CAT.prop | CAT.bullet,
   prop: CAT.world | CAT.actor | CAT.prop | CAT.limb | CAT.bullet | CAT.cable | ALL_ONEWAY,

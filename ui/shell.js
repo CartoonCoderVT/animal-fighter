@@ -14,7 +14,7 @@ import { MatchScene } from './scenes/match.js';
 import { LobbyScene, OnlineScene } from './scenes/online.js';
 import { SelectScene } from './scenes/select.js';
 
-const DEFAULTS = { gore: 2, shake: true, camera: true, particles: true, volume: 0.35, music: 0.25, pixel: 'sharp', fps: false, name: '' };
+const DEFAULTS = { gore: 2, shake: true, camera: true, particles: true, volume: 0.35, music: 0.25, pixel: 'sharp', fps: false, name: '', map: 'depot' };
 
 export class Shell {
   constructor(canvas, textInput, live) {
@@ -122,7 +122,7 @@ export class Shell {
     return [{ id: 0, type: this.selected, name, bot: false }, ...[1, 2, 3].slice(0, bots).map(id => ({ id, type: (this.selected + id) % 5, name: FIGHTERS[(this.selected + id) % 5].name, bot: true }))];
   }
 
-  startMatch(players = this.makePlayers(), { mode = this.mode, isRemote = false, instant = false } = {}) {
+  startMatch(players = this.makePlayers(), { mode = this.mode, isRemote = false, instant = false, map = this.settings.map } = {}) {
     this.disposeGame();
     this.mode = mode;
     this.renderer.resetMatch();
@@ -131,7 +131,7 @@ export class Shell {
     this.localId = isRemote ? this.net.localId : 0;
     const countdown = mode === 'sandbox' || isRemote ? 0 : 3;
     if (!isRemote) {
-      this.game = new Game({ players, mode, localId: 0, settings: this.settings, onEvent: e => this.gameEvent(e), killsToWin: 5 });
+      this.game = new Game({ players, mode, localId: 0, settings: this.settings, onEvent: e => this.gameEvent(e), killsToWin: 5, map });
       this.game.paused = countdown > 0;
       this.game.countdown = countdown;
     }
@@ -201,7 +201,7 @@ export class Shell {
     if (e.type === 'status' || e.type === 'error') { scene.status = e.message; if (!(scene instanceof OnlineScene)) this.toast(e.message); }
     else if (e.type === 'lobby') { if (!this.playing) { if (this.base instanceof LobbyScene) this.base.refresh?.(); else this.go(new LobbyScene(this)); } }
     else if (e.type === 'input') this.game?.inputFor(e.id, e.input);
-    else if (e.type === 'start') { this.mode = 'online'; this.startMatch(e.players, { mode: 'online', isRemote: true }); }
+    else if (e.type === 'start') { this.mode = 'online'; this.startMatch(e.players, { mode: 'online', isRemote: true, map: e.map }); }
     else if (e.type === 'state') {
       this.lastRemote = performance.now();
       this.remotePrev = this.remote;

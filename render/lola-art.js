@@ -22,7 +22,7 @@ const clamp01 = v => Math.max(0, Math.min(1, v));
 export const STEEL = { spine: '#3c4566', mid: '#c4d2ea', edge: '#ffffff', tip: '#ffffff', guard: '#ffcf40', guardDark: '#c08a20', grip: '#2b2a5c', pommel: '#dfe8f6' };
 const BLUE = { pale: '#d8ecff', light: '#9cd0ff', mid: '#5a9af0', deep: '#2a4ab8' };
 // A knife she laid that has not flown yet (on its way out of her hand, or hanging).
-const hangs = b => !!b.set && (b.k < 1 || b.hold > 0);
+const hangs = b => !!b.set && (b.hang != null ? !!b.hang : b.k < 1 || b.hold > 0);
 
 // ---- knives ------------------------------------------------------------------------------
 // A throwing knife laid along ang from its pommel at (x, y): a pommel ring, the navy grip, a gold
@@ -181,7 +181,7 @@ export class LolaFX {
     for (const b of state.bullets || []) {
       if (b.kind !== 'knife' || !b.set) continue;
       seen.add(b.id);
-      const phase = b.k < 1 ? 0 : b.hold > 0 ? 1 : 2, was = this.laid.get(b.id) ?? (phase === 2 ? 2 : 0);
+      const phase = b.k < 1 ? 0 : hangs(b) ? 1 : 2, was = this.laid.get(b.id) ?? (phase === 2 ? 2 : 0);
       if (phase !== was) {
         const x = X(b.x), y = X(b.y), a = b.ang ?? Math.atan2(b.vy, b.vx);
         if (phase >= 1 && was < 1) this.pips.push({ x, y, a, t: 0, life: 0.16, kind: 'lock' });

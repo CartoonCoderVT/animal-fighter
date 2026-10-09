@@ -3,7 +3,8 @@
 import { VIEW_W, VIEW_H, S, clamp, rnd } from '../engine/const.js';
 import { P, hexToRgb } from '../engine/palette.js';
 import { drawText } from '../engine/font.js';
-import { MAP } from '../sim/map.js';
+import { MAP, useMap } from '../sim/map.js';
+import { drawCastleHazards, drawCastleProp, castleLights } from './castle-render.js';
 import { surfaceY } from '../sim/physics.js';
 import { World } from './world.js';
 import { Lighting, cookie } from './lighting.js';
@@ -69,6 +70,22 @@ function contactShadow(w) {
   return c;
 }
 
+// Lights that never move, baked into the light map with the moonlight (per arena).
+const STATIC_LIGHTS = {
+  depot: [
+    { x: 320, y: 220, r: 100, color: '#ff6f9c', i: 0.75, occlude: true, tag: 'on' },
+    { x: 91, y: 288, r: 40, color: '#4dff9a', i: 0.6 },
+    { x: 46, y: 140, r: 34, color: '#7fe8ff', i: 0.5 },
+    { x: 588, y: 140, r: 34, color: '#7fe8ff', i: 0.5 },
+    { x: 320, y: 352, r: 64, color: '#ff4a2a', i: 0.55 }
+  ],
+  // The castle: a cold glow off the spikes in the pit and the clock face.
+  castle: [
+    { x: 320, y: 360, r: 50, color: '#6a4aa0', i: 0.4 },
+    { x: 320, y: 46, r: 46, color: '#c8b070', i: 0.35 }
+  ]
+};
+
 export class Renderer {
   constructor(display) {
     this.display = display;
@@ -112,14 +129,27 @@ export class Renderer {
     this.impact = null;
     this.focusLines = [];
     this.trails = new Map();
-    this.light.setStatic([
-      { x: 320, y: 220, r: 100, color: '#ff6f9c', i: 0.75, occlude: true, tag: 'on' },
-      { x: 91, y: 288, r: 40, color: '#4dff9a', i: 0.6 },
-      { x: 46, y: 140, r: 34, color: '#7fe8ff', i: 0.5 },
-      { x: 588, y: 140, r: 34, color: '#7fe8ff', i: 0.5 },
-      { x: 320, y: 352, r: 64, color: '#ff4a2a', i: 0.55 }
-    ]);
+    // The arena's art and fixed lights, by map id. The castle's art is loaded and painted in the
+    // background at start (render/castle-world.js, render/castle-art.js).
+    this.worlds = { depot: this.world };
+    this.arena = 'depot';
+    this.castleArt = null;
+    this.light.setStatic(STATIC_LIGHTS.depot);
+    import('./castle-art.js').then(m => { this.castleArt = m; }).catch(e => console.warn('castle art', e));
+    import('./castle-world.js').then(m => { this.worlds.castle = new m.CastleWorld(); }).catch(e => console.warn('castle world', e));
     this.resize();
+  }
+
+  // Switch the art, the moonlight and the fixed lights to another arena (once its art is ready).
+  useArena(id) {
+    if (this.arena === id || !this.worlds[id]) return;
+    useMap(id);
+    this.arena = id;
+    this.world = this.worlds[id];
+    this.light.setMap();
+    this.light.setStatic(STATIC_LIGHTS[id] || []);
+    this.fx.setMap();
+    this.fx.reset();
   }
 
   resetMatch() {
@@ -445,6 +475,9 @@ export class Renderer {
     const st = state.time ?? t;
     this.simDt = this.simTime === null ? 0 : Math.max(0, Math.min(0.1, st - this.simTime));
     this.simTime = st;
+    this.useArena(state.map || 'depot');
+    // The depot's own fixtures (its sign, the cargo, the press...) only in the depot.
+    this.depot = (state.map || 'depot') === 'depot';
     this.fx.gore = settings.gore ?? 2;
     this.fx.limit = settings.particles === false ? 300 : 900;
     const events = state.fxQueue ? state.fxQueue.splice(0) : (state.events || []).filter(e => e.type === 'fx' && e.id > this.fx.lastId);
@@ -497,16 +530,17 @@ export class Renderer {
     lg.globalAlpha = 1;
     lg.clearRect(0, 0, VIEW_W, VIEW_H);
     lg.drawImage(this.world.wall, ox, oy);
+    this.world.drawClock?.(lg, state.time ?? t, ox, oy);
     lg.drawImage(this.fx.wallDecals, ox, oy);
-    this.drawNeonBoard(lg, ox, oy, false, t);
+    if (this.depot) this.drawNeonBoard(lg, ox, oy, false, t);
     if (rich) this.drawWallShadows(lg, figures, hz, ox, oy);
     lg.drawImage(this.world.back, ox, oy);
     if (hz) this.drawLamps(lg, hz, ox, oy);
-    this.drawCargoChain(lg, state, ox, oy);
+    if (this.depot) this.drawCargoChain(lg, state, ox, oy);
     lg.drawImage(this.world.solids, ox, oy);
     lg.drawImage(this.fx.floorDecals, ox, oy);
     lg.drawImage(this.world.fronts, ox, oy);
-    if (hz) this.drawHazards(lg, hz, ox, oy, t);
+    if (hz) { if (hz.map === 'castle') drawCastleHazards(lg, hz, ox, oy, state.time ?? t, this.castleArt); else this.drawHazards(lg, hz, ox, oy, t); }
     this.drawContactShadows(lg, state, ox, oy);
     for (const p of state.props) this.drawProp(lg, p, ox, oy, t);
     this.drawLimbs(lg, state, ox, oy, t);
@@ -810,6 +844,7 @@ export class Renderer {
   }
 
   drawProp(lg, p, ox, oy, t) {
+    if (drawCastleProp(lg, p, ox, oy, t, this.castleArt)) return;
     if (p.kind === 'glass') {
       const x = X(p.x - p.w / 2) + ox, y = X(p.y - p.h / 2) + oy, w = X(p.w), h = X(p.h);
       lg.fillStyle = 'rgba(150,210,230,0.22)'; lg.fillRect(x, y, w, h);
@@ -933,13 +968,14 @@ export class Renderer {
       add(light);
       add({ x, y, r: 20, color: '#ffe8c0', i: 0.7, noRim: true });
     }
-    if (hz && (hz.press.state === 'warn' || hz.press.state === 'slam')) add({ x: 600, y: 206, r: 110, color: '#ff3a3a', i: 0.6 + Math.sin(t * 18) * 0.4, kind: 'point', occlude: true });
+    if (hz?.map === 'castle') for (const l of castleLights(state, hz, state.time ?? t, this.castleArt)) add(l);
+    if (hz?.press && (hz.press.state === 'warn' || hz.press.state === 'slam')) add({ x: 600, y: 206, r: 110, color: '#ff3a3a', i: 0.6 + Math.sin(t * 18) * 0.4, kind: 'point', occlude: true });
     for (const f of state.fires || []) add({ x: X(f.x), y: X(f.y) - 8, r: 64, color: '#ff9a45', i: 0.85 + Math.sin(t * 31 + f.x) * 0.15, occlude: true });
     for (const a of state.actors) if (!a.dead && a.burning > 0) add({ x: X(a.x), y: X(a.y) - 6, r: 50, color: '#ff9a45', i: 0.8 });
     for (const p of state.props) if (p.rocket || p.burning > 0) add({ x: X(p.x), y: X(p.y), r: 54, color: '#ffae5a', i: 0.8 });
     // Lola's knives give a small cold light; other shots a warm one.
     for (const b of state.bullets || []) add(b.kind === 'knife' ? { x: X(b.x), y: X(b.y), r: 10, color: '#cfe4ff', i: 0.45, noRim: true } : { x: X(b.x), y: X(b.y), r: b.word ? 22 : 14, color: b.word ? b.color : '#ffe2a0', i: 0.6, noRim: !!b.word });
-    if (hz) {
+    if (hz?.cable) {
       const end = hz.cable[hz.cable.length - 1];
       if (Math.random() < 0.6) add({ x: X(end[0]), y: X(end[1]), r: 30, color: '#8af0ff', i: 0.5 + Math.random() * 0.4 });
       if (hz.puddle.live) add({ x: X((MAP.puddle.x0 + MAP.puddle.x1) / 2), y: X(MAP.puddle.y) - 4, r: 60, color: '#6ad8ff', i: 0.8 * Math.random() + 0.2 });
@@ -963,12 +999,14 @@ export class Renderer {
       const x = X(l.x) + ox, y = X(l.y) + oy + 5;
       eg.fillStyle = '#fff4d0'; eg.fillRect(x - 2, y, 5, 2); eg.fillStyle = '#ffffff'; eg.fillRect(x - 1, y, 3, 1);
     }
-    if (this.neonOn(t)) this.drawNeonBoard(eg, ox, oy, true, t);
-    drawText(eg, 'SAÍDA', 78 + ox, 283 + oy, { color: '#5affa4' });
-    eg.fillStyle = '#5fd8f0'; eg.fillRect(40 + ox, 135 + oy, 12, 9); eg.fillRect(582 + ox, 135 + oy, 12, 9);
-    eg.fillStyle = '#ff3a2a'; eg.fillRect(318 + ox, 357 + oy, 4, 2);
-    if (hz && (hz.press.state === 'warn' || hz.press.state === 'slam') && Math.floor(t * 8) % 2) { eg.fillStyle = '#ff4a4a'; eg.fillRect(597 + ox, 201 + oy, 6, 4); }
-    if (hz) {
+    if (this.depot) {
+      if (this.neonOn(t)) this.drawNeonBoard(eg, ox, oy, true, t);
+      drawText(eg, 'SAÍDA', 78 + ox, 283 + oy, { color: '#5affa4' });
+      eg.fillStyle = '#5fd8f0'; eg.fillRect(40 + ox, 135 + oy, 12, 9); eg.fillRect(582 + ox, 135 + oy, 12, 9);
+      eg.fillStyle = '#ff3a2a'; eg.fillRect(318 + ox, 357 + oy, 4, 2);
+    }
+    if (hz?.press && (hz.press.state === 'warn' || hz.press.state === 'slam') && Math.floor(t * 8) % 2) { eg.fillStyle = '#ff4a4a'; eg.fillRect(597 + ox, 201 + oy, 6, 4); }
+    if (hz?.cable) {
       const [ex, ey] = hz.cable[hz.cable.length - 1];
       if (Math.random() < 0.5) { eg.fillStyle = Math.random() < 0.5 ? '#ffffff' : '#9af6ff'; eg.fillRect(X(ex) + ox + Math.round(rnd(-2, 2)), X(ey) + oy + Math.round(rnd(-2, 2)), 1, 1); }
       if (hz.puddle.live && Math.random() < 0.5) {
@@ -1100,7 +1138,7 @@ export class Renderer {
       if (p.rocket) fx.burst('fire', X(p.x) - Math.sin(p.angle) * -8, X(p.y) + Math.cos(p.angle) * 10, 3, { a: p.angle + Math.PI / 2, spread: 0.4, s: 2.4, life: 0.35, colors: [P.fire0, P.fire1, P.fire2], g: 0, size: 2, em: true });
       if (p.burning > 0 && Math.random() < 0.6) fx.burst('fire', X(p.x) + rnd(-5, 5), X(p.y) - 4, 1, { a: -Math.PI / 2, spread: 0.6, s: 0.8, life: 0.5, colors: [P.fire0, P.fire1, P.fire2], g: -0.04, size: 2, em: true });
     }
-    if (hz) {
+    if (hz?.cable) {
       const [ex, ey] = hz.cable[hz.cable.length - 1];
       if (Math.random() < 0.12) fx.burst('spark', X(ex), X(ey), 2, { s: 1.6, life: 0.25, colors: [P.zap0, P.zap1], g: 0.1, b: 0.3, em: true });
     }
