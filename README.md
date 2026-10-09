@@ -15,6 +15,8 @@ Briga de animais em pixel art com física, ragdolls e partidas online direto no 
 A/D mover · W/Espaço pular · S agachar · J ataque · K especial · Shift parry/esquiva · E pegar · L revoada (Nox) · Esc pausa.
 Também funciona com controle e toque.
 
+**Mingau, o Rei Gato**, não suja as patas: cinco gatinhos da corte lutam por ele (soldado, arqueiro, assassino, mago e escudeiro). Cada J é uma ordem: o soldado corta, o assassino some e aparece atrás, o arqueiro dispara, o mago chama um raio e o escudeiro lança o rival para o alto. **S+J** faz chover flechas, **lado+J** é a carga, e o escudeiro bloqueia tiros na frente do rei. O K é o **ATAQUE REAL**: a corte inteira ataca junto.
+
 **Lola** luta com facas e salta no tempo dentro dos combos (some e reaparece atrás, na frente ou acima do rival), deixando facas paradas no ar onde sumiu. No meio do combo ela monta padrões de bullet hell: **S+J** faz chover facas sobre o rival, um toque de **lado+J** ergue uma muralha de facas entre os dois e, no ar, um anel de facas se fecha em espiral. O K dela carrega devagar e para o tempo de verdade: **ZA WARUDO**.
 
 **Nox** faz sangrar com cada golpe e bebe o sangue, inclusive as poças que ficam no chão da arena. Com a barra cheia, **K** o transforma no **DARK NOX** por 30 segundos (e ele continua DARK mesmo se morrer): ele solta a foice, que voa sozinha como um familiar cortando quem chega perto, e luta com as garras num combo frenético em que a foice ataca junto.

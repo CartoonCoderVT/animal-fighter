@@ -71,11 +71,11 @@ export class HelpScene extends Overlay {
     } else {
       const tips = [
         'Golpes fortes, explosões e quedas derrubam: o lutador vira ragdoll e levanta depois. Aperte pulo para levantar mais rápido.',
-        'Dano por parte do corpo: ossos quebram, cortes sangram até matar, lâminas arremessadas cravam e prendem corpos na parede.',
-        'Extintor congela e empurra; congelado, um golpe forte estilhaça. Rolar apaga o fogo e cancela dano de queda.',
+        'Ossos quebram, cortes sangram até matar, lâminas cravam corpos na parede. Extintor congela (um golpe forte estilhaça); rolar apaga o fogo.',
         'No DEPÓSITO: a prensa desce a cada 9 s, o fosso tritura, o cabo eletrifica a poça. Atire na corrente da carga; botijão atingido vira foguete.',
-        'Lola corta com facas e salta no tempo, deixando facas paradas no ar que disparam depois. No combo: S+J chuva de facas; um toque de lado+J muralha de facas (no ar, anel). O K para o tempo: ZA WARUDO.',
-        'Nox faz sangrar e bebe o sangue, até das poças no chão. Barra cheia + K: DARK NOX por 30 s (não acaba se morrer). A foice voa sozinha, corta quem chegar perto e comba junto com as garras.',
+        'Mingau, o Rei Gato, não ataca: cada J manda um da corte (soldado, assassino, arqueiro, mago, escudeiro). S+J chuva de flechas, lado+J carga. K: ATAQUE REAL.',
+        'Lola salta no tempo e deixa facas paradas no ar. No combo: S+J chuva de facas, lado+J muralha (no ar, anel). K: ZA WARUDO.',
+        'Nox bebe sangue, até das poças no chão. Barra cheia + K: DARK NOX por 30 s (nem a morte tira); a foice voa sozinha e comba junto.',
         'No CASTELO (M na escolha do lutador): velas soltam itens, o lustre cai se a corrente for cortada, pêndulos cortam e a pedra sobre as estacas desaba. Dizem que o castelo guarda segredos...'
       ];
       let yy = y;
