@@ -92,10 +92,16 @@ const FLAME = [
   ['o.', 'oy', 'yc']
 ];
 const FLAME_C = { o: '#ff9a35', y: '#ffd25c', c: '#fff6c4' };
+// The frames baked once into tiny canvases: a dozen candles burn every frame, one drawImage each.
+let flameFrames = null;
+const flameFrame = i => (flameFrames || (flameFrames = FLAME.map((f, n) => {
+  const c = mk(2, 3), g = c.getContext('2d');
+  for (let j = 0; j < 3; j++) for (let i = 0; i < 2; i++) { const col = FLAME_C[f[j][i]]; if (col) { g.fillStyle = col; g.fillRect(i, j, 1, 1); } }
+  return c;
+})))[i];
 function flame(g, x, y, t, seed) {
   const k = Math.floor(t * 11 + seed * 17 + Math.sin(t * 3.1 + seed * 9) * 2);
-  const f = FLAME[((k % FLAME.length) + FLAME.length) % FLAME.length];
-  for (let j = 0; j < 3; j++) for (let i = 0; i < 2; i++) { const c = FLAME_C[f[j][i]]; if (c) dot(g, x + i, y - 3 + j, c); }
+  g.drawImage(flameFrame(((k % FLAME.length) + FLAME.length) % FLAME.length), Math.round(x), Math.round(y) - 3);
   // A spark now and then above the tip.
   if (((k * 7 + Math.round(seed * 13)) % 11) === 0) dot(g, x + (k & 1), y - 5, '#ffd25c');
 }

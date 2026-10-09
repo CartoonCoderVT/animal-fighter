@@ -1209,14 +1209,20 @@ export class CastleWorld {
     // The works of the clock: 4 frames of the gears under the dial and of the giant cog behind it.
     this.dial = [0, 1, 2, 3].map(f => {
       const p = new Pix(44, 44), c = 22;
+      // A dark well behind the chapter ring, shadowed under its upper-left lip.
       for (let y = 0; y < 44; y++) for (let x = 0; x < 44; x++) {
-        const d = Math.hypot(x - c, y - c);
-        if (d <= 19.5) p.set(x, y, d > 18.5 ? '#0d0a16' : bayer(x, y) < d / 30 ? '#100c1a' : '#161226');
+        const dx = x + 0.5 - c, dy = y + 0.5 - c, d = Math.hypot(dx, dy);
+        if (d > 19.5) continue;
+        let col = '#151122';
+        if (d > 18.5) col = '#0b0812';
+        else if (d > 15.5 && (-dx * 0.6 - dy * 0.8) / d > 0.2) col = bayer(x, y) < 0.5 ? '#0b0812' : '#100c1a';
+        p.set(x, y, col);
       }
-      const step = f / 4;
-      gearPaint(p, c, c, 10, 10, step * (TAU / 10), [IRON[0], IRON[2], IRON[3], IRON[5]]);
-      gearPaint(p, c - 9.5, c + 11.5, 6.4, 6, -step * (TAU / 6) + 0.3, [IRON[0], IRON[1], IRON[2], IRON[4]], 3);
-      gearPaint(p, c + 11, c - 10, 5.6, 6, -step * (TAU / 6), [IRON[0], IRON[1], IRON[2], IRON[4]], 3);
+      // A steel wheel turns under the hands; two brass pinions mesh with it.
+      const step = f / 4, STEEL = [IRON[0], IRON[2], IRON[3], IRON[4], IRON[6]], BRASS = [IRON[0], GOLD[0], GOLD[1], GOLD[2], GOLD[3]];
+      gearPaint(p, c - 8, c + 9, 7, 8, -step * (TAU / 8) + 0.2, BRASS, 3);
+      gearPaint(p, c + 9, c - 8, 7, 8, -step * (TAU / 8) + 0.6, BRASS, 3);
+      gearPaint(p, c, c, 11, 12, step * (TAU / 12), STEEL, 4);
       for (let y = 0; y < 44; y++) for (let x = 0; x < 44; x++) if (Math.hypot(x - c, y - c) > 19.5) p.erase(x, y);
       return p.done();
     });
