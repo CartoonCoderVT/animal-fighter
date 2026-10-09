@@ -9,7 +9,7 @@ import { MOVES, HEAVY, AIR, NOX_AIR, JUMA_AIR, BEAST_AIR, LOLA_AIR, NATURAL, com
 import { MAP } from './map.js';
 import { startSpecial, startStomp, throwCarried, startChase, endAct, startPlunge, startSwarm, startBite, startCharge } from './specials.js';
 import { isMelee, WEAPON_INFO, weaponSlot } from './weapons.js';
-import { skipSpot, skipTo, knifeKnock } from './timestop.js';
+import { skipSpot, skipTo, footing, knifeKnock, knifeKnocked } from './timestop.js';
 
 export const KIND = {
   punch: 'blunt', board: 'blunt', impact: 'blunt', fall: 'blunt', crush: 'blunt', power: 'blunt', pipe: 'blunt',
@@ -124,12 +124,14 @@ export function attack(g, a) {
 // head. With nobody there the skip forward still carries her a stretch.
 function warpMove(g, a, mv) {
   const tall = mv.warp === 'above' ? 150 : 60;
-  const b = comboPrey(g, a) || g.enemies(a).filter(b => !b.dead && !b.knocked && Math.abs(b.x - a.x) < mv.reach && Math.abs(b.y - a.y) < tall && (mv.warp !== 'front' || (b.x - a.x) * a.face > -10))
+  // The skip forward goes where she points: the rival she was cutting only counts if it is that way.
+  const prey = comboPrey(g, a);
+  const b = (prey && (mv.warp !== 'front' || (prey.x - a.x) * a.face > -10) ? prey : null) || g.enemies(a).filter(b => !b.dead && !b.knocked && Math.abs(b.x - a.x) < mv.reach && Math.abs(b.y - a.y) < tall && (mv.warp !== 'front' || (b.x - a.x) * a.face > -10))
     .sort((p, q) => Math.hypot(p.x - a.x, p.y - a.y) - Math.hypot(q.x - a.x, q.y - a.y))[0];
   if (!b || Math.abs(b.x - a.x) > mv.reach + 30 || Math.abs(b.y - a.y) > tall + 20) {
     if (mv.warp !== 'front') return;
     const x = clamp(a.x + a.face * 64, 18, 942);
-    if (blocked(x, a.y) || (a.ground && x > MAP.pit.x0 - 8 && x < MAP.pit.x1 + 8)) return;
+    if (blocked(x, a.y) || (x > MAP.pit.x0 - 8 && x < MAP.pit.x1 + 8 && !footing(x, a.y, 60, 0)) || (a.ground && !footing(x, a.y))) return;
     skipTo(g, a, x, a.y, { ground: a.ground });
     return;
   }
@@ -555,9 +557,11 @@ export function removeBullet(g, b) {
 // A knife of Lola's super landing: a sliver of damage each, and past a little over half of the
 // knives aimed at a rival the next one knocks them down. A few stay stuck in them.
 function knifeHit(g, b, a, point, angle) {
-  const knock = knifeKnock(g, a), s = Math.sign(b.vx) || 1;
+  const knock = knifeKnock(g, b, a), s = Math.sign(b.vx) || 1;
   const dealt = damage(g, a, b.damage, point, b.owner, 'knife', { kb: knock ? { x: s * 5, y: -4.5 } : { x: b.vx * 0.08, y: b.vy * 0.05 - 0.4 }, dir: angle, knock });
-  if (!dealt || a.dead) return;
+  if (!dealt) return;
+  knifeKnocked(g, b, a, knock);
+  if (a.dead) return;
   g.fx('knifeHit', { x: point.x, y: point.y, a: angle });
   if (a.embedded.filter(e => e.kind === 'knife').length < 3 && Math.random() < 0.3) {
     const part = ['body', 'head', 'body', 'armF', 'footF'][Math.floor(rnd(0, 5))];
@@ -609,7 +613,11 @@ function bulletHit(g, b, body, point) {
     return false;
   } else if (body.isStatic) {
     // A knife that misses stays stuck in the wall or the floor for a while.
-    if (b.kind === 'knife') { g.fx('knifeStick', { x: point.x, y: point.y, a: angle }); g.sound('knifeStick', point.x); }
+    if (b.kind === 'knife') {
+      if (body === g.hz?.press?.body) g.fx('spark', { x: point.x, y: point.y, n: 4, a: angle + Math.PI });
+      else g.fx('knifeStick', { x: point.x, y: point.y, a: angle });
+      g.sound('knifeStick', point.x);
+    }
     else {
       const bb = body.bounds;
       const fromTop = b.y <= bb.min.y + 1, fromSide = b.x <= bb.min.x + 1 || b.x >= bb.max.x - 1;
@@ -672,8 +680,9 @@ export function damage(g, a, amount, point, ownerId, kind = 'punch', opts = {}) 
   if (!a || a.dead || amount <= 0) return 0;
   const cat = KIND[kind] || 'blunt';
   const owner = g.actor(ownerId);
-  // Mid-requiem Nox is a blur of blood, and a swarm of bats has nothing to hit: fighters cannot touch him.
-  if ((a.act === 'requiem' || a.act === 'swarm') && owner && owner !== a) return 0;
+  // Mid-requiem Nox is a blur of blood, a swarm of bats has nothing to hit, and Lola holding the
+  // world still is out of everyone's time: fighters cannot touch them.
+  if ((a.act === 'requiem' || a.act === 'swarm' || a.act === 'world') && owner && owner !== a) return 0;
   if ((a.invincible > 0 || a.iframes > 0) && !['grind', 'bleed', 'crush'].includes(cat) && !opts.force) {
     if (a.iframes > 0 && a.dodge > 0 && owner && owner !== a && !DOT.has(cat) && !a.perfect) perfectDodge(g, a);
     return 0;
@@ -863,14 +872,14 @@ export function kill(g, a, ownerId, { kind = 'punch', kb = { x: 0, y: -2 }, over
     credit.kills++;
     credit.stats.kills++;
     g.onEvent({ type: 'kill', killer: credit.name, victim: a.name, kind });
-    g.netEvents.push({ id: ++g.eventId, time: g.time, type: 'kill', killer: credit.name, victim: a.name, kind });
+    g.netEvents.push({ id: ++g.eventId, time: g.time, seq: g.seq, type: 'kill', killer: credit.name, victim: a.name, kind });
     if (g.mode !== 'sandbox' && g.mode !== 'attract' && credit.kills >= g.killsToWin && g.winPending === null) {
       g.winPending = credit.id;
       g.slowmo = 1.2;
     }
   } else {
     g.onEvent({ type: 'kill', killer: null, victim: a.name, kind });
-    g.netEvents.push({ id: ++g.eventId, time: g.time, type: 'kill', killer: null, victim: a.name, kind });
+    g.netEvents.push({ id: ++g.eventId, time: g.time, seq: g.seq, type: 'kill', killer: null, victim: a.name, kind });
   }
   releaseHeld(g, a);
   a.act = null;

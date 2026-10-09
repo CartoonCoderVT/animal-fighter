@@ -10,6 +10,7 @@ import { installHazards, tickHazards, hazardSnapshot } from './hazards.js';
 import { stepRagdolls, settleLimits, knockdown, ragdollOf } from './ragdoll.js';
 import { HALF_H, BODY_W } from '../render/rig.js';
 import { MELEE, isMelee } from './weapons.js';
+import { SPECIALS } from './moves.js';
 import { stepTimeStop } from './timestop.js';
 
 export { EMPTY_INPUT, FIGHTERS };
@@ -33,7 +34,7 @@ export class Game {
     this.winner = null; this.winPending = null; this.paused = false;
     this.shake = 0; this.hitstop = 0; this.flash = 0; this.slowmo = 0; this.drama = 0; this.slowAcc = 0; this.timeScale = 1; this.scaleAcc = 0; this.grab = null;
     // Lola's ZA WARUDO: while set, only she and her knives move (sim/timestop.js).
-    this.timeStop = null; this.knives = [];
+    this.timeStop = null; this.knives = []; this.barrages = [];
     this.spawns = MAP.spawns;
     players.forEach((p, i) => this.addActor({ ...p, id: p.id ?? i, x: p.x ?? this.spawns[i % 4][0], y: p.y ?? this.spawns[i % 4][1] }));
     if (!players.length) this.addActor({ id: 0, type: 0, x: this.spawns[0][0], y: this.spawns[0][1], name: 'Você', bot: false });
@@ -51,7 +52,8 @@ export class Game {
     const a = {
       id, type, x, y, name: name || f.name, bot, team, originalTeam: team, hp: f.hp, maxHp: f.hp, body, face: x > 480 ? -1 : 1,
       move: 0, ground: false, vx: 0, vy: 0, dead: false, kills: 0, deaths: 0, attack: 0, attackCd: 0, attackKind: null, attackSeq: 0,
-      abilityCd: 0, buff: 0, hurt: 0, invincible: 1.5, iframes: 0, dodgeCd: 0, dodge: 0, dodgeKind: null, stun: 0, combo: 0, comboTimer: 0,
+      // Lola's ZA WARUDO charges slowly: she starts a match with it half wound.
+      abilityCd: type === 2 ? SPECIALS[2].cd / 2 : 0, buff: 0, hurt: 0, invincible: 1.5, iframes: 0, dodgeCd: 0, dodge: 0, dodgeKind: null, stun: 0, combo: 0, comboTimer: 0,
       wounds: {}, partDmg: {}, severed: [], broken: {}, stumps: [], embedded: [], bleed: 0, char: 0, freeze: 0, frozen: 0, shock: 0,
       weapon: null, ammo: 0, holding: null, lastInput: EMPTY_INPUT(), input: EMPTY_INPUT(), queued: {},
       respawn: 0, lastHit: null, lastHitTime: -9, jumpGrace: 0, jumpBuffer: 0, airJumps: 0, drop: {}, knocked: false, knock: 0, getup: 0,
@@ -79,7 +81,7 @@ export class Game {
   closest(a, max = Infinity) { return this.enemies(a).sort((b, c) => dist(a, b) - dist(a, c)).find(b => dist(a, b) < max); }
 
   fx(type, data) {
-    const e = { id: ++this.eventId, time: this.time, type: 'fx', fx: type, ...data };
+    const e = { id: ++this.eventId, time: this.time, seq: this.seq, type: 'fx', fx: type, ...data };
     if (this.fxQueue.length > 600) this.fxQueue.splice(0, 200);
     this.fxQueue.push(e);
     this.netEvents.push(e);
@@ -87,7 +89,7 @@ export class Game {
   text(x, y, text, color) { this.effects.push({ kind: 'text', x, y, text, color, life: 1 }); }
   sound(name, x = null) {
     this.onEvent({ type: 'sound', name, x });
-    this.netEvents.push({ id: ++this.eventId, time: this.time, type: 'sound', name, x });
+    this.netEvents.push({ id: ++this.eventId, time: this.time, seq: this.seq, type: 'sound', name, x });
   }
 
   // LAB hand: a soft spring from the cursor to whatever body is under it.
@@ -169,10 +171,12 @@ export class Game {
     Body.setVelocity(a.body, { x: 0, y: 0 });
     Body.setAngle(a.body, 0);
     if (!Composite.allBodies(this.engine.world).includes(a.body)) Composite.add(this.engine.world, a.body);
+    // Lola keeps whatever her watch had wound up when she went down.
+    const abilityCd = a.type === 2 ? Math.max(1, a.abilityCd) : 1;
     Object.assign(a, {
       x: spot[0], y: spot[1], hp: a.maxHp, dead: false, invincible: 1.7, wounds: {}, partDmg: {}, severed: [], broken: {}, stumps: [], embedded: [],
       bleed: 0, char: 0, freeze: 0, frozen: 0, shock: 0, stun: 0, burning: 0, weapon: null, buff: 0, team: a.originalTeam,
-      ai: null, attackCd: 0, holding: null, abilityCd: 1, knocked: false, knock: 0, getup: 0, dodge: 0, dodgeKind: null, climbing: false, drop: {},
+      ai: null, attackCd: 0, holding: null, abilityCd, knocked: false, knock: 0, getup: 0, dodge: 0, dodgeKind: null, climbing: false, drop: {},
       act: null, actT: 0, hits: null, gliding: false, holdingLimb: null, holdJoint: null, ghostClear: true, hitlag: 0, lagPos: null,
       parry: 0, parryLag: 0, counter: 0, perfectT: 0, chase: null, float: 0, airDodged: false, hitstun: 0, hitstunMax: 0, stunN: 0, bloodMark: 0, beamAir: false, bounced: false, bounceArm: 0, turnT: 0, batCd: 0, swarm: null,
       form: null, formT: 0, biteCd: 0, chargeCd: 0, skipCd: 0, carry: null, wPose: null
@@ -193,7 +197,7 @@ export class Game {
         this.winner = this.winPending;
         const w = this.actor(this.winner);
         this.onEvent({ type: 'win', winner: w?.name, id: this.winner });
-        this.netEvents.push({ id: ++this.eventId, time: this.time, type: 'win', winner: w?.name, wid: this.winner });
+        this.netEvents.push({ id: ++this.eventId, time: this.time, seq: this.seq, type: 'win', winner: w?.name, wid: this.winner });
         return;
       }
       this.slowAcc += 0.4;
@@ -213,7 +217,8 @@ export class Game {
     if (this.hitstop > 0) { this.hitstop -= dt; return; }
     if (this.grab) this.holdGrab();
 
-    for (const a of this.actors) stepActor(this, a, dt);
+    // The step Lola clicks her watch on ends right there: nothing else may move (or hit her).
+    for (const a of this.actors) { stepActor(this, a, dt); if (this.timeStop) return; }
     stepBullets(this, dt);
     tickHazards(this, dt);
     tickProps(this, dt);
@@ -260,8 +265,7 @@ export class Game {
     tickStatuses(this, dt);
     for (const e of this.effects) { e.life -= dt; if (e.kind === 'text') e.y -= dt * 20; }
     this.effects = this.effects.filter(e => e.life > 0);
-    const cutoff = this.time - 0.4;
-    if (this.netEvents.length > 240 || (this.netEvents[0] && this.netEvents[0].time < cutoff - 0.6)) this.netEvents = this.netEvents.filter(e => e.time >= cutoff).slice(-240);
+    if (this.netEvents.length > 240 || (this.netEvents[0] && this.netEvents[0].seq < this.seq - 60)) this.netEvents = this.netEvents.filter(e => e.seq >= this.seq - 24).slice(-240);
   }
 
   dropWeapons(dt) {
@@ -284,9 +288,9 @@ export class Game {
 
   snapshot() {
     const r = v => Math.round(v * 10) / 10, r2 = v => Math.round(v * 100) / 100;
-    const cutoff = this.time - 0.35;
+    // Events of the last 0.35 s of steps (by step, so stopped time does not pile them up).
     return {
-      events: this.netEvents.filter(e => e.time >= cutoff), seq: this.seq, time: this.time, mode: this.mode, winner: this.winner, shake: r(this.shake), flash: r(this.flash), slowmo: this.slowmo > 0, drama: this.drama > 0, countdown: r(this.countdown || 0),
+      events: this.netEvents.filter(e => e.seq >= this.seq - 21), seq: this.seq, time: this.time, mode: this.mode, winner: this.winner, shake: r(this.shake), flash: r(this.flash), slowmo: this.slowmo > 0, drama: this.drama > 0, countdown: r(this.countdown || 0),
       actors: this.actors.map(a => ({
         id: a.id, type: a.type, name: a.name, bot: a.bot, team: a.team, hp: r(a.hp), maxHp: a.maxHp, kills: a.kills, deaths: a.deaths,
         x: r(a.x), y: r(a.y), vx: r(a.vx), vy: r(a.vy), face: a.face, move: a.move, ground: a.ground, climbing: !!a.climbing, crouch: !!a.crouch,
@@ -300,7 +304,7 @@ export class Game {
         freeze: r(a.freeze), frozen: r(a.frozen), shock: r(a.shock), weapon: a.weapon, ammo: a.ammo, holding: a.holding,
         burning: r(a.burning || 0), holdingLimb: a.holdingLimb || null, respawn: r(a.respawn), skid: r(a.skid || 0), landImpact: r(a.landT > 0 ? a.landImpact : 0),
         powerSeq: a.powerSeq, recoil: r(a.recoil || 0), stats: a.stats, form: a.form || null, formT: r(a.formT || 0),
-        wPose: a.wPose || null, wPoseT: r2(a.wPoseT || 0)
+        wPose: a.wPose || null, wPoseT: r2(a.wPoseT || 0), skips: a.skips || 0
       })),
       props: this.props.map(p => ({ id: p.id, kind: p.kind, w: p.w, h: p.h, x: r(p.x), y: r(p.y), angle: r(p.angle * 100) / 100, hp: p.hp, armed: !!p.armed, fuse: p.fuse, burning: r(p.burning || 0), weapon: p.weapon, rocket: p.rocket > 0, chain: !!p.chain })),
       bullets: this.bullets.map(b => ({ id: b.id, x: r(b.x), y: r(b.y), px: r(b.px), py: r(b.py), word: b.word, color: b.color, vx: r(b.vx), vy: r(b.vy), kind: b.kind })),

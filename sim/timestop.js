@@ -24,6 +24,14 @@ const ease = k => 1 - (1 - k) * (1 - k);
 // Standing on a floor is not inside it: a little give at the feet and the head.
 const inside = (x, y) => x < 14 || x > 946 || MAP.solids.some(s => s.kind !== 'pit' && x + 7 > s.x0 && x - 7 < s.x1 && y + HALF_H - 2 > s.y0 && y - HALF_H + 2 < s.y1);
 const overPit = x => x > MAP.pit.x0 - 6 && x < MAP.pit.x1 + 6;
+// Somewhere to stand at (x, y) (a fighter's center): a floor, a block or a catwalk under the feet,
+// within reach units below them. edge: how far past its end a surface still counts (half a foot by
+// default; 0 asks for the center itself to be over it).
+export function footing(x, y, reach = 4, edge = 6) {
+  const feet = y + HALF_H;
+  return MAP.solids.some(s => s.kind !== 'wall' && s.kind !== 'pit' && x + edge > s.x0 && x - edge < s.x1 && s.y0 >= feet - 4 && s.y0 <= feet + reach)
+    || MAP.oneway.some(p => x + edge > p.x0 && x - edge < p.x1 && p.y >= feet - 4 && p.y <= feet + reach);
+}
 // A point (a knife) inside a wall, a block or the floor.
 const solidAt = (x, y) => x < 4 || x > 956 || MAP.solids.some(q => q.kind !== 'pit' && x > q.x0 && x < q.x1 && y > q.y0 && y < q.y1);
 
@@ -35,20 +43,23 @@ function place(g, a, x, y) {
 
 // ---- the time skip ----------------------------------------------------------------------
 // Where she reappears around rival b: behind them (the far side from her), in front of them, or over
-// their head. A spot inside a wall or a block, or over the shredder when they stand on a floor, falls
-// back to the other side.
+// their head. Never inside a wall or a block, never over the shredder without a catwalk under it.
+// Beside a rival on their feet she wants footing too: a spot past the end of their platform falls back
+// to the other side, and only if neither has any does she appear in the air there.
 export function skipSpot(a, b, where) {
   const s = Math.sign(b.x - a.x) || a.face || 1;
   const tries = where === 'above' ? [[-s * 6, -34], [-s * 6, -22], [-s * 20, 0]]
     : where === 'behind' ? [[s * 19, 0], [-s * 19, 0]]
       : [[-s * 20, 0], [s * 19, 0]];
+  let air = null;
   for (const [dx, dy] of tries) {
     const x = clamp(b.x + dx, 18, 942), y = b.y + dy;
-    if (inside(x, y)) continue;
-    if (b.ground && !dy && overPit(x)) continue;
-    return { x, y, ground: !!b.ground && !dy };
+    if (inside(x, y) || (overPit(x) && !footing(x, y, 120, 0))) continue;
+    if (dy || !b.ground) return { x, y, ground: false };
+    if (footing(x, y)) return { x, y, ground: true };
+    air ||= { x, y, ground: false };
   }
-  return null;
+  return air;
 }
 
 // Out of here and in over there in the same instant. The renderer leaves her afterimage behind and
@@ -58,6 +69,7 @@ export function skipTo(g, a, x, y, { face = null, ground = false, quiet = false,
   place(g, a, x, y);
   a.ground = ground;
   if (face) a.face = face;
+  a.skips = (a.skips || 0) + 1;
   g.fx('timeSkip', { x: x0, y: y0, x2: x, y2: y, face: a.face, who: a.id, ghost: ghost ? 1 : 0 });
   if (!quiet) g.sound('skip', x);
 }
@@ -108,7 +120,8 @@ function plan(g, a, rivals) {
 }
 
 export function startWorld(g, a) {
-  if (g.timeStop) return false;
+  // Not while time is already stopped, nor once the match is won.
+  if (g.timeStop || g.winPending !== null || g.winner !== null) return false;
   const rivals = rivalsFor(g, a);
   if (rivals[0]) a.face = Math.sign(rivals[0].x - a.x) || a.face;
   g.timeStop = {
@@ -199,17 +212,21 @@ export function stepTimeStop(g, dt) {
   return true;
 }
 
-// Time moves again: every knife flies on along its line at once.
+// Time moves again: every knife flies on along its line at once. Each barrage keeps its own count of
+// knives aimed at and landed on each rival (several Lolas can have knives in the air at once).
 export function resume(g) {
   const ts = g.timeStop, a = ts && g.actor(ts.owner);
-  g.knifeAim = {};
+  const batch = (g.knifeBatch = (g.knifeBatch || 0) + 1), aim = {};
   for (const k of g.knives || []) {
     const c = Math.cos(k.ang), s = Math.sin(k.ang);
-    g.bullets.push({ id: g.nextId++, owner: k.owner, team: k.team, x: k.x, y: k.y, px: k.x, py: k.y, vx: c * WORLD.speed, vy: s * WORLD.speed, damage: WORLD.dmg, life: 1.4, color: '#e8f4ff', kind: 'knife', bounces: 9, tgt: k.tgt });
-    if (k.tgt != null) g.knifeAim[k.tgt] = (g.knifeAim[k.tgt] || 0) + 1;
+    g.bullets.push({ id: g.nextId++, owner: k.owner, team: k.team, x: k.x, y: k.y, px: k.x, py: k.y, vx: c * WORLD.speed, vy: s * WORLD.speed, damage: WORLD.dmg, life: 1.4, color: '#e8f4ff', kind: 'knife', bounces: 9, tgt: k.tgt, batch });
+    if (k.tgt != null) aim[k.tgt] = (aim[k.tgt] || 0) + 1;
   }
-  g.knifeHits = {};
+  g.barrages = (g.barrages || []).filter(br => g.bullets.some(b => b.batch === br.id));
+  if (Object.keys(aim).length) g.barrages.push({ id: batch, aim, hits: {}, downed: {} });
   g.knives = [];
+  // Nothing pressed while time stood still counts: only presses after it moves again.
+  for (const b of g.actors) { b.queued = {}; b.lastInput = { ...b.input }; }
   g.timeStop = null;
   if (a && a.act === 'world') { a.act = null; a.actT = 0; a.wPose = null; }
   if (a) {
@@ -219,12 +236,18 @@ export function resume(g) {
   }
 }
 
-// A knife of the super striking a rival: past a little over half of the knives aimed at them,
-// the next one knocks them down (the rest keep hitting the ragdoll).
-export function knifeKnock(g, b) {
-  const tally = g.knifeHits || (g.knifeHits = {});
-  tally[b.id] = (tally[b.id] || 0) + 1;
-  const aimed = g.knifeAim?.[b.id] || 0;
-  if (tally[b.id] === Math.max(4, Math.ceil(aimed * 0.55))) return true;
-  return false;
+// A knife of the super striking rival b: once a little over half of the knives of that barrage aimed
+// at them have landed, the next one knocks them down (the rest keep hitting the ragdoll). Knives
+// that a roll or invincibility swallowed do not count.
+const barrageOf = (g, knife) => (g.barrages || []).find(br => br.id === knife.batch);
+export function knifeKnock(g, knife, b) {
+  const br = barrageOf(g, knife);
+  if (!br || br.downed[b.id]) return false;
+  return (br.hits[b.id] || 0) + 1 >= Math.max(4, Math.ceil((br.aim[b.id] || 0) * 0.55));
+}
+export function knifeKnocked(g, knife, b, knock) {
+  const br = barrageOf(g, knife);
+  if (!br) return;
+  br.hits[b.id] = (br.hits[b.id] || 0) + 1;
+  if (knock) br.downed[b.id] = true;
 }
