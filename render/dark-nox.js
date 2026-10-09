@@ -1,10 +1,13 @@
 // DARK NOX: the form Nox takes when his blood meter is full. His palette turned dark (the cast in
 // pixel-data.js wears it), the aura of blood mist behind him, his burning eyes and the embers of
 // blood over him, the transformation (blood spiralling in, bats bursting out, a crimson ring and a
-// dark flash) and its reverse, his meter on the HUD card and the red light he gives off.
-// Everything is derived from observable state (form, act, act time) and fx events, so remote peers
-// draw the same thing. Pure module at load time (no DOM until something is drawn), and no imports
-// from pixel-data.js, which imports this one.
+// dark flash) and its reverse, his meter on the HUD card and the red light he gives off. Also his
+// scythe flying on its own as a familiar (a.fam) with the crescents it cuts, and the pools of
+// blood lying about the arena (state.pools) with the streams he drinks out of them.
+// Everything is derived from observable state (form, act, act time, fam, pools) and fx events, so
+// remote peers draw the same thing. Pure module at load time (no DOM until something is drawn), and
+// no static imports from pixel-data.js or blood-art.js, which import this one (blood-art.js is
+// loaded lazily for the scythe's drawing).
 import { S, bayer, seeded } from '../engine/const.js';
 
 // Nox turned dark: near-black violet fur with a cold slate highlight and chest, so his silhouette
@@ -44,11 +47,16 @@ const FXPAL = {
 };
 const fxPal = gore => (gore === 0 ? FXPAL.shadow : FXPAL.blood);
 
-// Timings shared with the simulation: the rise lasts 1 s and turns him dark at 0.6 s, the form
-// lasts 12 s, the fade 0.5 s.
-const RISE = 1.0, POP = 0.6, FADE = 0.5, FORM = 12;
+// Timings shared with the simulation (DARK in sim/moves.js): the rise lasts 1 s and turns him dark
+// at 0.6 s, the fade 0.5 s.
+const RISE = 1.0, POP = 0.6, FADE = 0.5;
+export const DARK_TIMES = { rise: RISE, pop: POP, fade: FADE };
+// Turning back, he has the scythe in his hand again from 60% of the fade on: blood-art.js draws it
+// there and the familiar is no longer drawn.
+export const famCaught = a => a?.act === 'darkFade' && (a.actT ?? 0) >= FADE * 0.6;
 const FIG_W = 72, FIG_H = 64;
 const clamp01 = v => Math.max(0, Math.min(1, v));
+const wrapA = v => v - Math.round(v / (Math.PI * 2)) * Math.PI * 2;
 const ease = u => 1 - (1 - u) * (1 - u);
 
 // How much of the dark is on him: rising through the transformation, 1 while he is DARK NOX,
@@ -94,6 +102,64 @@ function bat(g, P, x, y, up) {
   g.fillStyle = P.hot; g.fillRect(bx, by, 1, 1);
 }
 
+// The flying scythe: 1.3 times the one in his hand, turning about its balance point, FAM_PIVOT
+// (scythe units, his own scythe's pixels) down the shaft from the head, so it whirls like a thrown
+// blade and, floating at his shoulder, its butt stays clear of the floor; FAM_FORM: how long it
+// takes to form out of the blood (famReturn).
+const FAM_S = 1.3, FAM_PIVOT = 15, SHAFT = 24, FAM_FORM = 0.3;
+const DEG = Math.PI / 180;
+// The crescents it cuts (famSlash), facing right: the centre of the arc from the cut point (view
+// pixels), its radius, the sweep a0 -> a1 (radians, 0 ahead, positive down), the thickness, how
+// long it lasts and whether it is a whole ring round the cut point.
+const SLASH = {
+  auto: { c: [0, 31], r: 33, a0: -122 * DEG, a1: -58 * DEG, w: 3, life: 0.17 },
+  cross: { c: [0, 42], r: 45, a0: -120 * DEG, a1: -60 * DEG, w: 4, life: 0.2 },
+  reap: { c: [-14, 2], r: 17, a0: 75 * DEG, a1: -85 * DEG, w: 4, life: 0.2 },
+  chop: { c: [-34, -2], r: 36, a0: -50 * DEG, a1: 55 * DEG, w: 5, life: 0.22 },
+  hook: { c: [-4, 0], r: 13, a0: -105 * DEG, a1: 140 * DEG, w: 4, life: 0.2 },
+  spin: { c: [0, 0], r: 20, a0: 0, a1: 360 * DEG, w: 3, life: 0.22, ring: true, sq: 0.85 },
+  orbit: { c: [0, 0], r: 15, a0: 0, a1: 360 * DEG, w: 2, life: 0.18, ring: true, sq: 0.85 },
+  whirl: { c: [0, 0], r: 40, a0: 0, a1: 360 * DEG, w: 5, life: 0.28, ring: true, sq: 0.7 },
+  form: { c: [0, 0], r: 12, a0: 0, a1: 360 * DEG, w: 2, life: 0.25, ring: true, sq: 0.85 }
+};
+// A cut's arc in view pixels, mirrored for a cut facing left; rings start where the blade is.
+function slashGeom(q) {
+  const L = SLASH[q.k], f = q.f, rot = L.ring ? q.ang || 0 : 0;
+  const a0 = f > 0 ? L.a0 + rot : Math.PI - L.a0 - rot, a1 = f > 0 ? L.a1 + rot : Math.PI - L.a1 - rot;
+  return { cx: q.x + L.c[0] * f, cy: q.y + L.c[1], r: L.r, a0, a1, w: L.w, sq: L.sq || 1 };
+}
+// A crescent cut: it sweeps in fast, thick behind its leading point, inked black on its outer side
+// with a white-hot edge, then its tail runs up after the head and it thins away.
+function drawSlash(g, P, q, ox, oy) {
+  const u = q.t / q.life;
+  if (u < 0) return;
+  const G = slashGeom(q), head = Math.min(1, u / 0.3), tail = u < 0.3 ? 0 : Math.min(1, (u - 0.3) / 0.7);
+  if (head - tail < 0.02) return;
+  const span = G.a1 - G.a0, n = Math.ceil(Math.abs(span) * G.r), thin = 1 - u * 0.5;
+  const px = (c, x, y) => { g.fillStyle = c; g.fillRect(Math.round(x + ox), Math.round(y + oy), 1, 1); };
+  for (let i = 0; i <= n; i++) {
+    const v = i / n;
+    if (v < tail || v > head) continue;
+    const s = (v - tail) / (head - tail), prof = Math.sin(Math.PI * Math.pow(s, 1.6)), w = Math.max(1, Math.round(G.w * prof * thin));
+    const a = G.a0 + span * v, ca = Math.cos(a), sa = Math.sin(a) * G.sq;
+    if (w > 1) px(P.black, G.cx + ca * (G.r + 1), G.cy + sa * (G.r + 1));
+    for (let d = 0; d < w; d++) {
+      const r = G.r - d;
+      px(d === 0 ? (u < 0.45 && prof > 0.4 && !q.red ? P.core : P.hot) : d === 1 ? (q.red ? P.mid : P.hot) : d < w - 1 ? P.mid : P.deep, G.cx + ca * r, G.cy + sa * r);
+    }
+  }
+}
+
+// Pools of blood (or, without gore, of violet shadow): ink round the ends, a dark rim, the body and
+// its lit surface, a gloss, the floor stained under it, and the stream's drops.
+// A pool's fields: network snapshots send [x, y, amt, by], the local game hands its own objects.
+// by: the id of the Nox drinking it, -1 when nobody does (ids start at 0).
+const poolX = p => p.x ?? p[0], poolY = p => p.y ?? p[1], poolAmt = p => p.amt ?? p[2], poolBy = p => p.by ?? p[3] ?? -1;
+const POOL = {
+  blood: { ink: '#120106', rim: '#3a040f', deep: '#52060f', body: '#6e0818', top: '#9a1026', gloss: '#ffb0b8', shine: '#d23448', stain: '#2a0610', drop: '#c8142e', hot: '#ff4058' },
+  shadow: { ink: '#06030c', rim: '#1a0a30', deep: '#24103e', body: '#341060', top: '#4e2088', gloss: '#e0c8ff', shine: '#8a5ad0', stain: '#120820', drop: '#7a2ac0', hot: '#b97aff' }
+};
+
 // The renderer calls drawBack on its lit layer before his sprite (the mist is lit by the scene),
 // drawFront and drawEffects on its emissive layer (the hot rim of the aura, his eyes, the embers and
 // the transformation glow). update(dt) runs every frame; event(e) takes every fx event.
@@ -107,13 +173,18 @@ export class DarkNoxFX {
     this.rings = [];
     this.at = new Map();
     this.layers = null;
+    this.fams = new Map();
+    this.slashes = [];
+    // The scythe is drawn with blood-art.js, which imports this module: loaded once this is.
+    this.art = null;
+    import('./blood-art.js').then(m => { this.art = m; }).catch(e => console.warn('dark nox scythe', e));
   }
 
   // Without gore his blood turns to violet shadow, like the rest of his hemomancy.
   get gore() { return this.r?.fx?.gore ?? this.goreSet; }
   set gore(v) { this.goreSet = v; }
 
-  reset() { this.parts.length = 0; this.seqs.length = 0; this.flashes.length = 0; this.rings.length = 0; this.at.clear(); }
+  reset() { this.parts.length = 0; this.seqs.length = 0; this.flashes.length = 0; this.rings.length = 0; this.at.clear(); this.fams.clear(); this.slashes.length = 0; }
 
   // Where an actor was last drawn: his chest, his feet and his silhouette.
   spot(who, e) {
@@ -123,6 +194,7 @@ export class DarkNoxFX {
   }
 
   event(e) {
+    if (e.fx === 'famSlash' || e.fx === 'famReturn') { this.famEvent(e); return; }
     if (e.fx !== 'darkNox' && e.fx !== 'darkNoxPop' && e.fx !== 'darkFade') return;
     const x = (e.x ?? 0) * S, y = (e.y ?? 0) * S, who = e.who ?? -1;
     const s = this.spot(who, { x, y });
@@ -179,6 +251,12 @@ export class DarkNoxFX {
     this.seqs = this.seqs.filter(q => q.t < q.life);
     for (const p of this.parts) {
       p.t += dt;
+      if (p.k === 'fleck' || p.k === 'fdrop' || p.k === 'wisp') {
+        if (p.k === 'wisp') { p.vx *= Math.pow(0.2, dt); p.vy -= 14 * dt; }
+        else p.vy += 420 * dt;
+        p.x += p.vx * dt; p.y += p.vy * dt;
+        continue;
+      }
       if (p.k === 'bat' || p.k === 'drop' || p.k === 'ember' || p.k === 'drip') {
         if (p.k === 'drip' && p.t < p.hang) continue;
         if (p.k === 'bat') { p.vx *= Math.pow(0.35, dt); p.vy = p.vy * Math.pow(0.35, dt) - 20 * dt; }
@@ -198,6 +276,9 @@ export class DarkNoxFX {
     for (const f of this.flashes) f.t += dt;
     this.flashes = this.flashes.filter(f => f.t < f.life);
     for (const s of this.at.values()) s.popT += dt;
+    for (const q of this.slashes) q.t += dt;
+    this.slashes = this.slashes.filter(q => q.t < q.life);
+    for (const m of this.fams.values()) m.formT += dt;
   }
 
   // Keeps track of where he is and reads his silhouette out of the figure canvas: m holds 1 for
@@ -431,7 +512,267 @@ export class DarkNoxFX {
       }
       g.globalAlpha = 1;
     }
-    this.drawParts(g, ox, oy, t, p => p.k !== 'drip' && p.k !== 'ember');
+    for (const q of this.slashes) drawSlash(g, P, q, ox, oy);
+    this.drawParts(g, ox, oy, t, p => p.k !== 'drip' && p.k !== 'ember' && p.k !== 'wisp');
+  }
+
+  // ---- the flying scythe ------------------------------------------------------------------------
+  famOf(id) {
+    let m = this.fams.get(id);
+    if (!m) { m = { hist: [], lastT: null, w: 0, v: 0, dropT: 0, wispT: 0, formT: 9, out: null, st: null }; this.fams.set(id, m); }
+    return m;
+  }
+
+  // famSlash: the crescent it cuts (and blood flung off it); famReturn: blood winds in beside him
+  // and the scythe forms out of it (what was left of it where he died comes apart).
+  famEvent(e) {
+    const x = (e.x ?? 0) * S, y = (e.y ?? 0) * S, rnd = seeded((e.id || 1) * 2246822519), f = e.f || 1;
+    if (e.fx === 'famSlash') {
+      const k = SLASH[e.k] ? e.k : 'auto', L = SLASH[k];
+      const q = { k, x, y, f, ang: e.ang || 0, t: 0, life: L.life, seed: rnd() };
+      this.slashes.push(q);
+      if (this.slashes.length > 24) this.slashes.shift();
+      // Blood thrown off along the cut, flying on the way the blade went.
+      const G = slashGeom(q), n = L.ring ? 10 : 7;
+      for (let i = 0; i < n; i++) {
+        const v = 0.25 + rnd() * 0.75, a = G.a0 + (G.a1 - G.a0) * v, sd = Math.sign(G.a1 - G.a0), sp = 70 + rnd() * 110;
+        const px = G.cx + Math.cos(a) * G.r, py = G.cy + Math.sin(a) * G.r * G.sq;
+        this.parts.push({ k: 'fleck', x: px, y: py, vx: -Math.sin(a) * sd * sp + Math.cos(a) * 30, vy: Math.cos(a) * sd * sp * G.sq + Math.sin(a) * 30 - 40, t: 0, life: 0.35 + rnd() * 0.3 });
+      }
+      return;
+    }
+    const m = this.famOf(e.who ?? -1), last = m.hist[m.hist.length - 1];
+    if (last && m.st === 'lost') for (let i = 0; i < 14; i++) {
+      const a = rnd() * Math.PI * 2, sp = 20 + rnd() * 60;
+      this.parts.push({ k: 'fdrop', x: last.x + Math.cos(a) * 6, y: last.y + Math.sin(a) * 6, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 30, t: 0, life: 0.5 + rnd() * 0.3 });
+    }
+    m.hist.length = 0; m.formT = 0;
+    for (let i = 0; i < 26; i++) this.parts.push({ k: 'swirl', x, y, r0: 14 + rnd() * 16, a0: rnd() * Math.PI * 2, dir: f, t: 0, life: FAM_FORM * (0.7 + rnd() * 0.3) });
+    this.slashes.push({ k: 'form', x, y, f, ang: 0, t: -FAM_FORM * 0.8, life: 0.25, seed: rnd(), red: true });
+  }
+
+  // Where the scythe is this frame (view pixels, no shake): its pivot, the grip drawScythe takes,
+  // its angle (degrees, drawScythe's) and size. ang is a plain rotation on screen (clockwise, 0 =
+  // shaft up; the simulation spins it ang += speed * f so its edge leads); drawScythe mirrors its
+  // angles by the side the blade faces, hence f * ang.
+  famPose(a, F) {
+    const f = F.f || a.face || 1;
+    let s = FAM_S;
+    if (a.act === 'darkFade') s = FAM_S + (1 - FAM_S) * clamp01((a.actT ?? 0) / (FADE * 0.6));
+    const th = 180 + (f * (F.ang || 0) * 180) / Math.PI, r = (th * Math.PI) / 180, L = (SHAFT - FAM_PIVOT) * s;
+    const px = F.x * S, py = F.y * S;
+    return { f, s, th, px, py, gx: px + Math.sin(r) * f * L, gy: py - Math.cos(r) * L };
+  }
+
+  // The flying scythe (a.fam), called twice a frame: glow=false on the lit layer (the scythe itself
+  // and the dark mist curling off it), glow=true on the emissive layer (its burning eye, the red
+  // glow in the blade, the edge flaring on a cut, afterimages when it darts and a blur when it spins).
+  drawFamiliar(g, a, ox, oy, t, glow = false) {
+    const F = a?.fam, art = this.art;
+    if (!F || !art || famCaught(a)) return;
+    const m = this.famOf(a.id), q = this.famPose(a, F), lost = F.st === 'lost';
+    const P = darkBloodPal(this.gore), X = fxPal(this.gore), grow = clamp01(m.formT / FAM_FORM);
+    if (grow <= 0) return;
+    m.st = F.st;
+    if (!glow) {
+      if (m.lastT !== null && t < m.lastT - 0.5) m.hist.length = 0;
+      const dt = m.lastT === null ? 0 : Math.min(0.1, Math.max(0, t - m.lastT)), prev = m.hist[m.hist.length - 1];
+      if (dt > 0 || !prev) {
+        const d = prev ? wrapA((F.ang || 0) - prev.raw) : 0, u = prev ? prev.u + d : F.ang || 0;
+        if (prev && dt > 0) { m.w = m.w * 0.4 + (d / dt) * 0.6; m.v = m.v * 0.4 + (Math.hypot(q.px - prev.x, q.py - prev.y) / dt) * 0.6; }
+        m.hist.push({ x: q.px, y: q.py, u, raw: F.ang || 0, s: q.s, f: q.f });
+        if (m.hist.length > 7) m.hist.shift();
+      }
+      m.out = art.drawScythe(g, P, q.gx + ox, q.gy + oy, q.th, q.f, q.s, lost ? 0.5 : 1, grow, t);
+      if (dt > 0 && m.out && grow >= 1) {
+        // Drops flung off the point (a spray when it spins or darts), mist off the blade.
+        const fast = Math.abs(m.w) > 9 || m.v > 120;
+        m.dropT += dt * (lost ? 1 : fast ? 26 : 4);
+        while (m.dropT >= 1) {
+          m.dropT -= 1;
+          const sd = Math.sign(m.w) || 1, tx = m.out.tx - ox, ty = m.out.ty - oy, dx = tx - q.px, dy = ty - q.py, sp = fast ? 40 + Math.random() * 60 : 0;
+          const n = Math.hypot(dx, dy) || 1;
+          this.parts.push({ k: 'fdrop', x: tx, y: ty, vx: (-dy / n) * sp * sd, vy: (dx / n) * sp * sd, t: 0, life: 0.45 + Math.random() * 0.25 });
+        }
+        m.wispT += dt * (lost ? 3 : 9);
+        while (m.wispT >= 1) {
+          m.wispT -= 1;
+          const b = art.bladeSpine(q.gx, q.gy, q.th, q.f, q.s, 0.1 + Math.random() * 0.8);
+          this.parts.push({ k: 'wisp', who: a.id, x: b.x + (Math.random() - 0.5) * 3, y: b.y, vx: (Math.random() - 0.5) * 10, vy: -6 - Math.random() * 8, t: 0, life: 0.4 + Math.random() * 0.4 });
+        }
+      }
+      m.lastT = t;
+      this.drawParts(g, ox, oy, t, p => p.k === 'wisp' && p.who === a.id);
+      return;
+    }
+    if (!m.out) return;
+    const dot = (c, x, y, w = 1, h = w) => { g.fillStyle = c; g.fillRect(Math.round(x + ox), Math.round(y + oy), w, h); };
+    const hx = m.out.x - ox, hy = m.out.y - oy;
+    // The scythe itself is painted again over the scene's lighting, so it never sinks into the dark
+    // of the arena (it is its own light); dim when it lies lost.
+    const body = () => art.drawScythe(g, P, q.gx + ox, q.gy + oy, q.th, q.f, q.s, lost ? 0.32 : 1, grow, t);
+    if (lost) {
+      // Dropped where he died: hanging dim, its eye opening now and then.
+      body();
+      if ((t * 0.8) % 1 < 0.35) { dot(X.deep, hx - 1, hy - 1, 3); dot(X.mid, hx, hy - 1, 1, 3); }
+      return;
+    }
+    const spin = Math.abs(m.w), hunt = F.st === 'hunt' || F.st === 'strike', strike = F.st === 'strike';
+    // The blade at pose h (a past one, or this one turned by du), as points along its edge.
+    const edge = (h, du, alpha, c, c2, step = 0.14) => {
+      const th = 180 + (h.f * (h.u + du) * 180) / Math.PI, r = (th * Math.PI) / 180, L = (SHAFT - FAM_PIVOT) * h.s;
+      const gx = h.x + Math.sin(r) * h.f * L, gy = h.y - Math.cos(r) * L;
+      g.globalAlpha = alpha * grow;
+      for (let u = 0.08; u <= 1.001; u += step) {
+        const b = art.bladeSpine(gx, gy, th, h.f, h.s, Math.min(1, u));
+        dot(u > 0.85 ? c2 : c, b.ex, b.ey);
+        if (u < 0.7) dot(c, (b.x + b.ex) / 2, (b.y + b.ey) / 2);
+      }
+      g.globalAlpha = 1;
+    };
+    const cur = m.hist[m.hist.length - 1];
+    if (cur) {
+      // Spinning: the blade blurs into a wheel behind its edge, a hot ring where the point runs.
+      if (spin > 8) {
+        const sd = Math.sign(m.w), stp = Math.min(0.42, Math.max(0.16, spin / 60 * 0.55)), n = spin > 16 ? 6 : 4;
+        for (let k = n; k >= 1; k--) edge(cur, -sd * k * stp, 0.8 * (1 - k / (n + 1)), k <= 2 ? X.hot : X.mid, k <= 1 ? X.core : X.hot, 0.12);
+        const tip = art.bladeSpine(0, 0, 180, 1, cur.s, 1), R = Math.hypot(tip.x, tip.y + (SHAFT - FAM_PIVOT) * cur.s);
+        const a1 = Math.atan2(m.out.ty - oy - cur.y, m.out.tx - ox - cur.x), arc = Math.min(Math.PI * 1.6, n * stp * 1.2);
+        g.globalAlpha = 0.7 * grow;
+        for (let k = 0; k < arc * R; k += 1.4) { const an = a1 - sd * (k / R); dot(k < R * 0.3 ? X.core : X.hot, cur.x + Math.cos(an) * R, cur.y + Math.sin(an) * R); }
+        g.globalAlpha = 1;
+      }
+      // Darting: afterimages of the blade along its path.
+      if (m.v > 100 || hunt) for (let i = 0; i < m.hist.length - 1; i++) {
+        const h = m.hist[i], nx = m.hist[i + 1];
+        if (Math.hypot(nx.x - h.x, nx.y - h.y) < 2) continue;
+        const k = (i + 1) / m.hist.length;
+        edge(h, 0, 0.55 * k, k > 0.6 ? X.mid : X.deep, X.hot, 0.18);
+      }
+    }
+    body();
+    // The blood in the blade glows, a pulse running out along it; the edge flares white on a cut.
+    const pulse = (t * 1.7) % 1;
+    for (let u = 0.06; u <= 0.94; u += 0.07) {
+      const b = art.bladeSpine(q.gx, q.gy, q.th, q.f, q.s, u * grow), mx = (b.x * 0.6 + b.ex * 0.4), my = (b.y * 0.6 + b.ey * 0.4);
+      const near = Math.abs(u - pulse) < 0.09;
+      g.globalAlpha = (near ? 0.95 : hunt ? 0.7 : 0.45) * grow;
+      dot(near ? X.hot : X.mid, mx, my);
+      if (strike) { g.globalAlpha = 1; dot(u > 0.5 ? X.core : X.hot, b.ex, b.ey); }
+    }
+    g.globalAlpha = 1;
+    // Its eye: a burning iris round the slit, wide open and streaking when it hunts.
+    dot(X.hot, hx - 1, hy - 1, 1, 3); dot(X.hot, hx + 1, hy - 1, 1, 3);
+    dot(hunt ? X.core : X.hot, hx, hy - 2); dot(hunt ? X.core : X.hot, hx, hy + 1);
+    if (hunt) {
+      dot(X.mid, hx - 2, hy, 1, 1); dot(X.mid, hx + 2, hy, 1, 1);
+      const p0 = m.hist[Math.max(0, m.hist.length - 3)];
+      if (p0) { const dx = q.px - p0.x, dy = q.py - p0.y, n = Math.min(10, Math.hypot(dx, dy)); for (let i = 1; i < n; i++) { g.globalAlpha = 1 - i / n; dot(i < 3 ? X.hot : X.mid, hx - (dx / (n || 1)) * i, hy - (dy / (n || 1)) * i); } g.globalAlpha = 1; }
+    }
+  }
+
+  // ---- pools of blood --------------------------------------------------------------------------
+  // Every pool as a flat glossy puddle lying on its surface (top at y): a dark rim, a lit surface
+  // with a highlight sliding over it, the floor stained round it and a few drips running down its
+  // face. While Nox drinks one (by) it shivers and a stream of blood arcs out of it into his chest.
+  // Lit play layer, behind the fighters. pools: [x, y, amt, by] (world units).
+  drawPools(g, pools, actors, ox, oy, t) {
+    if (!pools?.length) return;
+    const P = this.gore === 0 ? POOL.shadow : POOL.blood;
+    for (const p of pools) {
+      const amt = +poolAmt(p) || 0;
+      if (!(amt > 0.05)) continue;
+      const px0 = poolX(p), by = poolBy(p), drink = by >= 0, k = Math.min(1, amt / 20), seed = hash(Math.round(px0 / 8), 3.7);
+      const w = Math.max(2, Math.round(3 + 27 * Math.pow(k, 0.7))), h = amt < 2.5 ? 1 : amt < 9 ? 2 : 3;
+      const sy = Math.round(poolY(p) * S + oy), cx = px0 * S + ox, x0 = Math.round(cx - w / 2);
+      const shiv = drink ? (Math.floor(t * 36 + seed * 7) % 2 ? 1 : -1) : 0;
+      // The floor soaked round it.
+      g.fillStyle = P.stain;
+      g.fillRect(x0 - 1, sy, w + 2, 1);
+      if (w > 7) for (let x = x0 + 1; x < x0 + w - 1; x += 2) g.fillRect(x + (sy & 1), sy + 1, 1, 1);
+      // The lens of blood: a full bottom row, narrower rows over it, a dark rim at the ends.
+      const inset = Math.max(1, Math.round(w * 0.16));
+      let tx = x0, tw = w;
+      for (let r = 0; r < h; r++) {
+        const ins = r * inset, rw = w - ins * 2;
+        if (rw < 2) break;
+        const rx = x0 + ins + (drink && r === h - 1 ? shiv : 0), ry = sy - 1 - r, top = r === h - 1 || w - (r + 1) * inset * 2 < 2;
+        g.fillStyle = top ? P.top : r === 0 ? P.deep : P.body;
+        g.fillRect(rx, ry, rw, 1);
+        g.fillStyle = P.rim;
+        g.fillRect(rx, ry, 1, 1); g.fillRect(rx + rw - 1, ry, 1, 1);
+        if (top) { tx = rx; tw = rw; break; }
+      }
+      g.fillStyle = P.ink;
+      g.fillRect(x0 - 1, sy - 1, 1, 1); g.fillRect(x0 + w, sy - 1, 1, 1);
+      // The gloss: a highlight sliding slowly to and fro over the surface; ripples run in to the
+      // middle while it is drunk.
+      const ty = sy - 1 - Math.min(h - 1, Math.floor((w - 2) / (2 * inset))), ph = Math.abs(((t * 0.22 + seed * 2) % 2) - 1);
+      if (tw >= 4) {
+        const gx = tx + 1 + Math.round(ph * (tw - 3));
+        g.fillStyle = P.gloss; g.fillRect(gx, ty, 1, 1);
+        g.fillStyle = P.shine; g.fillRect(gx + (ph > 0.5 ? -1 : 1), ty, 1, 1);
+      } else if (tw >= 2) { g.fillStyle = P.shine; g.fillRect(tx + 1, ty, 1, 1); }
+      if (drink && tw >= 4) {
+        g.fillStyle = P.shine;
+        for (let j = 0; j < 3; j++) { const d = ((t * 26 + j * (tw / 6)) % (tw / 2)) | 0; g.fillRect(tx + d, ty, 1, 1); g.fillRect(tx + tw - 1 - d, ty, 1, 1); }
+      }
+      // Drips running down the face of the floor at its edges.
+      if (amt >= 4) for (let j = 0; j < (amt >= 12 ? 2 : 1); j++) {
+        const dx = j ? x0 + w - 2 - Math.floor(seed * 3) : x0 + 1 + Math.floor(seed * w * 0.3), L = 1 + Math.floor(k * 2.5 + hash(dx, 1.3) * 1.5);
+        g.fillStyle = P.deep; g.fillRect(dx, sy + 1, 1, L);
+        g.fillStyle = P.body; g.fillRect(dx, sy + L, 1, 1);
+        const dp = (t * 0.45 + seed + j * 0.5) % 1;
+        if (dp > 0.7) { g.fillStyle = P.drop; g.fillRect(dx, sy + L + 1 + Math.floor((dp - 0.7) * 14), 1, 1); }
+      }
+      if (drink) {
+        const a = actors?.find(q => q.id === by);
+        if (a && !a.dead) this.stream(g, P, cx, ty, a.x * S + ox, (a.y - 6) * S + oy, t, a.form === 'dark', seed, false);
+      }
+    }
+  }
+
+  // The bright drops in the streams of blood, for the emissive layer (optional: the streams are
+  // already drawn by drawPools; this makes them glow).
+  drawPoolsGlow(g, pools, actors, ox, oy, t) {
+    if (!pools?.length) return;
+    const P = this.gore === 0 ? POOL.shadow : POOL.blood;
+    for (const p of pools) {
+      const by = poolBy(p), amt = +poolAmt(p) || 0;
+      if (!(by >= 0) || !(amt > 0.05)) continue;
+      const a = actors?.find(q => q.id === by);
+      if (!a || a.dead) continue;
+      const k = Math.min(1, amt / 20), w = Math.max(2, Math.round(3 + 27 * Math.pow(k, 0.7))), h = amt < 2.5 ? 1 : amt < 9 ? 2 : 3;
+      const sy = Math.round(poolY(p) * S + oy), ty = sy - 1 - Math.min(h - 1, Math.floor((w - 2) / (2 * Math.max(1, Math.round(w * 0.16)))));
+      this.stream(g, P, poolX(p) * S + ox, ty, a.x * S + ox, (a.y - 6) * S + oy, t, a.form === 'dark', hash(Math.round(poolX(p) / 8), 3.7), true);
+    }
+  }
+
+  // A stream of blood from a pool (x0, y0) arcing up into Nox (x1, y1): a thin wavering ribbon with
+  // drops riding along it, a little column rising off the pool where it leaves; faster and fuller as
+  // DARK NOX. glow: only the bright drops.
+  stream(g, P, x0, y0, x1, y1, t, dark, seed, glow) {
+    const dist = Math.hypot(x1 - x0, y1 - y0), mx = (x0 + x1) / 2, my = Math.min(y0, y1) - 6 - dist * 0.22;
+    const at = u => { const a = 1 - u; return [a * a * x0 + 2 * a * u * mx + u * u * x1, a * a * y0 + 2 * a * u * my + u * u * y1]; };
+    const n = Math.max(6, Math.round(dist / 1.6)), speed = dark ? 1.9 : 1.1, wob = dark ? 1.4 : 1;
+    if (!glow) {
+      g.fillStyle = P.rim;
+      for (let i = 0; i <= n; i++) {
+        const u = i / n, [x, y] = at(u), o = Math.sin(u * 11 - t * 16 + seed * 6) * wob * Math.sin(u * Math.PI);
+        g.fillRect(Math.round(x), Math.round(y + o), 1, dark && u > 0.08 && u < 0.92 ? 2 : 1);
+      }
+      // Where it leaves the pool: a column pulled up off the surface.
+      g.fillStyle = P.body;
+      g.fillRect(Math.round(x0) - 1, Math.round(y0) - 1, 3, 1);
+      g.fillRect(Math.round(x0), Math.round(y0) - 2 - (Math.floor(t * 20) & 1), 1, 2);
+    }
+    const m = Math.max(4, Math.round(dist / (dark ? 7 : 10)));
+    for (let j = 0; j < m; j++) {
+      const u = (j / m + t * speed + seed) % 1, [x, y] = at(u), o = Math.sin(u * 11 - t * 16 + seed * 6) * wob * Math.sin(u * Math.PI);
+      const big = j % 3 === 0 && u > 0.1 && u < 0.85;
+      g.fillStyle = glow ? (big ? P.hot : P.drop) : big ? P.drop : P.top;
+      g.fillRect(Math.round(x), Math.round(y + o) - (big ? 1 : 0), big ? 2 : 1, big ? 2 : 1);
+    }
   }
 
   drawParts(g, ox, oy, t, which) {
@@ -487,6 +828,20 @@ export class DarkNoxFX {
           if (!pass) dot(P.black, x - 1, y - 1, wd + 2);
           else dot(d > L - 2 ? P.core : wd > 2 ? P.deep : wd > 1 ? P.mid : P.hot, x, y, wd);
         }
+      } else if (p.k === 'fleck' || p.k === 'fdrop') {
+        // Blood flung off the flying blade and off its cuts.
+        if (u > 0.75 && Math.floor(p.t * 30) % 2) continue;
+        dot(u < 0.25 && p.k === 'fleck' ? P.core : u < 0.55 ? P.hot : P.mid, p.x, p.y, 1, Math.abs(p.vy) > 90 ? 2 : 1);
+      } else if (p.k === 'wisp') {
+        // Dark mist curling up off the blade.
+        dot(u < 0.3 ? P.deep : u < 0.7 ? P.mist : P.black, p.x, p.y);
+      } else if (p.k === 'swirl') {
+        // Blood winding in to where the scythe re-forms.
+        const e = 1 - ease(u), r = p.r0 * e, an = p.a0 + p.dir * u * 6;
+        g.globalAlpha = Math.min(1, u * 4);
+        dot(u > 0.6 ? P.hot : P.mid, p.x + Math.cos(an) * r, p.y + Math.sin(an) * r * 0.8);
+        dot(P.deep, p.x + Math.cos(an - p.dir * 0.3) * (r + 2), p.y + Math.sin(an - p.dir * 0.3) * (r + 2) * 0.8);
+        g.globalAlpha = 1;
       } else if (p.k === 'pool') {
         // Spreads out from under him, then soaks into the floor from the edges in.
         const w = Math.round(4 + 14 * ease(Math.min(1, u * 3))), lim = u < 0.45 ? 1 : 1 - (u - 0.45) / 0.55;
@@ -514,25 +869,44 @@ export function darkLights(f, t) {
   return out;
 }
 
+// The flying scythe's red light (view pixels, without the shake): a glow round it, stronger while
+// it hunts and flaring on a cut; dim where it lies when he is dead.
+export function familiarLights(a, t, gore = 2) {
+  const F = a?.fam;
+  if (!F || famCaught(a)) return [];
+  const color = gore === 0 ? '#9a5aff' : '#ff2a40', x = F.x * S, y = F.y * S;
+  if (F.st === 'lost') return [{ x, y, r: 16, color, i: 0.2 + 0.1 * heartbeat(t, 0.8), noRim: true }];
+  const hunt = F.st === 'hunt', strike = F.st === 'strike';
+  return [{ x, y, r: strike ? 48 : hunt ? 36 : 26, color: strike ? (gore === 0 ? '#c09aff' : '#ff5a6a') : color, i: strike ? 1.1 : hunt ? 0.75 : 0.42 + 0.12 * heartbeat(t) }];
+}
+
 // Nox's blood meter on his HUD card: a little vial of blood filling from the left, with a drop
 // gathering under its front and falling. Full, it beats like a heart, a glint runs along it and a
 // drop beside it beats too: K is ready. While he is DARK NOX it drains (k is the time left) and its
 // surface burns.
-export function bloodMeter(g, x, y, w, k, { time = 0, dark = false, full = false, gore = 2 } = {}) {
+// paused: he is dead and the time holds (the blood stands still, dim); low: the last seconds, the
+// vial flashes.
+export function bloodMeter(g, x, y, w, k, { time = 0, dark = false, full = false, gore = 2, paused = false, low = false } = {}) {
   k = clamp01(k);
   const P = gore === 0
     ? { glass: '#160c22', shine: '#2a1c40', tick: '#3a2a56', top: '#b97aff', body: '#7a2ac0', low: '#3c1260', meniscus: '#efe0ff', glow: '#9a5aff', hot: '#d8b8ff' }
     : { glass: '#1e0a14', shine: '#341626', tick: '#4a2232', top: '#ff4a64', body: '#c8142e', low: '#7a0a1e', meniscus: '#ffd0d8', glow: '#ff3048', hot: '#ff8a9a' };
-  const beat = full && !dark ? heartbeat(time, 1.3) : 0;
+  const beat = full && !dark ? heartbeat(time, 1.3) : 0, alarm = low && !paused && Math.floor(time * 6) % 2 === 0;
   const px = (c, xx, yy, ww = 1, hh = 1) => { g.fillStyle = c; g.fillRect(xx, yy, ww, hh); };
   // The vial: a dark glass tube with a faint shine and quarter marks.
-  px(beat > 0.5 ? '#5a0a1e' : '#0b0812', x - 1, y - 1, w + 2, 4);
+  px(beat > 0.5 || alarm ? '#5a0a1e' : '#0b0812', x - 1, y - 1, w + 2, 4);
   px(P.glass, x, y, w, 2);
   for (let i = 2; i < w; i += 4) px(P.shine, x + i, y, 2, 1);
   for (let q = 1; q < 4; q++) px(P.tick, x + Math.round((w * q) / 4), y + 1, 1, 1);
   const fw = Math.round(w * k);
   if (fw > 0) {
-    if (dark) {
+    if (dark && paused) {
+      // He is dead: the dark blood stands still, its surface a dull ember.
+      px('#2a0410', x, y, fw, 2);
+      px('#5a0414', x, y, fw, 1);
+      for (let i = 1; i < fw; i += 3) px('#7a0820', x + i, y, 1, 1);
+      px('#a01028', x + fw - 1, y, 1, 2);
+    } else if (dark) {
       // Black blood, its surface on fire, draining from the right.
       px('#3a0410', x, y, fw, 2);
       px('#7a0418', x, y + 1, fw, 1);
@@ -562,7 +936,7 @@ export function bloodMeter(g, x, y, w, k, { time = 0, dark = false, full = false
     }
   }
   // A drop gathering under the front of the blood, and falling.
-  if (fw > 1 && !full) {
+  if (fw > 1 && !full && !paused) {
     const ph = (time * 0.8) % 1, dx = x + fw - 2;
     if (ph < 0.55) { if (ph > 0.2) px(dark ? '#9a0a20' : P.body, dx, y + 2, 1, 1); }
     else if (ph < 0.8) px(dark ? '#e0142e' : P.top, dx, y + 2 + Math.floor((ph - 0.55) * 12), 1, 1);

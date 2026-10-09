@@ -5,7 +5,7 @@ import { drawText, measure } from '../engine/font.js';
 import { FIGHTERS } from '../sim/fighters.js';
 import { TOUCH_BUTTONS } from '../engine/input.js';
 import { WEAPON_INFO } from '../sim/weapons.js';
-import { SPECIALS } from '../sim/moves.js';
+import { SPECIALS, DARK } from '../sim/moves.js';
 import { MAPS } from '../sim/map.js';
 import { bloodMeter } from './dark-nox.js';
 
@@ -104,10 +104,11 @@ export class HUD {
       // As the beast, Juma's bar is the time she has left in that form.
       const beast = a.form === 'beast', cd = beast ? clamp((a.formT || 0) / SPECIALS[3].form, 0, 1) : clamp(1 - a.abilityCd / f.cooldown, 0, 1);
       if (a.type === 2) this.watchMeter(g, cx + 29, 27, cd, time);
-      // Nox's meter is the blood he has drunk; as DARK NOX, the time he has left in that form.
+      // Nox's meter is the blood he has drunk; as DARK NOX, the time he has left in that form (it
+      // holds while he is dead, and burns faster to the eye in its last seconds).
       else if (a.type === 4) {
-        const dark = a.form === 'dark', k = dark ? clamp((a.formT || 0) / 12, 0, 1) : clamp((a.blood || 0) / 100, 0, 1);
-        bloodMeter(g, cx + 29, 27, 58, k, { time, dark, full: !dark && k >= 1 });
+        const dark = a.form === 'dark', k = dark ? clamp((a.formT || 0) / DARK.time, 0, 1) : clamp((a.blood || 0) / (DARK.max || 100), 0, 1);
+        bloodMeter(g, cx + 29, 27, 58, k, { time, dark, full: !dark && k >= 1, gore: this.r.fx?.gore ?? 2, paused: dark && !!a.dead, low: dark && (a.formT || 0) < 5 });
       } else bar(g, cx + 29, 27, 58, 1, cd, beast ? '#ff8a3a' : cd >= 1 ? '#f2c35b' : '#8a7aa8');
       if (mode !== 'sandbox' && mode !== 'attract') {
         for (let k = 0; k < killsToWin; k++) {

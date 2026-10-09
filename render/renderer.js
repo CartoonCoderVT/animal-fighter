@@ -1054,6 +1054,7 @@ export class Renderer {
       for (const f of figures) if (f.a.type === 4 && (f.a.form === 'dark' || f.a.act === 'darkRise' || f.a.act === 'darkFade')) this.darkNox.drawFront(eg, f, ox, oy, st);
       this.darkNox.drawEffects(eg, ox, oy, st);
       if (this.darkNox.drawFamiliar) for (const a of state.actors) if (a.fam) this.darkNox.drawFamiliar(eg, a, ox, oy, st, true);
+      if (state.pools?.length && this.darkNox.drawPoolsGlow) this.darkNox.drawPoolsGlow(eg, state.pools.map(p => (Array.isArray(p) ? p : [p.x, p.y, p.amt, p.by])), state.actors, ox, oy, st);
     }
     for (const f of figures) {
       if (f.a.type === 4 && f.a.act === 'swarm') this.drawSwarm(eg, f, ox, oy, st);

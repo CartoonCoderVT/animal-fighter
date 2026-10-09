@@ -61,8 +61,93 @@ export const BEAST = {
   joint: { head: [2, -12], armF: [5, -10], armB: [1, -11], footF: [3, -2], footB: [-3, -2] },
   eye: [2, -8]
 };
-// DARK NOX: Nox himself (same id, so his scarf moves the same) in his dark palette, cached apart.
-export const DARK_NOX = { ...castOf('bat'), palette: DARK_NOX_PALETTE, paletteId: 'batDark' };
+// DARK NOX's wings: bat wings grown out of his back, built from bones once at load. Each pose is
+// the wrist, the thumb claw, three finger tips (leading to trailing) and where the membrane meets
+// his flank, in cells from the wing root (upper back), x ahead, y down. The membrane is filled
+// between the bones with a scalloped trailing edge, panel by panel in two shades of blood; the
+// bones are dark with a lit leading edge and a pale hooked thumb. `far` is the other wing, seen
+// past him (a shade darker, drawn first).
+const WING_POSES = {
+  // Folded on his back like a cloak, a hump over the shoulders with the thumb hooked up.
+  fold: [{ w: [-3, -5], th: [-2, -7], f: [[-6, 1], [-5, 5], [-3, 7]], hip: [0, 7] }],
+  // Half open and raised behind him: the feral guard.
+  half: [{ w: [-6, -7], th: [-5, -9], f: [[-13, -6], [-13, -1], [-9, 3]], hip: [-1, 6] }],
+  // Swept back and low for speed: running, dashing, lunging.
+  back: [{ w: [-7, -3], th: [-7, -5], f: [[-14, -2], [-13, 2], [-8, 4]], hip: [-1, 5] }],
+  // Spread wide behind him.
+  open: [{ w: [-7, -6], th: [-6, -8], f: [[-16, -6], [-16, 0], [-11, 4]], hip: [-1, 6] }],
+  // Raised high over him (the jump, the dive gathering, the uppercut).
+  up: [{ w: [-4, -10], th: [-3, -12], f: [[-11, -15], [-14, -8], [-10, -2]], hip: [-1, 5] }, { far: true, w: [0, -17], th: [1, -19], f: [[5, -23], [9, -19], [8, -11]], hip: [2, 0] }],
+  // Flung open as far as they go: the finisher, the pop of the transformation, the bite.
+  flare: [{ w: [-8, -9], th: [-7, -11], f: [[-17, -13], [-19, -5], [-14, 1]], hip: [-1, 6] }, { far: true, w: [2, -17], th: [3, -19], f: [[8, -22], [12, -18], [11, -10]], hip: [2, 0] }],
+  // Wrapped forward round the prey while he drinks.
+  wrap: [{ w: [-3, -9], th: [-2, -11], f: [[-8, -9], [-10, -3], [-7, 2]], hip: [-1, 6] }, { far: true, w: [8, -10], th: [9, -12], f: [[16, -6], [15, 0], [11, 4]], hip: [3, 3] }]
+};
+function wingRows({ w, th, f, hip }, far) {
+  // The membrane outline: root, wrist, each finger tip with a scallop pulled back between them.
+  const poly = [[0, 0], w];
+  const tips = [...f, hip];
+  for (let i = 0; i < tips.length; i++) {
+    poly.push(tips[i]);
+    if (i < tips.length - 1) {
+      const [ax, ay] = tips[i], [bx, by] = tips[i + 1], mx = (ax + bx) / 2, my = (ay + by) / 2;
+      poly.push([mx + (w[0] - mx) * 0.22, my + (w[1] - my) * 0.22]);
+    }
+  }
+  const xs = [...poly.map(p => p[0]), th[0]], ys = [...poly.map(p => p[1]), th[1]];
+  const x0 = Math.floor(Math.min(...xs)) - 1, y0 = Math.floor(Math.min(...ys)) - 1;
+  const W = Math.ceil(Math.max(...xs)) - x0 + 2, H = Math.ceil(Math.max(...ys)) - y0 + 2;
+  const grid = Array.from({ length: H }, () => new Array(W).fill('.'));
+  const inside = (px, py) => {
+    let on = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const [xi, yi] = poly[i], [xj, yj] = poly[j];
+      if ((yi > py) !== (yj > py) && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi) on = !on;
+    }
+    return on;
+  };
+  // Panels between the bones alternate bright and deep blood; the far wing is all deep blood.
+  const wrap = v => Math.atan2(Math.sin(v), Math.cos(v));
+  const a0 = Math.atan2(f[0][1] - w[1], f[0][0] - w[0]);
+  const rel = (x, y) => wrap(Math.atan2(y - w[1], x - w[0]) - a0);
+  const fa = [...f.slice(1), hip].map(([x, y]) => rel(x, y)), sweep = Math.sign(fa[fa.length - 1]) || 1;
+  const lit = far ? 'y' : 'r', dim = 'y';
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const cx = x + x0 + 0.5, cy = y + y0 + 0.5;
+    if (!inside(cx, cy)) continue;
+    const d = rel(cx, cy) * sweep;
+    let panel = 0;
+    for (const v of fa) if (d > v * sweep) panel++;
+    grid[y][x] = panel % 2 ? dim : lit;
+  }
+  const line = (ax, ay, bx, by, c, c2 = c) => {
+    const n = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay) * 1.5));
+    for (let k = 0; k <= n; k++) {
+      const x = Math.round(ax + ((bx - ax) * k) / n) - x0, y = Math.round(ay + ((by - ay) * k) / n) - y0;
+      if (y >= 0 && y < H && x >= 0 && x < W) grid[y][x] = k === n ? c2 : c;
+    }
+  };
+  // Finger bones, the forearm (lit along its top), and the hooked thumb with a pale claw.
+  for (const [fx, fy] of f) line(w[0], w[1], fx, fy, far ? '9' : '2');
+  line(0, 0, w[0], w[1], far ? '9' : '2');
+  line(0, -1, w[0], w[1] - 1, far ? '2' : '1');
+  line(w[0], w[1], th[0], th[1], far ? '2' : '1', 'w');
+  return { m: grid.map(r => r.join('')), piv: [-x0, -y0] };
+}
+const WINGS = Object.fromEntries(Object.entries(WING_POSES).map(([k, list]) => [k, list.map(s => ({ ...wingRows(s, s.far), far: !!s.far })).sort((a, b) => b.far - a.far)]));
+
+// DARK NOX: Nox himself (same id, so his scarf moves the same) in his dark palette, cached apart,
+// with the bat wings on his back (the frame's `wing` picks the pose; folded when it names none).
+// His arms are lit along the outside so the blows read against his dark body, and end in two pale
+// hooked claws just past the hand (the hand stays at cell 3, where the blood talons grow from).
+const DARK_ARM = [
+  '11.',
+  '112',
+  '122',
+  '.13',
+  'w.w'
+];
+export const DARK_NOX = { ...castOf('bat'), parts: { ...PARTS.bat, arm: DARK_ARM }, palette: DARK_NOX_PALETTE, paletteId: 'batDark', wings: { root: [-3, -8], poses: WINGS } };
 export const castFor = (type, form) => (form === 'beast' && CAST[type]?.id === 'ocelot' ? BEAST : form === 'dark' && CAST[type]?.id === 'bat' ? DARK_NOX : CAST[type]);
 const anchorsOf = ch => ch?.anchor || ANCHOR;
 const jointsOf = ch => ch?.joint || JOINT;
@@ -320,7 +405,7 @@ function stumpsFor(severed, ch) {
   return out;
 }
 
-const DRAW = ['tail', 'armB', 'footB', 'blob', 'body', 'footF', 'head', 'scarf', 'armF'];
+const DRAW = ['wings', 'tail', 'armB', 'footB', 'blob', 'body', 'footF', 'head', 'scarf', 'armF'];
 
 // Static scarf ends (ragdolls, previews without motion), offset with the body.
 function scarfPoints(ch, frame, shape) {
@@ -345,6 +430,15 @@ export function composeChars(ch, frame = {}, opts = {}) {
   const bodyOn = want('body');
   const order = frame.front ? DRAW.filter(s => s !== frame.front).concat(frame.front) : DRAW;
   for (const step of order) {
+    if (step === 'wings') {
+      // Wings ride on the body, like the scarf.
+      const set = bodyOn && ch.wings && frame.wing !== false ? ch.wings.poses[frame.wing || 'fold'] || ch.wings.poses.fold : null;
+      if (set) {
+        const [bdx = 0, bdy = 0] = frame.body || [], [rx, ry] = ch.wings.root;
+        for (const wg of set) g.stamp(wg.m, rx + bdx - wg.piv[0], ry + bdy - wg.piv[1]);
+      }
+      continue;
+    }
     if (step === 'tail') {
       if (bodyOn && ch.tail && !ch.tail.blob && frame.tail !== false) tube(g, tailPoints(ch, frame), ch.tail);
       if (bodyOn && ch.scarf && frame.scarf !== false) for (const s of ch.scarf.strands) tube(g, scarfPoints(ch, frame, s), ch.scarf);

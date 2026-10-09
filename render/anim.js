@@ -117,6 +117,98 @@ export const FRAMES = {
   beamCA1: { armF: [3, 0, -56.25], armB: [3, -1, -67.5], body: [-1, 1], head: [0, 1, 11.25], footF: [1, -2], footB: [-1, -1] },
   beamFA: { armF: [3, 0, -56.25], armB: [2, -1, -67.5], body: [-3, -1], head: [-3, -2, -22.5], footF: [1, -2], footB: [-1, -2] },
   beamRA: { armF: [2, 0, -45], armB: [0, -1, -30], body: [-1, 0], head: [-1, 0], footF: [1, -2], footB: [-1, -1] },
+  // DARK NOX. Bare-clawed and feral: no scythe in his hands (it flies on its own), so every blow
+  // is a claw, the body thrown after it, the bat wings on his back beating with each one (`wing`
+  // picks their pose, see pixel-data.js). Almost no wind-up: a coil of a frame or two, the snap,
+  // a savage impact pose leaning far into the rival, and he is already loaded for the next.
+  // His guard: hunched right over, head low and forward, both claws out, wings half open, panting.
+  dkIdle1: { head: [2, 3, 22.5], body: [1, 1], armF: [4, 1, -65], armB: [3, 0, -95], footF: [3, 0], footB: [-3, 0], wing: 'half' },
+  dkIdle2: { head: [2, 4, 22.5], body: [1, 2], armF: [4, 2, -55], armB: [3, 1, -85], footF: [3, 0], footB: [-3, 0], wing: 'half' },
+  // The run: a low lurching charge, head down, claws pumping, wings swept back.
+  dkRun1: { head: [3, 2, 22.5], body: [1, 1], footF: [3, 0], footB: [-3, -1], armF: [4, 1, -40], armB: [1, 0, 30], wing: 'back', tailDeg: 8 },
+  dkRunP: { head: [3, 1, 22.5], body: [1, 0], footF: [1, -1], footB: [0, -2], armF: [3, 0, -70], armB: [2, -1, -10], wing: 'back', tailDeg: 0 },
+  dkRun2: { head: [3, 2, 22.5], body: [1, 1], footF: [-2, -1], footB: [3, 0], armF: [1, 1, 30], armB: [4, 0, -40], wing: 'back', tailDeg: -8 },
+  dkRunP2: { head: [3, 1, 22.5], body: [1, 0], footF: [0, -2], footB: [1, -1], armF: [2, 0, -10], armB: [3, -1, -70], wing: 'back', tailDeg: 0 },
+  // Rend: the near claw raked down through the rival.
+  dRnA: { head: [0, 1, 11.25], body: [0, 0], armF: [-2, -2, 150], armB: [3, 0, -70], footF: [3, 0], footB: [-3, 0], wing: 'half' },
+  dRnX: { head: [5, -1, 11.25], body: [3, -1], armF: [4, -3, -125], armB: [-1, -1, 50], footF: [4, 0], footB: [-5, -1, 45], wing: 'back' },
+  dRnI: { head: [6, 2, 33.75], body: [4, 1], armF: [6, 1, -45], armB: [-2, 0, 80], footF: [5, 0], footB: [-5, 0, 22.5], wing: 'back' },
+  dRnF: { head: [4, 2, 22.5], body: [3, 1], armF: [5, 2, 10], armB: [-1, 0, 40], footF: [4, 0], footB: [-4, 0], wing: 'half' },
+  dRnR: { head: [3, 2, 22.5], body: [2, 1], armF: [4, 1, -50], armB: [3, 0, -80], footF: [3, 0], footB: [-3, 0], wing: 'half' },
+  // Rake: the far claw backhanded up from the floor, chin up behind it.
+  dRkA: { head: [3, 3, 22.5], body: [2, 2], armB: [1, 2, 30], armF: [4, 0, -60], footF: [4, 0], footB: [-3, 0], wing: 'half' },
+  dRkX: { head: [3, 0, -11.25], body: [2, -1], armB: [4, -2, -110], armF: [0, -1, 60], footF: [3, 0], footB: [-3, -1, 22.5], front: 'armB', wing: 'half' },
+  dRkI: { head: [3, -1, -22.5], body: [2, -2], armB: [5, -4, -155], armF: [-1, -1, 70], footF: [3, -1], footB: [-3, -1, 22.5], front: 'armB', wing: 'up' },
+  dRkF: { head: [2, 0, -11.25], body: [1, -1], armB: [3, -4, 170], armF: [0, 0, 40], footF: [3, 0], footB: [-3, 0], front: 'armB', wing: 'open' },
+  dRkR: { head: [3, 2, 11.25], body: [1, 1], armF: [4, 1, -60], armB: [3, 0, -90], footF: [3, 0], footB: [-3, 0], wing: 'half' },
+  // Frenzy: four claws, near, far, near rising, far crashing down, each arm cocking as the other
+  // lands, stepping further in with every one, the wings beating.
+  dFzA: { head: [2, 2, 22.5], body: [1, 1], armF: [0, -2, 150], armB: [3, 0, -60], footF: [3, 0], footB: [-3, 0], wing: 'half' },
+  dFz1X: { head: [4, 1, 22.5], body: [3, 0], armF: [4, -2, -130], armB: [1, -1, 60], footF: [4, 0], footB: [-4, -1, 22.5], wing: 'open' },
+  dFz1I: { head: [5, 2, 22.5], body: [3, 1], armF: [6, 1, -40], armB: [0, -2, 140], footF: [4, 0], footB: [-4, 0], wing: 'back' },
+  dFz2X: { head: [4, 1, 11.25], body: [3, 0], armB: [4, -2, -125], armF: [2, 0, 40], footF: [4, 0], footB: [-4, -1, 22.5], front: 'armB', wing: 'open' },
+  dFz2I: { head: [5, 2, 33.75], body: [4, 1], armB: [6, 1, -40], armF: [0, 2, 60], footF: [4, 0], footB: [-4, 0], front: 'armB', wing: 'back' },
+  dFz3X: { head: [4, 0, 0], body: [3, 0], armF: [5, 0, -80], armB: [0, -2, 150], footF: [4, 0], footB: [-4, -1, 22.5], wing: 'open' },
+  dFz3I: { head: [4, -1, -22.5], body: [3, -1], armF: [5, -4, -155], armB: [-1, -3, 160], footF: [4, 0], footB: [-4, -1, 22.5], wing: 'up' },
+  dFz4X: { head: [5, 0, 11.25], body: [4, 0], armB: [5, -3, -140], armF: [3, -1, -20], footF: [5, 0], footB: [-4, -1, 33.75], front: 'armB', wing: 'flare' },
+  dFz4I: { head: [6, 3, 33.75], body: [4, 2], armB: [7, 2, -30], armF: [2, 1, 30], footF: [5, 0], footB: [-4, 0, 22.5], front: 'armB', wing: 'back' },
+  dFzF: { head: [5, 3, 22.5], body: [4, 2], armB: [6, 3, 0], armF: [2, 1, 20], footF: [5, 0], footB: [-4, 0], front: 'armB', wing: 'half' },
+  // Reap: sunk all the way down, then up through the rival behind the near claw, wings raised.
+  dRpA: { head: [1, 4, 22.5], body: [0, 3], armF: [1, 2, 30], armB: [0, 2, -20], footF: [4, 0], footB: [-4, 0], wing: 'fold' },
+  dRpA2: { head: [0, 5, 33.75], body: [-1, 3], armF: [0, 3, 45], armB: [1, 2, -30], footF: [4, 0], footB: [-4, 0], wing: 'fold' },
+  dRpX: { head: [2, -3, -22.5], body: [1, -2], armF: [4, -5, -160], armB: [0, -1, 50], footF: [2, -1], footB: [-2, 0], wing: 'up' },
+  dRpI: { head: [2, -4, -33.75], body: [1, -3], armF: [3, -7, 180], armB: [-1, -2, 60], footF: [1, -2], footB: [-1, -1, 22.5], wing: 'up' },
+  dRpF: { head: [2, -2, -11.25], body: [1, -2], armF: [3, -6, -170], armB: [0, -1, 40], footF: [2, -1], footB: [-2, 0], wing: 'open' },
+  dRpR: { head: [2, 2, 11.25], body: [1, 1], armF: [3, 0, -80], armB: [2, 0, -60], footF: [3, 0], footB: [-3, 0], wing: 'half' },
+  // Harvest: both claws dragged through the floor ahead, then ripped up and flung wide as the stakes
+  // burst out of the ground, wings flared all the way, roaring.
+  dHvA: { head: [3, 4, 33.75], body: [2, 3], armF: [4, 3, -20], armB: [3, 3, -10], footF: [4, 0], footB: [-4, 0], wing: 'fold' },
+  dHvA2: { head: [3, 5, 33.75], body: [2, 3], armF: [5, 4, -10], armB: [4, 4, 0], footF: [4, 0], footB: [-4, 0], wing: 'half' },
+  dHvX: { head: [2, -1, -11.25], body: [1, -1], armF: [5, -3, -125], armB: [4, -3, -140], footF: [4, 0], footB: [-4, -1, 22.5], wing: 'open' },
+  dHvI: { head: [1, -2, -33.75], body: [0, -2], armF: [3, -3, -140], armB: [-4, -3, 140], footF: [4, 0], footB: [-4, 0], wing: 'flare' },
+  dHvF: { head: [1, -1, -22.5], body: [0, -1], armF: [3, -2, -125], armB: [-4, -2, 125], footF: [4, 0], footB: [-4, 0], wing: 'flare' },
+  dHvR: { head: [2, 2, 11.25], body: [1, 1], armF: [4, 0, -70], armB: [2, 0, -60], footF: [3, 0], footB: [-3, 0], wing: 'half' },
+  // In the air: twin claws, near then far.
+  daA: { head: [-1, 0, -11.25], body: [-1, 0], armF: [-3, -2, 150], armB: [2, 0, -40], footF: [2, -2], footB: [0, -1], wing: 'up' },
+  daX: { head: [3, -1, 11.25], body: [2, -1], armF: [4, -2, -120], armB: [-1, -1, 60], footF: [1, -2], footB: [-2, -2], wing: 'back' },
+  daI: { head: [4, 0, 22.5], body: [2, 0], armF: [5, 1, -45], armB: [-2, -2, 140], footF: [1, -2], footB: [-3, -2, 22.5], wing: 'back' },
+  daX2: { head: [3, -1, 11.25], body: [2, -1], armB: [4, -2, -120], armF: [-1, 0, 40], footF: [2, -2], footB: [-2, -2], front: 'armB', wing: 'open' },
+  daI2: { head: [4, 0, 22.5], body: [2, 0], armB: [5, 1, -45], armF: [-2, -1, 70], footF: [2, -2], footB: [-3, -2, 22.5], front: 'armB', wing: 'back' },
+  daR: { head: [1, 0], body: [0, 0], armF: [2, 0, -80], armB: [2, -1, -100], footF: [1, -2], footB: [-1, -1], wing: 'open' },
+  // The vortex: curled, then spinning with both claws and the wings out.
+  dVxA: { head: [0, 1, 11.25], body: [0, 1], armF: [1, 0, 30], armB: [0, 0, -30], footF: [1, -2], footB: [-1, -2], wing: 'fold' },
+  dVx: { head: [0, -1], armF: [4, -1, -90], armB: [-4, -1, 90], footF: [1, -2], footB: [-1, -1], wing: 'open' },
+  // The dive: gathered up under raised wings, then head first, claws first, onto them.
+  dDvA: { head: [-1, -1, -11.25], body: [-1, -1], armF: [-1, -4, 165], armB: [-2, -4, 155], footF: [1, -2], footB: [0, -2], wing: 'up' },
+  dDvA2: { head: [-2, -2, -22.5], body: [-1, -2], armF: [-2, -5, 170], armB: [-3, -4, 160], footF: [1, -2], footB: [-1, -2], wing: 'flare' },
+  dDvX: { head: [3, 3, 56.25], body: [2, 1], armF: [4, 3, -25], armB: [3, 3, -15], footF: [-2, -3, 56.25], footB: [-4, -2, 67.5], wing: 'up' },
+  dDvI: { head: [3, 3, 33.75], body: [2, 2], armF: [5, 4, -10], armB: [4, 4, 0], footF: [0, -2, 30], footB: [-2, -2, 45], front: 'armF', wing: 'up' },
+  dDvF: { head: [3, 3, 22.5], body: [2, 2], armF: [5, 4, -20], armB: [4, 3, -10], footF: [0, -2, 22.5], footB: [-2, -2, 33.75], wing: 'open' },
+  // The kiss: rearing up with the wings flung open, the lunge, the bite, wings closing round the
+  // prey while he gulps, then the head thrown back off them.
+  dKsA: { head: [-1, -1, -22.5], body: [-1, -1], armF: [1, -3, -150], armB: [-3, -3, 150], footF: [2, 0], footB: [-2, 0], wing: 'flare' },
+  dKsX: { head: [5, 0, 22.5], body: [3, 0], armF: [5, -1, -100], armB: [4, -2, -115], footF: [4, 0], footB: [-4, -1, 33.75], wing: 'back' },
+  dKsI: { head: [5, 1, 33.75], body: [3, 0], armF: [5, 0, -75], armB: [4, -1, -85], footF: [4, 0], footB: [-4, 0, 22.5], wing: 'wrap' },
+  dKsD: { head: [5, 2, 33.75], body: [3, 1], armF: [4, 1, -60], armB: [4, 0, -70], footF: [3, 0], footB: [-3, 0], wing: 'wrap' },
+  dKsD2: { head: [5, 3, 45], body: [3, 1], armF: [4, 1, -55], armB: [4, 1, -65], footF: [3, 0], footB: [-3, 0], wing: 'wrap' },
+  dKsI2: { head: [0, -2, -33.75], body: [0, -1], armF: [3, -3, -140], armB: [-3, -3, 140], footF: [3, 0], footB: [-3, 0], wing: 'flare' },
+  dKsR: { head: [2, 2, 11.25], body: [1, 1], armF: [4, 0, -70], armB: [3, 0, -90], footF: [3, 0], footB: [-3, 0], wing: 'half' },
+  // The execution: reared up over the downed rival, the claw raised, then down onto them, pinned.
+  dExA: { head: [0, -1, -11.25], body: [0, -1], armF: [1, -4, 170], armB: [2, -1, -60], footF: [3, 0], footB: [-3, 0], wing: 'up' },
+  dExA2: { head: [-1, -2, -22.5], body: [-1, -2], armF: [0, -5, 165], armB: [2, -2, -70], footF: [3, -1], footB: [-2, 0], wing: 'flare' },
+  dExX: { head: [3, 2, 33.75], body: [2, 1], armF: [5, 0, -60], armB: [1, 0, 40], footF: [4, 0], footB: [-4, -1, 22.5], wing: 'back' },
+  dExI: { head: [3, 5, 45], body: [2, 3], armF: [5, 4, -10], armB: [0, 2, 60], footF: [4, 0], footB: [-4, 0], wing: 'open' },
+  dExF: { head: [3, 4, 33.75], body: [2, 3], armF: [5, 4, -15], armB: [0, 2, 50], footF: [4, 0], footB: [-4, 0], wing: 'half' },
+  // The phantom: coiled to burst into bats, then out of them past the rival, the claw out.
+  dPhA: { head: [-1, 3, 11.25], body: [-1, 2], armF: [-2, 1, 80], armB: [-2, 0, 90], footF: [3, 0], footB: [-3, 0], wing: 'fold' },
+  dPhX: { head: [3, 1, 22.5], body: [2, 1], armF: [5, 0, -90], armB: [-3, -1, 80], footF: [-2, 0, 30], footB: [-3, -1, 50], wing: 'back' },
+  dPhI: { head: [4, 3, 22.5], body: [3, 2], armF: [6, 2, -60], armB: [-3, 0, 90], footF: [5, 0], footB: [-4, 0, 22.5], wing: 'open' },
+  dPhF: { head: [4, 3, 11.25], body: [3, 2], armF: [5, 3, -20], armB: [-2, 0, 70], footF: [5, 0], footB: [-4, 0], wing: 'half' },
+  // Turning dark: the pop, arms and wings flung open, roaring (two poses a pixel apart, alternated).
+  dPop: { head: [1, -2, -33.75], body: [0, -1], armF: [3, -2, -135], armB: [-4, -2, 135], footF: [4, 0], footB: [-4, 0], wing: 'flare' },
+  dPop2: { head: [1, -3, -33.75], body: [0, -2], armF: [3, -3, -140], armB: [-4, -3, 140], footF: [4, 0], footB: [-4, 0], wing: 'flare' },
+  // Turning back: the wings folding away, the far hand up to catch the scythe flying home.
+  dCatch: { head: [1, 1, -11.25], body: [0, 1], armF: [2, 0, -100], armB: [-1, -2, 160], footF: [3, 0], footB: [-3, 0], wing: 'fold' },
   // Mingau
   scratchA0: { armF: [-1, -1, 150], body: [-1, 0], head: [-1, 0] },
   scratchA1: { armF: [2, 0, -70], body: [1, 0], head: [1, 0], footF: [1, 0] },
@@ -396,6 +488,21 @@ const KEYS = {
   nAirClaw: [[0, 'nAcA', 'Angry'], [0.22, 'nAcX', 'Angry'], [0.3, 'nAcI', 'Angry'], [0.46, 'nAcA2', 'Angry'], [0.56, 'nAcX2', 'Angry'], [0.62, 'nAcI2', 'Angry'], [0.84, 'nAcR', '']],
   nAirScythe: [[0, 'nScA', 'Angry'], [0.2, 'nScA2', 'Angry'], [0.36, 'nScX', 'Angry'], [0.45, 'nScI', 'Angry'], [0.66, 'nScF', 'Angry']],
   dashAtk: [[0, 'nCutX', 'Angry'], [0.6, 'nCutF', 'Angry']],
+  // DARK NOX, bare-clawed: the snap lands almost at once and the impact pose sits exactly on the
+  // move's hit time (see DARK_MOVES). The fourth field is the claw that is striking ('F' near,
+  // 'B' far, 'FB' both), for the talons and smears drawn over him (darkClaw below).
+  dRend: [[0, 'dRnA', 'Angry'], [0.16, 'dRnX', 'Angry', 'F'], [0.4, 'dRnI', 'Open', 'F'], [0.62, 'dRnF', 'Angry', 'F'], [0.82, 'dRnR', 'Angry']],
+  dRake: [[0, 'dRkA', 'Angry'], [0.2, 'dRkX', 'Angry', 'B'], [0.4, 'dRkI', 'Open', 'B'], [0.62, 'dRkF', 'Angry', 'B'], [0.84, 'dRkR', 'Angry']],
+  dFrenzy: [[0, 'dFzA', 'Angry'], [0.07, 'dFz1X', 'Angry', 'F'], [0.15, 'dFz1I', 'Open', 'F'], [0.27, 'dFz2X', 'Angry', 'B'], [0.35, 'dFz2I', 'Open', 'B'],
+    [0.47, 'dFz3X', 'Angry', 'F'], [0.55, 'dFz3I', 'Open', 'F'], [0.66, 'dFz4X', 'Angry', 'B'], [0.75, 'dFz4I', 'Open', 'B'], [0.88, 'dFzF', 'Angry', 'B']],
+  dReap: [[0, 'dRpA', 'Angry'], [0.1, 'dRpA2', 'Angry'], [0.24, 'dRpX', 'Open', 'F'], [0.35, 'dRpI', 'Open', 'F'], [0.6, 'dRpF', 'Angry', 'F'], [0.84, 'dRpR', 'Angry']],
+  dHarvest: [[0, 'dHvA', 'Angry'], [0.16, 'dHvA2', 'Angry', 'FB'], [0.3, 'dHvX', 'Open', 'FB'], [0.4, 'dHvI', 'Open', 'FB'], [0.7, 'dHvF', 'Open', 'FB'], [0.88, 'dHvR', 'Angry']],
+  dAirClaw: [[0, 'daA', 'Angry'], [0.18, 'daX', 'Angry', 'F'], [0.3, 'daI', 'Open', 'F'], [0.5, 'daX2', 'Angry', 'B'], [0.62, 'daI2', 'Open', 'B'], [0.84, 'daR', 'Angry']],
+  dAirVortex: [[0, 'dVxA', 'Angry'], [0.1, 'dVx', 'Open', 'FB'], [0.86, 'dVx', 'Angry']],
+  dAirDive: [[0, 'dDvA', 'Angry'], [0.14, 'dDvA2', 'Open'], [0.28, 'dDvX', 'Open', 'FB'], [0.42, 'dDvI', 'Open', 'FB'], [0.72, 'dDvF', 'Angry', 'FB']],
+  dKiss: [[0, 'dKsA', 'Open'], [0.2, 'dKsX', 'Open', 'FB'], [0.3, 'dKsI', 'Open', 'FB'], [0.4, 'dKsD', 'Open', 'FB'], [0.66, 'dKsI2', 'Open'], [0.85, 'dKsR', 'Angry']],
+  dExecute: [[0, 'dExA', 'Angry'], [0.25, 'dExA2', 'Open'], [0.45, 'dExX', 'Angry', 'F'], [0.55, 'dExI', 'Open', 'F'], [0.75, 'dExF', 'Angry', 'F'], [0.9, 'dRnR', 'Angry']],
+  dPhantom: [[0, 'dPhA', 'Angry'], [0.1, 'dPhX', 'Angry', 'F'], [0.3, 'dPhI', 'Open', 'F'], [0.55, 'dPhF', 'Angry', 'F'], [0.8, 'dRnR', 'Angry']],
   // Juma, small: short holds, snaps that land almost at once.
   jSwipe: [[0, 'jSwA', 'Angry'], [0.3, 'jSwX', 'Angry'], [0.4, 'jSwI', 'Angry'], [0.75, 'jSwR', '']],
   jSwipe2: [[0, 'jSwA2', 'Angry'], [0.3, 'jSwX2', 'Angry'], [0.4, 'jSwI2', 'Angry'], [0.75, 'jSwR', '']],
@@ -424,6 +531,72 @@ const KEYS = {
   lRain: [[0, 'lLoA', 'Angry'], [0.26, 'lRsX', 'Open'], [0.38, 'lRsI', 'Open'], [0.44, 'lRainX', 'Open'], [0.66, 'lRainI', 'Angry'], [0.88, 'lStance1', '']]
 };
 export const keyFor = (kind, p) => { const k = KEYS[kind]; if (!k) return null; let r = k[0]; for (const e of k) if (p >= e[0]) r = e; return r; };
+
+// DARK NOX's moveset: durations (seconds) and hit times (progress), as the simulation defines them.
+// The durations here are only used until sim/moves.js has the move.
+export const DARK_MOVES = {
+  dRend: { dur: 0.2, hits: [0.4] }, dRake: { dur: 0.22, hits: [0.4] }, dFrenzy: { dur: 0.42, hits: [0.15, 0.35, 0.55, 0.75] },
+  dReap: { dur: 0.32, hits: [0.35] }, dHarvest: { dur: 0.46, hits: [0.4] }, dAirClaw: { dur: 0.22, hits: [0.3, 0.62] },
+  dAirVortex: { dur: 0.38, hits: [0.2, 0.45, 0.7] }, dAirDive: { dur: 0.32, hits: [0.42] }, dKiss: { dur: 0.42, hits: [0.3, 0.66] },
+  dExecute: { dur: 0.46, hits: [0.55] }, dPhantom: { dur: 0.32, hits: [0.3] }
+};
+const darkProgress = a => Math.max(0, Math.min(0.999, 1 - a.attack / (MOVES[a.attackKind]?.dur || DARK_MOVES[a.attackKind].dur)));
+// The phase of a key from the last letter of its frame's name (D, the kiss's drink, holds the bite).
+const PHASE = { A: 'A', X: 'X', I: 'I', F: 'F', R: 'R', D: 'I' };
+// Which of DARK NOX's claws is striking right now, for whatever draws over him (talons, claw
+// smears): { claw: 'F' (near arm) | 'B' (far arm) | 'FB' (both) | null, phase: 'A' wind-up | 'X' snap |
+// 'I' impact | 'F' follow-through | 'R' recovery, p: progress 0..1, hit: index of the blow }.
+// null when he is not in one of his dark moves.
+export function darkClaw(a) {
+  if (!a || !(a.attack > 0) || !DARK_MOVES[a.attackKind]) return null;
+  const p = darkProgress(a), k = keyFor(a.attackKind, p), name = k[1], hits = DARK_MOVES[a.attackKind].hits;
+  let hit = 0;
+  while (hit < hits.length - 1 && p > (hits[hit] + hits[hit + 1]) / 2) hit++;
+  // The vortex is one long spin: a snap all the way, an impact around each of its hits.
+  const phase = name === 'dVx' && p < 0.86 ? (Math.abs(p - hits[hit]) < 0.0625 ? 'I' : 'X') : PHASE[name.match(/([A-Z])\d?$/)?.[1]] || 'R';
+  return { claw: k[3] || null, phase, p, hit };
+}
+
+// DARK NOX's own frames for a dark move, or null. The vortex spins in quarter turns keyed to its
+// hits (upright, upside down, upright at each one); the gulps of the kiss bob his head.
+function darkAttack(a, kind, time, pick) {
+  const p = darkProgress(a), face = a.face || 1;
+  if (kind === 'dAirVortex' && p >= 0.1 && p < 0.86) {
+    const q = Math.floor((p - 0.2) / 0.125 + 0.5);
+    return { frame: { ...FRAMES.dVx, spin: q * face }, expr: q % 2 ? 'Angry' : 'Open', name: 'dVx' };
+  }
+  const [, name, expr] = keyFor(kind, p);
+  if (name === 'dKsD') return pick(Math.floor(time * 9) % 2 ? 'dKsD2' : 'dKsD', 'Open');
+  return pick(name, expr);
+}
+
+// DARK NOX between blows: the feral guard (a fast pant), the lurching run, and the wings for
+// everything else he shares with the others (open on the way up, spread falling, flared when hit).
+const FERAL = { nStance1: 'dkIdle1', nStance2: 'dkIdle2', run1: 'dkRun1', runPass: 'dkRunP', run2: 'dkRun2', runPass2: 'dkRunP2' };
+const DARK_WING = {
+  jump: 'up', fall: 'open', glide: 'flare', skid: 'open', land: 'half', airdash: 'back', chase: 'back',
+  hurt: 'open', hurtF0: 'half', hurtH0: 'open', hurtH1: 'half', hurtA0: 'up', hurtA1: 'open', hurtB0: 'up', tumble: 'open', dizzy: 'half', crouch: 'fold',
+  beamA: 'half', beamC0: 'open', beamC1: 'open', beamF: 'back', beamR: 'half', beamAA: 'up', beamCA0: 'open', beamCA1: 'open', beamFA: 'back', beamRA: 'open'
+};
+// The blows he still shares with Nox are thrown with the claws while he is dark: the requiem's cuts
+// (one claw then the other, the dive at the end) and the dash strike out of a dodge.
+const DARK_SWAP = {
+  requiem: { nKissA2: 'dKsA', nClawI: 'dFz1I', nCutX: 'dFz2I', nScI: 'dDvI' },
+  dashAtk: { nCutX: 'dPhX', nCutF: 'dPhI' }
+};
+function feral(r, a, time) {
+  const seed = (a.id || 0) * 1.37;
+  if (r.name === 'nStance1' || r.name === 'nStance2') {
+    const pant = Math.floor((time + seed) * 3.2) % 2;
+    return { frame: FRAMES[pant ? 'dkIdle2' : 'dkIdle1'], expr: r.expr === 'Blink' ? 'Blink' : pant ? 'Open' : 'Angry', name: pant ? 'dkIdle2' : 'dkIdle1' };
+  }
+  if (FERAL[r.name]) return { frame: FRAMES[FERAL[r.name]], expr: r.expr === 'Blink' ? 'Blink' : 'Angry', name: FERAL[r.name] };
+  const swap = DARK_SWAP[a.act] || (a.attack > 0 ? DARK_SWAP[a.attackKind] : null);
+  if (swap?.[r.name]) return { frame: FRAMES[swap[r.name]], expr: r.expr, name: swap[r.name] };
+  const wing = DARK_WING[r.name] || (r.name.startsWith('w:') ? 'back' : null);
+  if (wing && r.frame && r.frame.wing === undefined) return { ...r, frame: { ...r.frame, wing } };
+  return r;
+}
 
 // The shared air and dash moves look different per fighter: kicks, tail, fangs.
 const BY_TYPE = {
@@ -518,6 +691,11 @@ const aimArm = (a, recoil) => {
 
 // Returns { frame, expr, name } for an actor (live or snapshot).
 export function frameFor(a, time = 0) {
+  const r = baseFrame(a, time);
+  return a.type === 4 && a.form === 'dark' && !(a.attack > 0 && DARK_MOVES[a.attackKind]) ? feral(r, a, time) : r;
+}
+
+function baseFrame(a, time) {
   const seed = (a.id || 0) * 1.37;
   const blink = (time + seed) % 3.4 < 0.12;
   const pick = (name, expr = blink ? 'Blink' : '') => ({ frame: FRAMES[name], expr, name });
@@ -552,9 +730,11 @@ export function frameFor(a, time = 0) {
   if (act === 'darkRise') {
     const at = a.actT ?? 0;
     if (at < DARK.pop) return at < 0.12 ? pick('mCurl', 'Pain') : pick(Math.floor(at * 22) % 2 ? 'mShiv1' : 'mShiv2', 'Angry');
-    return pick('nKissA2', 'Open');
+    // The pop: the wings burst open, arms flung wide, the roar shuddering through him.
+    return pick(at < DARK.pop + 0.08 || Math.floor(at * 16) % 2 ? 'dPop' : 'dPop2', 'Open');
   }
-  if (act === 'darkFade') return pick('nStance2', 'Blink');
+  // Turning back: the far hand up to catch the scythe as it flies home, then his old guard.
+  if (act === 'darkFade') return (a.actT ?? 0) < DARK.fade * 0.6 ? pick('dCatch', 'Angry') : pick('nStance2', 'Blink');
   if (act === 'morph') {
     // Curled up, then shivering as she swells (her face going between fury and pain), the pop out
     // as the beast and the roar.
@@ -625,6 +805,7 @@ export function frameFor(a, time = 0) {
     if (p > 0.88) return pick('vortex', 'Angry');
     return { frame: { ...FRAMES.jSpin, spin: Math.floor((time + seed) * 20) * (a.face || 1) }, expr: 'Angry', name: 'jSpin' };
   }
+  if (a.attack > 0 && DARK_MOVES[kind]) return darkAttack(a, kind, time, pick);
   if (a.attack > 0 && KEYS[kind] && MOVES[kind] && (a.type === 4 || kind !== 'dashAtk')) {
     const [, name, expr] = keyFor(kind, Math.max(0, Math.min(0.999, 1 - a.attack / MOVES[kind].dur)));
     return pick(name, expr);
