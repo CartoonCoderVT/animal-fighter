@@ -134,7 +134,7 @@ export const MOVES = {
   // Standing S+J: a bubble that rises ahead and traps whoever it catches (see axolotl.js).
   xBubble: { dur: 0.5, hits: [0.56], range: 0, band: 0, dmg: [3], kind: 'bubble', kb: [[0, 0]], cd: 0.6, noSmear: true, bubble: true },
   // Side+J: the mud slide, on its belly through the rival's legs; the string goes on at the tail.
-  xSlide: { dur: 0.34, hits: [0.3, 0.56], range: 40, band: 20, dmg: [4, 6], kind: 'belly', kb: [[0.4, -0.5], [1.4, -2.5]], cd: 0.24, low: true, pass: true, bolt: 7, hold: 0.42, echo: true },
+  xSlide: { dur: 0.34, hits: [0.3, 0.56], range: 40, band: 20, dmg: [4, 6], kind: 'belly', kb: [[0.4, -0.5], [-0.6, -2.5]], cd: 0.24, low: true, pass: true, bolt: 5.5, hold: 0.42, echo: true },
   // S+J over a downed rival: nibble, nibble, a tearing bite that heals; the brood piles on.
   xFeast: { dur: 0.9, hits: [0.28, 0.52, 0.8], range: 40, band: 34, dmg: [4, 4, 8], kind: 'bite', kb: [[0, 2], [0, 2], [0, 3]], cd: 0.6, pound: true, nibble: true, drain: 0.3 },
   // S+K: bites off a part of itself and hurls it; where it lands it buds into a clone.
