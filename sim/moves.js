@@ -137,6 +137,18 @@ export const SPECIALS = [
   { id: 'beam', cd: 6, dur: 0.78, charge: 0.34 }
 ];
 
+// Nox's blood: every blow of his makes the rival bleed (`bleed`, twice that as DARK NOX), and he drinks
+// what they bleed into his meter (`drink` points per point of bleeding damage, up to `max`). Full, K
+// makes him DARK NOX: `rise` seconds of transformation (he turns at `pop`), then `time` seconds with blows
+// `dmg`x as hard, `kb`x the push and `range`x / `band`x the reach, taking `armor`x the damage; K is then
+// his blood beam every `beamCd` s. `fade`: turning back.
+export const DARK = { max: 100, bleed: 0.3, drink: 3, rise: 1.0, pop: 0.6, time: 12, fade: 0.5, dmg: 1.45, kb: 1.3, range: 1.8, band: 1.45, armor: 0.85, beamCd: 2.2 };
+
+// Breaking a combo: while reeling from a hit, Shift opens `window` seconds of parry; time it to the next
+// blow and it is parried and the string ends there. Whether it worked or not, Shift does nothing again
+// for `cd` seconds, so mashing it does not work. `safe`: a moment untouchable after breaking out.
+export const BURST = { window: 0.14, cd: 0.9, safe: 0.2 };
+
 // ZA WARUDO's timing, shared by the simulation (sim/timestop.js) and the cutscene. intro: the cut-in
 // over the frozen frame; wave: the color drains out from her; stop: the stopped world; outro: the
 // watch snaps shut. hang: how long a thrown knife flies before it stops in the air.

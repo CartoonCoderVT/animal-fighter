@@ -5,7 +5,7 @@ import { S, rnd, clamp } from '../engine/const.js';
 import { knockdown, pushActor, buildRagdoll, ragdollOf, breakJoint, gib, makeLimb, releaseHeld, pinLimb, addStump } from './ragdoll.js';
 import { extendedAttack, dropWeapon, damageProp } from './props.js';
 import { hazardBulletHit } from './hazards.js';
-import { MOVES, HEAVY, AIR, NOX_AIR, JUMA_AIR, BEAST_AIR, LOLA_AIR, NATURAL, SET, comboOf } from './moves.js';
+import { MOVES, HEAVY, AIR, NOX_AIR, JUMA_AIR, BEAST_AIR, LOLA_AIR, NATURAL, SET, BURST, DARK, comboOf } from './moves.js';
 import { MAP } from './map.js';
 import { startSpecial, startStomp, throwCarried, startChase, endAct, startPlunge, startSwarm, startBite, startCharge } from './specials.js';
 import { isMelee, WEAPON_INFO, weaponSlot } from './weapons.js';
@@ -119,7 +119,7 @@ export function attack(g, a) {
   // as a swarm of bats, and that blow lands as he forms beside them. Small Juma pounces after them;
   // Lola skips through time to them.
   if ((nox || (juma && !beast) || lola) && a.comboTimer > 0) {
-    const prey = comboPrey(g, a), mv = MOVES[id];
+    const prey = comboPrey(g, a), mv = moveOf(a, MOVES[id]);
     if (prey && mv && !mv.blink && !mv.execute && !mv.pass && !mv.warp && (Math.abs(prey.x - a.x) > mv.range + 12 || Math.abs(prey.y - a.y) > mv.band + 14) && Math.hypot(prey.x - a.x, prey.y - a.y) < (nox ? 300 : 190)) {
       if (nox) startSwarm(g, a, { prey, then: id });
       else startChase(g, a, prey, id);
@@ -256,7 +256,42 @@ function reaches(a, mv, x, y, pad = 0, low = !!mv.low) {
   return inReach(a, x, y, mv.range + pad, mv.band + pad, low);
 }
 
+// DARK NOX: the same moves, far more destructive and reaching much further (made once per move).
+const darkMoves = new Map();
+export function darkMove(mv) {
+  let d = darkMoves.get(mv);
+  if (d) return d;
+  d = { ...mv, dark: true, range: Math.round(mv.range * DARK.range), band: Math.round(mv.band * DARK.band), dmg: mv.dmg.map(x => x * DARK.dmg), kb: mv.kb.map(([x, y]) => [x * DARK.kb, y * (y < 0 ? 1.1 : DARK.kb)]) };
+  if (mv.blink) d.blink = Math.round(mv.blink * 1.5);
+  if (mv.spikes) d.spikes = mv.spikes.map(s => Math.round(s * DARK.range));
+  for (const k of ['sweep', 'floor']) if (mv[k]) d[k] = Math.round(mv[k] * DARK.range);
+  if (mv.shock) d.shock = Math.round(mv.shock * 1.4);
+  darkMoves.set(mv, d);
+  return d;
+}
+// The move as this fighter throws it right now.
+export const moveOf = (a, mv) => (mv && a.form === 'dark' ? darkMove(mv) : mv);
+
+// Nox's blows make the rival bleed, and the blood they lose is his (tickStatuses).
+function bleedFor(g, nox, b, amount) {
+  b.bleed = Math.min(6, (b.bleed || 0) + amount);
+  b.bleedBy = nox.id; b.bleedByT = g.time;
+}
+// Nox drinks what a rival bleeds from his blows: it fills his meter (not while he is DARK NOX).
+function drink(g, nox, b, amount) {
+  if (nox.form === 'dark' || nox.act === 'darkRise') return;
+  const was = nox.blood || 0;
+  nox.blood = Math.min(DARK.max, was + amount * DARK.drink);
+  if (Math.hypot(b.x - nox.x, b.y - nox.y) < 520) g.fx('drain', { x: b.x, y: b.y - 4, tx: nox.x, ty: nox.y - 4, n: 2 });
+  if (was < DARK.max && nox.blood >= DARK.max) {
+    g.text(nox.x, nox.y - 38, 'SANGUE CHEIO! K', '#ff3a5a');
+    g.fx('ring', { x: nox.x, y: nox.y, size: 34, color: '#ff3a5a' });
+    g.sound('charge', nox.x);
+  }
+}
+
 export function strike(g, a, mv, i) {
+  if (a.form === 'dark') mv = darkMove(mv);
   if (mv.blink) { blinkCut(g, a, mv); return; }
   if (mv.execute) { execute(g, a, mv); return; }
   const face = a.face;
@@ -323,6 +358,7 @@ export function strike(g, a, mv, i) {
       g.fx('drain', { x: b.x, y: b.y - 4, tx: a.x, ty: a.y - 4, n: 3 });
     }
     if (vamp && !mv.feast && !b.dead) markBlood(g, b);
+    if (vamp && !b.dead) bleedFor(g, a, b, mv.dark ? DARK.bleed * 2 : DARK.bleed);
   }
   if (mv.spikes) g.fx('bloodSpikes', { x: a.x, y: a.y + 16, face, at: mv.spikes });
   if (mv.sweep && a.ground) g.fx('scytheSweep', { x: a.x + face * 8, y: a.y + 16, x2: a.x + face * mv.sweep, face });
@@ -471,6 +507,9 @@ function ricochet(g, a, b) {
 
 // A blow caught in the parry window: no damage, the attacker reels and the defender counters.
 function parried(g, a, o, point) {
+  // Parried while reeling: the combo is broken, and they are free (and untouchable for an instant).
+  const burst = a.hitstun > 0;
+  if (burst) { a.hitstun = 0; a.hitstunMax = 0; a.hitHeavy = false; a.stun = 0; a.iframes = Math.max(a.iframes || 0, BURST.safe); a.stunN = 0; }
   a.parry = 0; a.parryLag = 0; a.counter = 0.9;
   a.face = o.x >= a.x ? 1 : -1;
   if (o.act) endAct(g, o);
@@ -479,7 +518,7 @@ function parried(g, a, o, point) {
   if (!o.knocked) Body.setVelocity(o.body, { x: (o.x >= a.x ? 1 : -1) * 5, y: -2.5 });
   g.fx('parry', { x: point.x, y: point.y });
   g.fx('impact', { x: point.x, y: point.y, p: 2, a: 0, clash: 1, parry: 1 });
-  g.text(a.x, a.y - 34, 'PARRY!', '#7ce8ff');
+  g.text(a.x, a.y - 34, burst ? 'QUEBROU O COMBO!' : 'PARRY!', burst ? '#ffe070' : '#7ce8ff');
   if (isMelee(a.weapon)) { g.fx('clang', { x: a.x + a.face * 7, y: a.y, big: 1 }); g.sound('clang', a.x); }
   drama(g, 0.3, a, o);
   hitlag(a, o, 0.1);
@@ -731,8 +770,9 @@ export function damage(g, a, amount, point, ownerId, kind = 'punch', opts = {}) 
   // Juma's beast takes blows on a thick hide, and does not flinch while she swings, charges or
   // transforms (super armor); she is still thrown by explosions and crushed by the press.
   if (a.form === 'beast' && !DOT.has(cat)) amount *= 0.8;
-  if (a.act === 'morph') amount *= 0.5;
-  const tough = ((a.form === 'beast' && (a.attack > 0 || ['charge', 'leap', 'meteor'].includes(a.act))) || a.act === 'morph' || a.act === 'unmorph') && cat !== 'explosion' && !opts.environment && kind !== 'crush' && kind !== 'grind';
+  if (a.act === 'morph' || a.act === 'darkRise') amount *= 0.5;
+  if (a.form === 'dark' && !DOT.has(cat)) amount *= DARK.armor;
+  const tough = ((a.form === 'beast' && (a.attack > 0 || ['charge', 'leap', 'meteor'].includes(a.act))) || a.act === 'morph' || a.act === 'unmorph' || a.act === 'darkRise') && cat !== 'explosion' && !opts.environment && kind !== 'crush' && kind !== 'grind';
   if (a.frozen > 0 && (cat === 'blunt' || cat === 'explosion' || cat === 'pierce') && amount >= 14) {
     a.lastHit = ownerId; a.lastHitTime = g.time;
     kill(g, a, ownerId, { kind: 'shatter' });
@@ -980,7 +1020,9 @@ export function tickStatuses(g, dt) {
     if (a.bleed > 0.35 && a.bleedTick <= 0) {
       a.bleedTick = 0.5;
       const owner = a.lastHit != null && g.time - (a.lastHitTime ?? -9) < 8 ? a.lastHit : a.id;
-      damage(g, a, a.bleed * 0.5, { x: a.x, y: a.y }, owner, 'bleed', { kb: { x: 0, y: 0 }, force: true, environment: true });
+      const lost = damage(g, a, a.bleed * 0.5, { x: a.x, y: a.y }, owner, 'bleed', { kb: { x: 0, y: 0 }, force: true, environment: true });
+      const nox = a.bleedBy != null && g.time - (a.bleedByT ?? -9) < 10 ? g.actor(a.bleedBy) : null;
+      if (lost && nox && nox !== a && nox.type === 4 && !nox.dead) drink(g, nox, a, lost);
     }
     if (a.freeze > 0 && a.frozen <= 0) a.freeze = Math.max(0, a.freeze - dt * 0.3);
     if (a.freeze >= 1 && a.frozen <= 0) {

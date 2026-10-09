@@ -1,5 +1,5 @@
 import { Body, Query, MASK, CAT, onewayBit, GRAV, approach } from './physics.js';
-import { MOVES, NOX_AIR } from './moves.js';
+import { MOVES, NOX_AIR, BURST } from './moves.js';
 import { MAP } from './map.js';
 import { FIGHTERS, speedOf, weightOf } from './fighters.js';
 import { clamp } from '../engine/const.js';
@@ -11,7 +11,7 @@ import { stepSpecial, startSwarm, tickForm } from './specials.js';
 import { HALF_H, FOOT } from '../render/rig.js';
 
 export { HALF_H };
-const TIMERS = ['batCd', 'biteCd', 'chargeCd', 'skipCd', 'setCd', 'hitstun', 'attack', 'attackCd', 'abilityCd', 'float', 'bufA', 'bufP', 'parry', 'parryCd', 'parryLag', 'counter', 'perfectT', 'hurt', 'invincible', 'iframes', 'dodgeCd', 'dodge', 'jumpGrace', 'jumpBuffer', 'stun', 'getup', 'comboTimer', 'shock', 'skid', 'landT', 'climbCd'];
+const TIMERS = ['batCd', 'biteCd', 'chargeCd', 'skipCd', 'setCd', 'burstCd', 'hitstun', 'attack', 'attackCd', 'abilityCd', 'float', 'bufA', 'bufP', 'parry', 'parryCd', 'parryLag', 'counter', 'perfectT', 'hurt', 'invincible', 'iframes', 'dodgeCd', 'dodge', 'jumpGrace', 'jumpBuffer', 'stun', 'getup', 'comboTimer', 'shock', 'skid', 'landT', 'climbCd'];
 
 export function groundInfo(g, a) {
   const b = a.body, x = b.position.x, feet = b.position.y + HALF_H;
@@ -283,6 +283,13 @@ export function stepActor(g, a, dt) {
   // the air, both through attacks). Rolling also smothers fire.
   // A fresh tap of a direction, for Nox's phantom reap branch.
   if (pressed('left') || pressed('right')) a.dirTap = g.time;
+  // Reeling from a hit, Shift is a split second of parry: timed to the next blow it breaks the combo
+  // (combat.js parried); missed, Shift does nothing for a while (no mashing out of a string).
+  if (pressed('dodge') && a.hitstun > 0 && !a.knocked && !(a.frozen > 0) && !(a.burstCd > 0) && !a.act) {
+    a.parry = BURST.window; a.burstCd = BURST.cd;
+    g.fx('ring', { x: a.x, y: a.y, size: 20, color: '#c8f0ff' });
+    g.sound('swing', a.x);
+  }
   if (pressed('dodge') && control >= 1 && !a.climbing && a.parryLag <= 0 && !a.act) {
     const dir = (input.right ? 1 : 0) - (input.left ? 1 : 0);
     if (!dir && a.parryCd <= 0) {

@@ -3,7 +3,7 @@ import { MAP, pathTo } from './map.js';
 import { inPit } from './physics.js';
 import { rnd, dist, clamp } from '../engine/const.js';
 import { FOOT } from '../render/rig.js';
-import { MOVES, comboOf } from './moves.js';
+import { MOVES, DARK, comboOf } from './moves.js';
 import { MELEE, isMelee } from './weapons.js';
 
 const RANGED = a => a.weapon === 'pistol' || a.weapon === 'shotgun';
@@ -16,8 +16,10 @@ const SPECIAL_RANGE = [
   (dx, dy) => Math.abs(dx) < 280 && Math.abs(dy) < 150,
   // Juma: small, she turns into the beast when the fight is close; the beast leaps at rivals a little away.
   (dx, dy, a) => (a.form === 'beast' ? Math.abs(dx) > 50 && Math.abs(dx) < 220 && Math.abs(dy) < 90 : Math.abs(dx) < 140 && Math.abs(dy) < 60),
-  // The blood beam: level along the floor, or down and ahead (about 30 degrees) from the air.
-  (dx, dy, a, t, g) => t && t.bloodMark >= 3 && g.time - (t.markT ?? -9) < 5 ? Math.abs(dx) < 70 && Math.abs(dy) < 40 : a.ground ? Math.abs(dx) > 30 && Math.abs(dx) < 320 && Math.abs(dy) < 16 : Math.abs(dx) < 300 && Math.abs(dy - Math.abs(dx) * 0.61) < 18
+  // Nox: with his blood full, DARK NOX when the fight is close. As DARK NOX, the blood beam: level along
+  // the floor, or down and ahead (about 30 degrees) from the air (the requiem by a rival with 3 marks).
+  (dx, dy, a, t, g) => a.form !== 'dark' ? (a.blood || 0) >= DARK.max && Math.abs(dx) < 220 && Math.abs(dy) < 90
+    : t && t.bloodMark >= 3 && g.time - (t.markT ?? -9) < 5 ? Math.abs(dx) < 100 && Math.abs(dy) < 50 : a.ground ? Math.abs(dx) > 30 && Math.abs(dx) < 320 && Math.abs(dy) < 16 : Math.abs(dx) < 300 && Math.abs(dy - Math.abs(dx) * 0.61) < 18
 ];
 
 export function nodeAt(g, x, feetY) {
@@ -174,7 +176,7 @@ export function think(g, a, dt) {
 
   // Combat
   {
-    const natural = MOVES[comboOf(a)[0]].range + 4;
+    const natural = MOVES[comboOf(a)[0]].range * (a.form === 'dark' ? DARK.range : 1) + 4;
     const armed = isMelee(a.weapon);
     const meleeRange = a.weapon === 'extinguisher' ? 110 : armed ? MOVES[a.weapon + ':nLight'].range + 4 : natural;
     const facing = dx * a.face >= -4;
@@ -253,6 +255,11 @@ export function think(g, a, dt) {
     }
   }
 
+  // Caught in a string: now and then a bot times Shift to the next blow and breaks out of it.
+  if (a.hitstun > 0 && !(a.burstCd > 0) && !a.lastInput.dodge && Math.random() < 0.015
+    && g.enemies(a).some(b => b.hits?.length && b.attack > 0 && Math.abs(b.x - a.x) < 90 && Math.abs(b.y - a.y) < 50 && b.attack - b.hits[0].at < 0.1)) {
+    input.dodge = true; input.left = false; input.right = false;
+  }
   // Parry or dodge a blow that is about to land.
   const swing = g.enemies(a).find(b => b.attack > 0 && b.hits?.length && Math.abs(b.x - a.x) < 46 && Math.abs(b.y - a.y) < 30 && (a.x - b.x) * b.face > 0);
   if (swing && Math.random() < 0.06) {

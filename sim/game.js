@@ -173,15 +173,17 @@ export class Game {
     Body.setVelocity(a.body, { x: 0, y: 0 });
     Body.setAngle(a.body, 0);
     if (!Composite.allBodies(this.engine.world).includes(a.body)) Composite.add(this.engine.world, a.body);
-    // Lola keeps whatever her watch had wound up when she went down.
+    // Lola keeps whatever her watch had wound up when she went down; Nox the blood he had drunk (none
+    // if he went down as DARK NOX).
     const abilityCd = a.type === 2 ? Math.max(1, a.abilityCd) : 1;
+    const blood = a.form === 'dark' ? 0 : a.blood || 0;
     Object.assign(a, {
       x: spot[0], y: spot[1], hp: a.maxHp, dead: false, invincible: 1.7, wounds: {}, partDmg: {}, severed: [], broken: {}, stumps: [], embedded: [],
       bleed: 0, char: 0, freeze: 0, frozen: 0, shock: 0, stun: 0, burning: 0, weapon: null, buff: 0, team: a.originalTeam,
       ai: null, attackCd: 0, holding: null, abilityCd, knocked: false, knock: 0, getup: 0, dodge: 0, dodgeKind: null, climbing: false, drop: {},
       act: null, actT: 0, hits: null, gliding: false, holdingLimb: null, holdJoint: null, ghostClear: true, hitlag: 0, lagPos: null,
       parry: 0, parryLag: 0, counter: 0, perfectT: 0, chase: null, float: 0, airDodged: false, hitstun: 0, hitstunMax: 0, stunN: 0, bloodMark: 0, beamAir: false, bounced: false, bounceArm: 0, turnT: 0, batCd: 0, swarm: null,
-      form: null, formT: 0, biteCd: 0, chargeCd: 0, skipCd: 0, setCd: 0, carry: null, wPose: null
+      form: null, formT: 0, biteCd: 0, chargeCd: 0, skipCd: 0, setCd: 0, carry: null, wPose: null, blood
     });
     this.fx('spawn', { x: a.x, y: a.y, color: FIGHTERS[a.type].color });
   }
@@ -308,7 +310,7 @@ export class Game {
         freeze: r(a.freeze), frozen: r(a.frozen), shock: r(a.shock), weapon: a.weapon, ammo: a.ammo, holding: a.holding,
         burning: r(a.burning || 0), holdingLimb: a.holdingLimb || null, respawn: r(a.respawn), skid: r(a.skid || 0), landImpact: r(a.landT > 0 ? a.landImpact : 0),
         powerSeq: a.powerSeq, recoil: r(a.recoil || 0), stats: a.stats, form: a.form || null, formT: r(a.formT || 0),
-        wPose: a.wPose || null, wPoseT: r2(a.wPoseT || 0), skips: a.skips || 0
+        wPose: a.wPose || null, wPoseT: r2(a.wPoseT || 0), skips: a.skips || 0, blood: r(a.blood || 0)
       })),
       props: this.props.map(p => ({ id: p.id, kind: p.kind, w: p.w, h: p.h, x: r(p.x), y: r(p.y), angle: r(p.angle * 100) / 100, hp: p.hp, armed: !!p.armed, fuse: p.fuse, burning: r(p.burning || 0), weapon: p.weapon, rocket: p.rocket > 0, chain: !!p.chain, look: p.look })),
       // Lola's laid knives also send where they point, how far out of her hand they are (k) and how

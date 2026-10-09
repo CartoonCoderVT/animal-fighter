@@ -1,7 +1,7 @@
 // Specials (K) and the moves everyone shares: aerial stomp and carrying a downed fighter.
 // A running special lives in a.act; stepSpecial runs it each step and may lock movement.
 import { Body, Composite } from './physics.js';
-import { SPECIALS, NOX_AIR, JUMA_AIR, LOLA_AIR } from './moves.js';
+import { SPECIALS, NOX_AIR, JUMA_AIR, LOLA_AIR, DARK } from './moves.js';
 import { FIGHTERS } from './fighters.js';
 import { damage, startMove, landPlunge, markOf, drama } from './combat.js';
 import { MOVES } from './moves.js';
@@ -34,6 +34,7 @@ export function endAct(g, a) {
 
 export function startSpecial(g, a) {
   if (a.type === 3) { jumaSpecial(g, a); return; }
+  if (a.type === 4) { noxSpecial(g, a); return; }
   // Lola's ZA WARUDO (sim/timestop.js); nothing happens while time is already stopped.
   if (a.type === 2) { if (startWorld(g, a)) { a.powerSeq = (a.powerSeq || 0) + 1; a.abilityCd = SPECIALS[2].cd; } return; }
   const sp = SPECIALS[a.type];
@@ -66,6 +67,69 @@ export function startSpecial(g, a) {
     Body.setVelocity(a.body, { x: v.x * 0.3, y: a.ground ? v.y : Math.min(v.y, 0) });
     g.sound('charge', a.x);
   }
+}
+
+// Nox's K. With his blood meter full: DARK NOX. As DARK NOX: the blood beam (by a rival carrying three
+// blood marks, the requiem). Otherwise there is nothing to drink from yet.
+function noxSpecial(g, a) {
+  const v = a.body.velocity;
+  if (a.form === 'dark') {
+    a.powerSeq = (a.powerSeq || 0) + 1;
+    a.abilityCd = DARK.beamCd;
+    a.attack = 0; a.hits = null;
+    const prey = g.enemies(a).find(b => !b.dead && !b.knocked && markOf(g, b) >= 3 && Math.abs(b.x - a.x) < 120 && Math.abs(b.y - a.y) < 60);
+    if (prey) { startRequiem(g, a, prey); return; }
+    setAct(a, 'beam', SPECIALS[4].dur);
+    a.beamFired = false;
+    a.beamAir = !a.ground;
+    Body.setVelocity(a.body, { x: v.x * 0.3, y: a.ground ? v.y : Math.min(v.y, 0) });
+    g.sound('charge', a.x);
+    return;
+  }
+  if ((a.blood || 0) < DARK.max) {
+    if (!(a.thirstT > g.time)) { a.thirstT = g.time + 1.2; g.text(a.x, a.y - 30, 'SEDE...', '#a83048'); }
+    return;
+  }
+  a.powerSeq = (a.powerSeq || 0) + 1;
+  a.attack = 0; a.hits = null;
+  setAct(a, 'darkRise', DARK.rise);
+  Body.setVelocity(a.body, { x: v.x * 0.2, y: a.ground ? v.y : Math.min(v.y, 0) });
+  g.fx('darkNox', { x: a.x, y: a.y, who: a.id });
+  g.fx('focus', { x: a.x, y: a.y, p: 0.9 });
+  g.text(a.x, a.y - 30, 'O SANGUE CHAMA...', '#ff3a5a');
+  a.riseText = g.effects[g.effects.length - 1];
+  drama(g, 0.7, a);
+  g.sound('bats', a.x);
+}
+
+// The moment he turns: a burst of blood and bats that throws everyone close back, bleeding.
+function becomeDark(g, a) {
+  const said = g.effects.indexOf(a.riseText);
+  if (said >= 0) g.effects.splice(said, 1);
+  a.form = 'dark';
+  a.formT = DARK.time;
+  a.blood = DARK.max;
+  a.abilityCd = 0.6;
+  const x = a.x, y = a.y, R = 96;
+  for (const b of enemiesNear(g, a, b => !b.knocked && Math.abs(b.x - x) < R && Math.abs(b.y - y) < 60)) {
+    const s = Math.sign(b.x - x) || a.face, f = 1 - Math.abs(b.x - x) / R;
+    damage(g, b, 5 + 6 * f, { x: b.x - s * 4, y: b.y }, a.id, 'hemo', { kb: { x: s * (5 + 5 * f), y: -3.5 - 2 * f } });
+    if (!b.dead && !b.knocked) { b.hitstun = Math.max(b.hitstun || 0, 0.5); b.hitstunMax = Math.max(b.hitstunMax || 0, b.hitstun); b.bleed = Math.min(6, (b.bleed || 0) + 1); b.bleedBy = a.id; b.bleedByT = g.time; }
+  }
+  for (const l of g.limbs) if (Math.abs(l.x - x) < R + 10 && Math.abs(l.y - y) < 60) Body.setVelocity(l.body, { x: l.body.velocity.x + Math.sign(l.x - x) * 5, y: l.body.velocity.y - 3 });
+  g.fx('darkNoxPop', { x, y, who: a.id });
+  g.fx('bloodBurst', { x, y: y - 4, n: 3 });
+  g.text(x, y - 44, 'DARK NOX!', '#ff2a4a');
+  g.shake = Math.max(g.shake, 9);
+  g.flash = Math.max(g.flash, 0.25);
+  drama(g, 0.6, a);
+  g.sound('explosion', x);
+}
+
+export function startDarkFade(g, a) {
+  setAct(a, 'darkFade', DARK.fade);
+  a.attack = 0; a.hits = null;
+  a.abilityCd = 0;
 }
 
 // After a launcher: leap straight at the airborne target, then open the air combo on arrival.
@@ -306,6 +370,17 @@ export function stepSpecial(g, a, input, pressed, dt) {
     case 'toss':
       if (a.actT > a.actMax) endAct(g, a);
       return null;
+    case 'darkRise': {
+      // The blood gathers into him, shivering; then he turns.
+      if (a.form !== 'dark' && a.actT >= DARK.pop) becomeDark(g, a);
+      if (a.actT > a.actMax) { endAct(g, a); return null; }
+      return { lock: true, vx: v.x * 0.8, vy: a.ground ? v.y : Math.min(v.y, 0.3) };
+    }
+    case 'darkFade': {
+      if (a.form === 'dark' && a.actT >= DARK.fade * 0.5) { a.form = null; a.formT = 0; a.blood = 0; g.fx('darkFade', { x: a.x, y: a.y, who: a.id }); g.sound('bats', a.x); }
+      if (a.actT > a.actMax) { endAct(g, a); return null; }
+      return { lock: true, vx: v.x * 0.8, vy: v.y };
+    }
     case 'morph': {
       // Hunched and shivering, swelling, then the pop into the beast and the roar.
       if (!a.form && a.actT >= SPECIALS[3].pop) becomeBeast(g, a);
@@ -509,6 +584,14 @@ export function startUnmorph(g, a) {
 
 // The beast lasts while its timer runs; it turns back at the first free moment after.
 export function tickForm(g, a, dt) {
+  // DARK NOX lasts while his blood does (the meter is his time left), then he turns back.
+  if (a.form === 'dark') {
+    if (a.act === 'darkRise' || a.act === 'darkFade') return;
+    a.formT = Math.max(0, (a.formT || 0) - dt);
+    a.blood = (DARK.max * a.formT) / DARK.time;
+    if (a.formT <= 0 && !a.act && !(a.attack > 0) && !a.knocked && !(a.hitstun > 0) && !(a.frozen > 0)) startDarkFade(g, a);
+    return;
+  }
   if (a.form !== 'beast' || a.act === 'morph' || a.act === 'unmorph') return;
   a.formT = Math.max(0, (a.formT || 0) - dt);
   if (a.formT <= 0 && !a.act && !(a.attack > 0) && !a.knocked && !(a.hitstun > 0) && !(a.frozen > 0)) startUnmorph(g, a);
@@ -731,12 +814,14 @@ function bloodBeam(g, a) {
     return Math.hypot(x0 + dx * t - px, y0 + dy * t - py) < r ? t : -1;
   };
   let drank = 0;
+  // As DARK NOX the beam is wider and hits harder.
+  const dark = a.form === 'dark', wide = dark ? 22 : 15, hard = dark ? 1.4 : 1;
   for (const b of g.enemies(a)) {
-    if (b.dead || b.knocked || along(b.x, b.y, 15) < 0) continue;
+    if (b.dead || b.knocked || along(b.x, b.y, wide) < 0) continue;
     if (b.iframes > 0 && b.dodge > 0) continue;
     const marks = markOf(g, b), nova = marks >= 3;
     b.bloodMark = 0;
-    const dealt = damage(g, b, 14 + marks * 5, { x: b.x - dx * 5, y: b.y }, a.id, 'hemo', { kb: { x: dx * (nova ? 9 : 6), y: dy * 6 - (nova ? 5 : 2) }, knock: nova || marks >= 2 });
+    const dealt = damage(g, b, (14 + marks * 5) * hard, { x: b.x - dx * 5, y: b.y }, a.id, 'hemo', { kb: { x: dx * (nova ? 9 : 6), y: dy * 6 - (nova ? 5 : 2) }, knock: nova || marks >= 2 });
     drank += dealt || 0;
     if (nova) {
       g.fx('supernova', { x: b.x, y: b.y });
@@ -762,7 +847,7 @@ function bloodBeam(g, a) {
   for (const lamp of g.hz?.lamps || []) if (along(lamp.body.position.x, lamp.body.position.y, 12) >= 0) breakLamp(g, lamp, { vx: dx * 20, vy: dy * 20 });
   if (drank) a.hp = Math.min(a.maxHp, a.hp + drank * 0.25);
   Body.setVelocity(a.body, { x: -dx * 3, y: a.beamAir ? -2.5 : a.body.velocity.y });
-  g.fx('bloodBeam', { x: x0, y: y0, x2: x0 + dx * len, y2: y0 + dy * len });
+  g.fx('bloodBeam', { x: x0, y: y0, x2: x0 + dx * len, y2: y0 + dy * len, dark: dark ? 1 : 0 });
   g.text(a.x, a.y - 32, 'SANGUE PERFURANTE!', '#ff5a6e');
   g.shake = Math.max(g.shake, 5);
   g.flash = Math.max(g.flash, 0.15);

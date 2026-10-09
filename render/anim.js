@@ -2,7 +2,7 @@
 // (clockwise) relative to the rest pose, plus tail and whole-figure spin. The frame is picked
 // from observable actor state only, so the host simulation (hit location, ragdoll start pose)
 // and every remote renderer agree without sending poses over the network.
-import { MOVES, WORLD } from '../sim/moves.js';
+import { MOVES, WORLD, DARK } from '../sim/moves.js';
 
 const crouch = { head: [0, 3], body: [0, 1], armF: [0, 2], armB: [0, 2], footF: [1, 0], footB: [-1, 0] };
 
@@ -547,6 +547,14 @@ export function frameFor(a, time = 0) {
     if (at < 0.34) return pick((air ? 'beamCA' : 'beamC') + (t12 % 2), 'Angry');
     return at < 0.5 ? pick(air ? 'beamFA' : 'beamF', 'Open') : pick(air ? 'beamRA' : 'beamR', 'Angry');
   }
+  // Nox turning into DARK NOX: curled up and shivering while the blood gathers into him, then arms
+  // flung open as he turns; turning back, a breath.
+  if (act === 'darkRise') {
+    const at = a.actT ?? 0;
+    if (at < DARK.pop) return at < 0.12 ? pick('mCurl', 'Pain') : pick(Math.floor(at * 22) % 2 ? 'mShiv1' : 'mShiv2', 'Angry');
+    return pick('nKissA2', 'Open');
+  }
+  if (act === 'darkFade') return pick('nStance2', 'Blink');
   if (act === 'morph') {
     // Curled up, then shivering as she swells (her face going between fury and pain), the pop out
     // as the beast and the roar.
