@@ -1220,8 +1220,8 @@ export class CastleWorld {
       }
       // A steel wheel turns under the hands; two brass pinions mesh with it.
       const step = f / 4, STEEL = [IRON[0], IRON[2], IRON[3], IRON[4], IRON[6]], BRASS = [IRON[0], GOLD[0], GOLD[1], GOLD[2], GOLD[3]];
-      gearPaint(p, c - 8, c + 9, 7, 8, -step * (TAU / 8) + 0.2, BRASS, 3);
-      gearPaint(p, c + 9, c - 8, 7, 8, -step * (TAU / 8) + 0.6, BRASS, 3);
+      gearPaint(p, c - 11, c + 11.5, 7, 8, -step * (TAU / 8) + 0.2, BRASS, 3);
+      gearPaint(p, c + 11.5, c - 11, 7, 8, -step * (TAU / 8) + 0.6, BRASS, 3);
       gearPaint(p, c, c, 11, 12, step * (TAU / 12), STEEL, 4);
       for (let y = 0; y < 44; y++) for (let x = 0; x < 44; x++) if (Math.hypot(x - c, y - c) > 19.5) p.erase(x, y);
       return p.done();
