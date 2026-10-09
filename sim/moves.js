@@ -115,6 +115,23 @@ export const MOVES = {
   dKiss: { dur: 0.42, hits: [0.3, 0.66], range: 30, band: 24, dmg: [6, 9], kind: 'fang', kb: [[0.4, 0], [4.5, -2.5]], cd: 0.35, drain: 0.75, step: 4, feast: true, noSmear: true, dark: true },
   dExecute: { dur: 0.46, hits: [0.55], range: 44, band: 36, dmg: [14], kind: 'blood', kb: [[0, 2]], cd: 0.45, execute: true, noSmear: true, dark: true },
   dPhantom: { dur: 0.32, hits: [0.3], range: 90, band: 24, dmg: [8], kind: 'blood', kb: [[0.6, -2.5]], cd: 0.2, pass: true, blink: 90, noSmear: true, dark: true },
+  // Mingau, the Cat King: he never strikes himself. Each of his moves is an order (a gesture of the
+  // scepter) and his court does the fighting (COURT_PLAN; sim/court.js). range: how far his orders reach,
+  // for the bots.
+  kSlash: { dur: 0.2, hits: [], range: 90, band: 40, dmg: [0], kind: 'order', kb: [[0, 0]], cd: 0.12, noSmear: true, order: true },
+  kStab: { dur: 0.2, hits: [], range: 110, band: 40, dmg: [0], kind: 'order', kb: [[0, 0]], cd: 0.12, noSmear: true, order: true },
+  kVolley: { dur: 0.24, hits: [], range: 200, band: 60, dmg: [0], kind: 'order', kb: [[0, 0]], cd: 0.1, noSmear: true, order: true },
+  kZap: { dur: 0.24, hits: [], range: 180, band: 60, dmg: [0], kind: 'order', kb: [[0, 0]], cd: 0.12, noSmear: true, order: true },
+  kBash: { dur: 0.3, hits: [], range: 70, band: 40, dmg: [0], kind: 'order', kb: [[0, 0]], cd: 0.25, noSmear: true, order: true },
+  kAirSlash: { dur: 0.2, hits: [], range: 90, band: 50, dmg: [0], kind: 'order', kb: [[0, 0]], cd: 0.08, noSmear: true, order: true },
+  kAirShot: { dur: 0.22, hits: [], range: 200, band: 80, dmg: [0], kind: 'order', kb: [[0, 0]], cd: 0.1, noSmear: true, order: true },
+  kAirMeteor: { dur: 0.28, hits: [], range: 180, band: 80, dmg: [0], kind: 'order', kb: [[0, 0]], cd: 0.25, noSmear: true, order: true },
+  kRain: { dur: 0.3, hits: [], range: 200, band: 60, dmg: [0], kind: 'order', kb: [[0, 0]], cd: 0.5, noSmear: true, order: true },
+  kRise: { dur: 0.28, hits: [], range: 80, band: 40, dmg: [0], kind: 'order', kb: [[0, 0]], cd: 0.25, noSmear: true, order: true },
+  kMercy: { dur: 0.3, hits: [], range: 110, band: 40, dmg: [0], kind: 'order', kb: [[0, 0]], cd: 0.4, noSmear: true, order: true },
+  kCharge: { dur: 0.32, hits: [], range: 120, band: 30, dmg: [0], kind: 'order', kb: [[0, 0]], cd: 0.4, noSmear: true, order: true },
+  kShadow: { dur: 0.22, hits: [], range: 140, band: 40, dmg: [0], kind: 'order', kb: [[0, 0]], cd: 0.15, noSmear: true, order: true },
+  kDrop: { dur: 0.28, hits: [], range: 130, band: 90, dmg: [0], kind: 'order', kb: [[0, 0]], cd: 0.35, noSmear: true, order: true },
   // Everyone: the air string (the last one spikes down), the dash strike
   airA: { dur: 0.22, hits: [0.4], range: 28, band: 26, dmg: [7], kind: 'air', kb: [[1.5, 0]], cd: 0.12 },
   airB: { dur: 0.26, hits: [0.45], range: 28, band: 28, dmg: [8], kind: 'air', kb: [[1.8, 0]], cd: 0.14 },
@@ -123,9 +140,10 @@ export const MOVES = {
 };
 Object.assign(MOVES, WEAPON_MOVES);
 
-export const COMBOS = [['scratchA', 'scratchB', 'upper'], ['whipA', 'whipB', 'tailUp'], ['lCutA', 'lCutB', 'lDance', 'lBehind', 'lRise'], ['jSwipe', 'jSwipe2', 'jFlurry', 'jRake', 'jPounceUp'], ['bloodClaw', 'scytheReap', 'scytheSpin', 'scytheGuillotine', 'bloodSpikes']];
+export const COMBOS = [['kSlash', 'kStab', 'kVolley', 'kZap', 'kBash'], ['whipA', 'whipB', 'tailUp'], ['lCutA', 'lCutB', 'lDance', 'lBehind', 'lRise'], ['jSwipe', 'jSwipe2', 'jFlurry', 'jRake', 'jPounceUp'], ['bloodClaw', 'scytheReap', 'scytheSpin', 'scytheGuillotine', 'bloodSpikes']];
 // S+J on the ground: each fighter's heavy blow.
-export const HEAVY = ['lowclaw', 'sweep', 'lLow', 'jLow', 'vampKiss'];
+export const HEAVY = ['kRain', 'sweep', 'lLow', 'jLow', 'vampKiss'];
+export const KING_AIR = ['kAirSlash', 'kAirShot', 'kAirMeteor'];
 export const AIR = ['airA', 'airB', 'spike'];
 export const NOX_AIR = ['nAirClaw', 'nAirVortex', 'nAirCross', 'nAirScythe'];
 export const DARK_COMBO = ['dRend', 'dRake', 'dFrenzy', 'dReap', 'dHarvest'];
@@ -142,7 +160,8 @@ export const NATURAL = ['claw', 'whip', 'knife', 'claw', 'blood'];
 
 // Specials (K). Durations are upper bounds; most end on contact or landing.
 export const SPECIALS = [
-  { id: 'pounce', cd: 6, dur: 0.75, ride: 1.3 },
+  // ATAQUE REAL: the Cat King raises his scepter and the court strikes as one (ROYAL, sim/court.js).
+  { id: 'royal', cd: 14, dur: 2.6 },
   { id: 'ball', cd: 8, dur: 2.6 },
   // ZA WARUDO: Lola stops time (sim/timestop.js). Slow to charge; her blows that land speed it up.
   { id: 'world', cd: 20 },
@@ -189,6 +208,60 @@ export const FAM_PLAN = {
   dExecute: [{ at: 0.45, k: 'chop', dmg: 9, down: true }],
   dPhantom: [{ at: 0.75, k: 'cross', dmg: 6, kb: [1.5, -3], hold: 0.4 }]
 };
+
+// The Cat King's court (sim/court.js): the five little cats who follow Mingau, in this order. RANKS:
+// each one's place by him, [along his facing (negative: behind), up from his feet].
+export const COURT = ['soldier', 'archer', 'assassin', 'mage', 'shield'];
+export const RANKS = { soldier: [-14, 0], archer: [-34, 0], assassin: [-24, 0], mage: [-18, 12], shield: [15, 0] };
+// What each of them can do: `dur` s, strikes at `hits` (fractions of dur), `dmg` each, push `kb`, `hold` s of
+// hitstun at least, `reach` (how far from the King a target can be), `r` how wide the strike is.
+export const COURT_ACTS = {
+  soldier: {
+    slash: { dur: 0.34, hits: [0.55], dmg: 5, kb: [1.5, -1], hold: 0.4, reach: 95, r: 20 },
+    rise: { dur: 0.4, hits: [0.5], dmg: 7, kb: [0.8, -10.5], launch: true, reach: 90, r: 20 },
+    air: { dur: 0.3, hits: [0.5], dmg: 6, kb: [0.6, -1.2], hold: 0.4, reach: 110, r: 22 },
+    plunge: { dur: 0.4, hits: [0.6], dmg: 9, kb: [1, 9], spike: true, reach: 110, r: 22 },
+    charge: { dur: 0.5, hits: [0.2, 0.4, 0.6, 0.8], dmg: 4, kb: [6, -4], reach: 130, r: 18, run: 130 },
+    finale: { dur: 0.7, hits: [0.65], dmg: 10, kb: [6, -6], knock: true, reach: 300, r: 30 }
+  },
+  archer: {
+    shot: { dur: 0.36, hits: [0.5], dmg: 5, hold: 0.3, reach: 230 },
+    volley: { dur: 0.5, hits: [0.3, 0.55, 0.8], dmg: 3, hold: 0.35, reach: 180 },
+    rain: { dur: 0.45, hits: [0.4], dmg: 4, hold: 0.4, reach: 220, arrows: 7, spread: 18, delay: 0.3, height: 150 },
+    airshot: { dur: 0.36, hits: [0.5], dmg: 5, hold: 0.4, reach: 220 },
+    barrage: { dur: 0.6, hits: [0.2, 0.4, 0.6, 0.8], dmg: 2, hold: 0.6, reach: 300 }
+  },
+  assassin: {
+    stab: { dur: 0.42, hits: [0.45, 0.75], dmg: 4, kb: [0.4, -0.5], hold: 0.45, bleed: 0.4, reach: 115, r: 20 },
+    shadow: { dur: 0.4, hits: [0.4], dmg: 6, kb: [1, -1.5], hold: 0.4, bleed: 0.6, reach: 150, r: 20, run: 30 },
+    mercy: { dur: 0.5, hits: [0.3, 0.55, 0.8], dmg: 4, bleed: 0.8, reach: 120, r: 24, down: true },
+    dance: { dur: 0.8, hits: [0.15, 0.35, 0.55, 0.75], dmg: 3, kb: [0.3, -0.5], hold: 0.6, bleed: 0.3, reach: 300, r: 22 }
+  },
+  mage: {
+    zap: { dur: 0.42, hits: [0.55], dmg: 6, kb: [0.3, -2], hold: 0.45, shock: 0.3, reach: 170, r: 18 },
+    meteor: { dur: 0.5, hits: [0.7], dmg: 8, kb: [1, 9], spike: true, reach: 200, r: 24 },
+    storm: { dur: 0.6, hits: [0.35, 0.6, 0.85], dmg: 3, kb: [0.3, -2], hold: 0.7, shock: 0.3, reach: 300, r: 20 }
+  },
+  shield: {
+    bash: { dur: 0.4, hits: [0.5], dmg: 6, kb: [1.5, -10.5], launch: true, reach: 80, r: 20 },
+    drop: { dur: 0.45, hits: [0.6], dmg: 8, kb: [1.5, 9], spike: true, reach: 140, r: 24 },
+    slam: { dur: 0.55, hits: [0.7], dmg: 4, kb: [0.5, -3], hold: 1.5, reach: 300, r: 100, ring: true },
+    charge: { dur: 0.5, hits: [0.2, 0.4, 0.6, 0.8], dmg: 4, kb: [6, -4], reach: 130, r: 18, run: 130 },
+    guard: { dur: 0.25, hits: [] }
+  }
+};
+// Which of them each of the King's orders sends (and what they do).
+export const COURT_PLAN = {
+  kSlash: [['soldier', 'slash']], kStab: [['assassin', 'stab']], kVolley: [['archer', 'volley']], kZap: [['mage', 'zap']], kBash: [['shield', 'bash']],
+  kAirSlash: [['soldier', 'air']], kAirShot: [['archer', 'airshot']], kAirMeteor: [['mage', 'meteor']],
+  kRain: [['archer', 'rain']], kRise: [['soldier', 'rise']], kMercy: [['assassin', 'mercy']],
+  kCharge: [['shield', 'charge'], ['soldier', 'charge']], kShadow: [['assassin', 'shadow']], kDrop: [['shield', 'drop']]
+};
+// ATAQUE REAL: on up to `max` rivals within `reach` x `band` of the King, the court strikes in turn at
+// these moments (s): the shield's slam, the arrows, the lightning, the assassin's dance, the soldier's finale.
+export const ROYAL = { max: 3, reach: 260, band: 120, at: [['shield', 'slam', 0.2], ['archer', 'barrage', 0.62], ['mage', 'storm', 0.95], ['assassin', 'dance', 1.3], ['soldier', 'finale', 1.8]] };
+// Arrows: speed a step and gravity; the shield blocks shots that pass within `guard` of it.
+export const ARROW = { speed: 12, grav: 0.18, guard: 13 };
 
 // Breaking a combo: while reeling from a hit, Shift opens `window` seconds of parry; time it to the next
 // blow and it is parried and the string ends there. Whether it worked or not, Shift does nothing again

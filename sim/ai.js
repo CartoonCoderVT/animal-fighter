@@ -10,7 +10,8 @@ const RANGED = a => a.weapon === 'pistol' || a.weapon === 'shotgun';
 
 // When each special is worth firing, given the gap to the target.
 const SPECIAL_RANGE = [
-  (dx, dy) => Math.abs(dx) > 30 && Math.abs(dx) < 150 && Math.abs(dy) < 40,
+  // The Cat King: his court's ATAQUE REAL when rivals are around him.
+  (dx, dy) => Math.abs(dx) < 220 && Math.abs(dy) < 90,
   (dx, dy) => Math.abs(dx) < 220 && Math.abs(dy) < 24,
   // Lola stops time whenever a rival is in reach of her knives (it charges slowly anyway).
   (dx, dy) => Math.abs(dx) < 280 && Math.abs(dy) < 150,
@@ -111,7 +112,8 @@ export function think(g, a, dt) {
     } else {
       ai.path = null;
       ai.edge = null;
-      const desired = ranged ? 210 : 16;
+      // The Cat King keeps a few steps back and lets his court go in.
+      const desired = ranged ? 210 : a.type === 0 ? 46 : 16;
       if (Math.abs(dx) > desired) moveTo = target.x;
       else if (ranged && Math.abs(dx) < 110) moveTo = a.x - Math.sign(dx || 1) * 90;
       if (mine && moveTo !== null) moveTo = clamp(moveTo, mine.x0, mine.x1);
@@ -119,7 +121,7 @@ export function think(g, a, dt) {
   }
 
   // Unarmed with a blade on the floor nearby and nobody in its face: go and grab it.
-  if (!a.weapon && !a.holding && !a.act && a.ground && Math.abs(dx) > 60) {
+  if (a.type !== 0 && !a.weapon && !a.holding && !a.act && a.ground && Math.abs(dx) > 60) {
     const loot = g.props.filter(p => !p.held && MELEE.includes(p.kind) && Math.abs(p.y - a.y) < 34 && Math.abs(p.x - a.x) < 240).sort((p, q) => Math.abs(p.x - a.x) - Math.abs(q.x - a.x))[0];
     if (loot && (!mine || (loot.x > mine.x0 - 6 && loot.x < mine.x1 + 6))) {
       moveTo = loot.x;

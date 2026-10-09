@@ -1,4 +1,5 @@
 import { Body, Query, MASK, CAT, onewayBit, GRAV, approach } from './physics.js';
+import { decreeHolds } from './court.js';
 import { MOVES, NOX_AIR, BURST } from './moves.js';
 import { MAP } from './map.js';
 import { FIGHTERS, speedOf, weightOf } from './fighters.js';
@@ -86,7 +87,7 @@ function land(g, a, impact, height = 0) {
 }
 
 // Held by a rival: in Nox's requiem, or ridden by Mingau.
-const heldBy = (g, a) => g.actors.some(o => o !== a && ((o.act === 'requiem' && o.reqId === a.id) || (o.act === 'ride' && o.rideOn === a.id)));
+const heldBy = (g, a) => g.actors.some(o => o !== a && ((o.act === 'requiem' && o.reqId === a.id) || (o.act === 'ride' && o.rideOn === a.id) || decreeHolds(o, a)));
 
 export function stepActor(g, a, dt) {
   if (a.dead) {

@@ -13,6 +13,7 @@ import { MELEE, isMelee } from './weapons.js';
 import { SPECIALS } from './moves.js';
 import { stepTimeStop } from './timestop.js';
 import { tickNox, spill, freeScythe, famSnapshot } from './nox.js';
+import { tickKings, courtSnapshot } from './court.js';
 
 export { EMPTY_INPUT, FIGHTERS };
 
@@ -233,6 +234,7 @@ export class Game {
     // The step Lola clicks her watch on ends right there: nothing else may move (or hit her).
     for (const a of this.actors) { stepActor(this, a, dt); if (this.timeStop) return; }
     tickNox(this, dt);
+    tickKings(this, dt);
     stepBullets(this, dt);
     tickHazards(this, dt);
     tickProps(this, dt);
@@ -320,7 +322,7 @@ export class Game {
         freeze: r(a.freeze), frozen: r(a.frozen), shock: r(a.shock), weapon: a.weapon, ammo: a.ammo, holding: a.holding,
         burning: r(a.burning || 0), holdingLimb: a.holdingLimb || null, respawn: r(a.respawn), skid: r(a.skid || 0), landImpact: r(a.landT > 0 ? a.landImpact : 0),
         powerSeq: a.powerSeq, recoil: r(a.recoil || 0), stats: a.stats, form: a.form || null, formT: r(a.formT || 0),
-        wPose: a.wPose || null, wPoseT: r2(a.wPoseT || 0), skips: a.skips || 0, blood: r(a.blood || 0), fam: famSnapshot(a.fam, r, r2)
+        wPose: a.wPose || null, wPoseT: r2(a.wPoseT || 0), skips: a.skips || 0, blood: r(a.blood || 0), fam: famSnapshot(a.fam, r, r2), court: courtSnapshot(a.court)
       })),
       props: this.props.map(p => ({ id: p.id, kind: p.kind, w: p.w, h: p.h, x: r(p.x), y: r(p.y), angle: r(p.angle * 100) / 100, hp: p.hp, armed: !!p.armed, fuse: p.fuse, burning: r(p.burning || 0), weapon: p.weapon, rocket: p.rocket > 0, chain: !!p.chain, look: p.look })),
       // Lola's laid knives also send where they point, how far out of her hand they are (k) and how

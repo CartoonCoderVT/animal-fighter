@@ -259,7 +259,8 @@ export function interact(g, a) {
   }
   if (hazardInteract(g, a)) return;
   if (!armUsable(a)) { g.text(a.x, a.y - 28, 'SEM MÃO PARA PEGAR', '#d7b5ba'); return; }
-  const near = g.props.filter(p => pickable(p) && dist(a, p) < 38).sort((b, c) => dist(a, b) - dist(a, c))[0];
+  // The Cat King does not carry weapons: his court fights for him.
+  const near = g.props.filter(p => pickable(p) && dist(a, p) < 38 && !(a.type === 0 && WEAPON_PROPS.includes(p.kind))).sort((b, c) => dist(a, b) - dist(a, c))[0];
   // Downed fighters and corpses can be picked up and thrown.
   const body = g.limbs.filter(l => l.ragdoll && (l.part === 'body' || l.part === 'head') && dist(a, l) < 32 && !g.actors.some(o => o.holdingLimb === l.id))
     .filter(l => { const o = g.actor(l.actor); return !l.attached || (o && o.knocked && o.id !== a.id); })

@@ -7,6 +7,7 @@ import { extendedAttack, dropWeapon, damageProp } from './props.js';
 import { hazardBulletHit } from './hazards.js';
 import { MOVES, HEAVY, AIR, NOX_AIR, DARK_AIR, JUMA_AIR, BEAST_AIR, LOLA_AIR, NATURAL, SET, BURST, DARK, POOL, comboOf, noxAir } from './moves.js';
 import { spill } from './nox.js';
+import { kingOrder } from './court.js';
 import { MAP } from './map.js';
 import { startSpecial, startStomp, throwCarried, startChase, endAct, startPlunge, startSwarm, startBite, startCharge } from './specials.js';
 import { isMelee, WEAPON_INFO, weaponSlot } from './weapons.js';
@@ -16,7 +17,7 @@ export const KIND = {
   punch: 'blunt', board: 'blunt', impact: 'blunt', fall: 'blunt', crush: 'blunt', power: 'blunt', pipe: 'blunt',
   whip: 'blunt', kick: 'blunt', paw: 'blunt', stomp: 'blunt', sonic: 'blunt', slam: 'blunt',
   claw: 'cut', blade: 'cut', katana: 'cut', axe: 'cut', hammer: 'blunt', spear: 'pierce',
-  bullet: 'pierce', pellet: 'pierce', shard: 'pierce', thrown: 'pierce', fang: 'pierce', bite: 'pierce', blood: 'cut', hemo: 'pierce', scythe: 'cut', roar: 'blunt', knife: 'cut',
+  arrow: 'pierce', magic: 'blunt', bash: 'blunt', bullet: 'pierce', pellet: 'pierce', shard: 'pierce', thrown: 'pierce', fang: 'pierce', bite: 'pierce', blood: 'cut', hemo: 'pierce', scythe: 'cut', roar: 'blunt', knife: 'cut',
   explosion: 'explosion', fire: 'fire', shock: 'shock', bleed: 'bleed', grind: 'grind', freeze: 'freeze'
 };
 const DOT = new Set(['fire', 'bleed', 'shock', 'freeze']);
@@ -58,6 +59,8 @@ const EDGED = ['claw', 'katana', 'axe', 'blade', 'knife'];
 export function attack(g, a) {
   if (a.dead || a.attackCd > 0 || a.invincible > 0.8 || a.knocked || a.frozen > 0 || a.parryLag > 0 || a.hitstun > 0) return;
   if (a.act) { if (a.act === 'carry') throwCarried(g, a); return; }
+  // The Cat King never strikes himself: J is an order to his court (sim/court.js).
+  if (a.type === 0) { kingOrder(g, a); return; }
   if (!a.ground && !a.climbing && a.input.down && !a.weapon && !a.holding) { startStomp(g, a); return; }
   if (isMelee(a.weapon) && !a.holding) { weaponAttack(g, a, false); return; }
   if (extendedAttack(g, a)) return;
@@ -597,10 +600,12 @@ export function stepBullets(g, dt) {
     if (b.set && (b.k < 1 || b.hold > 0) && stepSetKnife(g, b, dt)) continue;
     b.life -= dt;
     if (b.life <= 0) {
-      g.fx('decal', { x: b.x, y: b.y, k: 'hole', s: 1, layer: 'wall' });
+      if (!b.court) g.fx('decal', { x: b.x, y: b.y, k: 'hole', s: 1, layer: 'wall' });
       removeBullet(g, b);
       continue;
     }
+    // Arrows fall a little as they fly.
+    if (b.grav) b.vy = Math.min(16, b.vy + b.grav);
     const nx = b.x + b.vx, ny = b.y + b.vy;
     const candidates = [...statics];
     for (const a of g.actors) if (!a.dead && !a.knocked && a.id !== b.owner && a.team !== b.team) candidates.push(a.body);
@@ -677,6 +682,12 @@ function bulletHit(g, b, body, point) {
       return true;
     }
     if (b.kind === 'knife') knifeHit(g, b, a, point, angle);
+    else if (b.court) {
+      // The court's arrows: no freeze on the King far away, and they keep the rival reeling.
+      const dealt = damage(g, a, b.damage, point, b.owner, b.kind, { kb: { x: b.vx * 0.12, y: Math.min(0, b.vy * 0.05) - 0.8 }, dir: angle, solo: true });
+      if (dealt && !a.dead && !a.knocked && b.hold) { a.hitstun = Math.max(a.hitstun || 0, b.hold); a.hitstunMax = Math.max(a.hitstunMax || 0, a.hitstun); }
+      if (dealt) { const k = g.actor(b.owner); if (k) { k.lastPrey = a.id; k.lastPreyT = g.time; } }
+    }
     else damage(g, a, b.damage, point, b.owner, b.kind, { kb: { x: b.vx * 0.16, y: b.vy * 0.1 - 1 }, dir: angle });
   } else if (l) {
     const owner = g.actor(l.actor);

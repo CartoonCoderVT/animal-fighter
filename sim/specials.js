@@ -1,8 +1,9 @@
 // Specials (K) and the moves everyone shares: aerial stomp and carrying a downed fighter.
 // A running special lives in a.act; stepSpecial runs it each step and may lock movement.
 import { Body, Composite } from './physics.js';
-import { SPECIALS, JUMA_AIR, LOLA_AIR, DARK, noxAir } from './moves.js';
+import { SPECIALS, JUMA_AIR, LOLA_AIR, KING_AIR, DARK, noxAir } from './moves.js';
 import { freeScythe } from './nox.js';
+import { royalAttack, stepDecree } from './court.js';
 import { FIGHTERS } from './fighters.js';
 import { damage, startMove, landPlunge, markOf, drama } from './combat.js';
 import { MOVES } from './moves.js';
@@ -16,7 +17,7 @@ import { startWorld, skipSpot, skipTo, skipKnives } from './timestop.js';
 
 const LOCK = { lock: true };
 
-function setAct(a, act, max) {
+export function setAct(a, act, max) {
   a.act = act;
   a.actT = 0;
   a.actMax = max;
@@ -34,6 +35,8 @@ export function endAct(g, a) {
 }
 
 export function startSpecial(g, a) {
+  // The Cat King's ATAQUE REAL (sim/court.js).
+  if (a.type === 0) { royalAttack(g, a); return; }
   if (a.type === 3) { jumaSpecial(g, a); return; }
   if (a.type === 4) { noxSpecial(g, a); return; }
   // Lola's ZA WARUDO (sim/timestop.js); nothing happens while time is already stopped.
@@ -275,7 +278,7 @@ export function stepSpecial(g, a, input, pressed, dt) {
       a.face = b.x >= a.x ? 1 : -1;
       if (d < 10 || a.actT > a.actMax) {
         endAct(g, a);
-        const then = a.chaseThen || (a.type === 4 ? noxAir(a)[0] : a.type === 3 ? (a.form === 'beast' ? 'bAirSmash' : JUMA_AIR[0]) : 'airA');
+        const then = a.chaseThen || (a.type === 4 ? noxAir(a)[0] : a.type === 3 ? (a.form === 'beast' ? 'bAirSmash' : JUMA_AIR[0]) : a.type === 0 ? KING_AIR[0] : 'airA');
         a.chaseThen = null;
         if (b.ground) Body.setVelocity(a.body, { x: a.face, y: 0 });
         else {
@@ -373,6 +376,7 @@ export function stepSpecial(g, a, input, pressed, dt) {
     case 'toss':
       if (a.actT > a.actMax) endAct(g, a);
       return null;
+    case 'decree': return stepDecree(g, a);
     case 'darkRise': {
       // The blood gathers into him, shivering; then he turns.
       if (a.form !== 'dark' && a.actT >= DARK.pop) becomeDark(g, a);

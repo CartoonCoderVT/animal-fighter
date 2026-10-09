@@ -2,10 +2,10 @@ import { DARK } from './moves.js';
 // stats: [DANO, MOBILIDADE, ESPECIAL] out of 5.
 export const FIGHTERS = [
   {
-    id: 'cat', name: 'Mingau', species: 'O GATO', role: 'AGILIDADE / GARRAS', word: 'MIAU.', color: '#f68268',
-    desc: 'Fofo até alguém respirar alto. Arranha em sequência e não solta mais.',
-    ability: 'Bote', icon: '>', stats: [3, 5, 4], hp: 120, speed: 5, weight: 0.9, cooldown: 6,
-    detail: 'J arranha; o terceiro lança e J de novo persegue no ar. S+J arranha baixo e derruba. K: bote, monta na cabeça e chuta.'
+    id: 'cat', name: 'Mingau', species: 'O REI GATO', role: 'COMANDO / CORTE', word: 'AJOELHEM.', color: '#f68268',
+    desc: 'Rei de coroa e cetro. Não suja as patas: cinco gatinhos da corte lutam por ele.',
+    ability: 'ATAQUE REAL', icon: '♛', stats: [3, 4, 5], hp: 110, speed: 5, weight: 0.9, cooldown: 14,
+    detail: 'J: soldado, assassino, arqueiro, mago e escudeiro atacam um por vez. S+J chuva de flechas; lado+J carga. K: a corte inteira ataca junto.'
   },
   {
     id: 'rat', name: 'Marola', species: 'O RATO', role: 'ALCANCE / ATROPELO', word: 'ALOHA.', color: '#7bcbbb',
