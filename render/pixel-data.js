@@ -6,6 +6,7 @@
 // Light comes from the top-left. Outlines are drawn around each part when it is composed,
 // so a front part (head, near arm) gets a dark line where it overlaps what is behind it.
 import { PARTS } from './pixel-parts.js';
+import { DARK_NOX_PALETTE } from './dark-nox.js';
 
 const FAR = { 1: '2', 2: '3', 4: '5', 6: '7', 9: '8', x: 'y' };
 
@@ -60,7 +61,9 @@ export const BEAST = {
   joint: { head: [2, -12], armF: [5, -10], armB: [1, -11], footF: [3, -2], footB: [-3, -2] },
   eye: [2, -8]
 };
-export const castFor = (type, form) => (form === 'beast' && CAST[type]?.id === 'ocelot' ? BEAST : CAST[type]);
+// DARK NOX: Nox himself (same id, so his scarf moves the same) in his dark palette, cached apart.
+export const DARK_NOX = { ...castOf('bat'), palette: DARK_NOX_PALETTE, paletteId: 'batDark' };
+export const castFor = (type, form) => (form === 'beast' && CAST[type]?.id === 'ocelot' ? BEAST : form === 'dark' && CAST[type]?.id === 'bat' ? DARK_NOX : CAST[type]);
 const anchorsOf = ch => ch?.anchor || ANCHOR;
 const jointsOf = ch => ch?.joint || JOINT;
 
@@ -375,7 +378,7 @@ const mixHex = (a, b, t) => {
 };
 // Palette with optional state tints in the variant string: char1-3, ice, xray, flash.
 export function paletteFor(ch, variant = '') {
-  const key = ch.id + variant;
+  const key = (ch.paletteId || ch.id) + variant;
   let p = paletteCache.get(key);
   if (p) return p;
   p = { ...OVERLAY, ...ch.palette };

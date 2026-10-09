@@ -1,10 +1,12 @@
 // Nox's hemomancy drawn on the 640x360 grid: talons grown from his claw, the scythe of blood he
 // forms for the reap, cyclone, guillotine, wheel and air slam, the orb he condenses before the
 // piercing beam, and the blood marks floating over rivals. Everything is derived from observable state (move, progress, act
-// time), so remote peers draw the same thing. Without gore the blood turns to violet shadow.
+// time), so remote peers draw the same thing. Without gore the blood turns to violet shadow. As DARK NOX his scythe
+// is far bigger (it reaches much further) and darker: a crimson blade with a black edge.
 import { MOVES } from '../sim/moves.js';
 import { slotPoint } from './pixel-data.js';
 import { seeded } from '../engine/const.js';
+import { darkBloodPal } from './dark-nox.js';
 
 export const BLOOD_PAL = {
   blood: { out: '#2a0410', dark: '#7a0a1e', mid: '#c8142e', light: '#ff4a64', glint: '#ffd0d8' },
@@ -96,11 +98,13 @@ export function drawScythe(g, P, gx, gy, th, face, s = 1, alpha = 1, grow = 1, t
     for (let k = tooth ? -2 : -1; k <= w; k++) {
       const [x, y] = F.at(lx - F.dx * k * 0.85, ly - F.dy * k * 0.85);
       const edge = k === w, near = Math.abs(u - shimmer) < 0.05;
-      put(g, k < 0 ? P.out : edge ? (near || u > 0.88 ? P.glint : P.light) : k === 0 ? P.dark : k === 1 ? P.mid : P.light, x, y);
+      // A dark blade keeps its edge black, with the shimmer running along it.
+      const ec = P.edge ? (near ? P.glint : P.edge) : near || u > 0.88 ? P.glint : P.light;
+      put(g, k < 0 ? P.out : edge ? ec : k === 0 ? P.dark : k === 1 ? P.mid : P.light, x, y);
     }
   }
   const [tx, ty] = F.at(...bladePoint(F, len, bl, s));
-  put(g, '#ffffff', tx, ty);
+  put(g, P.tip || '#ffffff', tx, ty);
   // A spike off the back of the head.
   for (let j = 1; j <= 4; j++) { const [x, y] = F.at(F.dx * (len + j * 0.4) - F.nx * j * s, F.dy * (len + j * 0.4) - F.ny * j * s); put(g, j === 4 ? P.glint : j > 2 ? P.light : P.mid, x, y); }
   // The vampire's eye in the head: a ring of blood round a pale iris and a slit pupil that blinks.
@@ -162,14 +166,14 @@ function swingAt(sw, p) {
   const t = Math.min(1, (p - st.s) / ((sw.end ?? 1) - st.s));
   return { th: st.to + ((sw.after ?? st.to) - st.to) * t, prev: st.from, smear: Math.max(0, 1 - t * 2.5), flip };
 }
-function scytheMove(g, P, a, h, fx, fy, p, t, face, scale, presence) {
-  const sw = SWING[a.attackKind];
+function scytheMove(g, P, a, h, fx, fy, p, t, face, scale, presence, size = 1) {
+  const sw = SWING[a.attackKind], s = scale * size;
   const grow = presence >= 0.99 || !sw.grow ? 1 : Math.min(1, p / sw.grow);
   const gx = sw.center ? fx : h.x, gy = sw.center ? fy - 12 * scale : h.y;
-  if (grow < 1) converge(g, P, gx, gy, grow, t, 16 * scale);
+  if (grow < 1) converge(g, P, gx, gy, grow, t, 16 * s);
   const st = swingAt(sw, p);
-  if (st.smear) scytheSmear(g, P, gx, gy, sw.spin ? st.prev : st.prev > st.th ? Math.min(st.prev, st.th + 160) : Math.max(st.prev, st.th - 160), st.th, face, scale, st.smear, st.flip);
-  return drawScythe(g, P, gx, gy, st.th, face, scale, st.fade ?? 1, grow, t, st.flip);
+  if (st.smear) scytheSmear(g, P, gx, gy, sw.spin ? st.prev : st.prev > st.th ? Math.min(st.prev, st.th + 160) : Math.max(st.prev, st.th - 160), st.th, face, s, st.smear, st.flip);
+  return drawScythe(g, P, gx, gy, st.th, face, s, st.fade ?? 1, grow, t, st.flip);
 }
 // The scythe in hand outside its own moves, held in the back hand and drawn behind him. Standing:
 // the reaper's guard, upright with its butt on the floor and the blade arching over his head
@@ -178,7 +182,7 @@ function scytheMove(g, P, a, h, fx, fy, p, t, face, scale, presence) {
 // claw blows it moves to the back hand. Moves that need both arms put it away.
 const CLAWS = ['bloodClaw', 'nAirClaw', 'shadowCut', 'bloodSpikes'];
 const NO_SCYTHE = ['vampKiss'];
-function heldScythe(g, P, a, frame, fx, fy, t, face, scale, presence, mask) {
+function heldScythe(g, P, a, frame, fx, fy, t, face, scale, presence, mask, size = 1) {
   if (a.act || a.climbing || a.holding || a.weapon || NO_SCYTHE.includes(a.attackKind) && a.attack > 0) return null;
   const sway = Math.sin(t * 2.2) * 2;
   let slot = 'armB', th, stand = false;
@@ -190,10 +194,10 @@ function heldScythe(g, P, a, frame, fx, fy, t, face, scale, presence, mask) {
   if (!frame[slot]) slot = 'armF';
   const [hx, hy] = slotPoint(slot, frame, 0, 3);
   // Standing, the butt rests on the floor and the blade arches over his head toward the rival.
-  const gx = fx + hx * face * scale, gy = stand ? fy - BUTT * scale : fy + hy * scale;
-  if (presence < 1) converge(g, P, gx, gy, presence, t, 14 * scale);
+  const gx = fx + hx * face * scale, gy = stand ? fy - BUTT * scale * size : fy + hy * scale;
+  if (presence < 1) converge(g, P, gx, gy, presence, t, 14 * scale * size);
   occlude = mask || null;
-  const out = drawScythe(g, P, gx, gy, th, face, scale, 1, Math.max(0.05, presence), t);
+  const out = drawScythe(g, P, gx, gy, th, face, scale * size, 1, Math.max(0.05, presence), t);
   occlude = null;
   return out;
 }
@@ -211,14 +215,16 @@ function aura(g, P, fx, fy, face, k, t, scale) {
 // the scythe's head is when one is out, so it can come apart in blood once it is gone.
 export function drawBloodArt(g, a, frame, fx, fy, t, { scale = 1, gore = 2, presence = 1, mask = null } = {}) {
   if (a.type !== 4 || !frame?.armF || (a.severed || []).includes('armF')) return;
-  const P = bloodPal(gore), face = a.face || 1, h = armOf(frame, fx, fy, face, scale);
+  // DARK NOX: the scythe 1.6 times the size, the talons longer, all of it in his dark blood.
+  const dark = a.form === 'dark', size = dark ? 1.6 : 1, sc = scale * size;
+  const P = dark ? darkBloodPal(gore) : bloodPal(gore), face = a.face || 1, h = armOf(frame, fx, fy, face, scale);
   if (a.act === 'requiem') {
     // Every cut is a scythe stroke through the rival; the drop from above swings it down once more.
     const at = a.actT ?? 0;
-    if (at < 0.12) { converge(g, P, h.x, h.y, at / 0.12, t, 16 * scale); return drawScythe(g, P, h.x, h.y, 150, face, scale, 1, Math.max(presence, at / 0.12), t); }
+    if (at < 0.12) { converge(g, P, h.x, h.y, at / 0.12, t, 16 * sc); return drawScythe(g, P, h.x, h.y, 150, face, sc, 1, Math.max(presence, at / 0.12), t); }
     const u = ((at - 0.12) / 0.085) % 1, th = a.reqDone ? 350 : 150 + 200 * (1 - Math.pow(1 - Math.min(1, u * 2.4), 2));
-    if (!a.reqDone) scytheSmear(g, P, h.x, h.y, 150, th, face, scale, 1);
-    return drawScythe(g, P, h.x, h.y, th, face, scale, 1, 1, t);
+    if (!a.reqDone) scytheSmear(g, P, h.x, h.y, 150, th, face, sc, 1);
+    return drawScythe(g, P, h.x, h.y, th, face, sc, 1, 1, t);
   }
   if (a.act === 'beam') {
     const at = a.actT ?? 0;
@@ -244,11 +250,11 @@ export function drawBloodArt(g, a, frame, fx, fy, t, { scale = 1, gore = 2, pres
   switch (a.attackKind) {
     case 'bloodClaw': case 'nAirClaw':
       if (p < 0.3) { if (Math.floor(t * 12) % 2) dot(g, P.mid, h.x, h.y + 1); }
-      else if (p < 0.8) talons(g, P, h, p < 0.5 ? 1 : 1 - (p - 0.5) / 0.3, scale);
+      else if (p < 0.8) talons(g, P, h, p < 0.5 ? 1 : 1 - (p - 0.5) / 0.3, dark ? scale * 1.4 : scale);
       break;
     case 'scytheReap': case 'scytheSpin': case 'scytheGuillotine': case 'nAirScythe': case 'nAirVortex':
     case 'scytheSweep': case 'scytheDash': case 'execute': case 'nAirCross': case 'dashAtk': case 'batStrike':
-      return scytheMove(g, P, a, h, fx, fy, p, t, face, scale, presence);
+      return scytheMove(g, P, a, h, fx, fy, p, t, face, scale, presence, size);
     case 'bloodSpikes':
       if (p < 0.4) { converge(g, P, h.x, h.y, p / 0.4, t, 14 * scale); orb(g, P, h.x, h.y - scale, Math.round((1 + 2 * (p / 0.4)) * scale), t); }
       else {
@@ -263,11 +269,11 @@ export function drawBloodArt(g, a, frame, fx, fy, t, { scale = 1, gore = 2, pres
       if (p < 0.32) converge(g, P, fx + face * 4 * scale, fy - 14 * scale, p / 0.32, t, 12 * scale);
       break;
     case 'shadowCut':
-      if (p >= 0.3 && p < 0.7) talons(g, P, h, 1, scale);
+      if (p >= 0.3 && p < 0.7) talons(g, P, h, 1, dark ? scale * 1.4 : scale);
       break;
   }
   }
-  return heldScythe(g, P, a, frame, fx, fy, t, face, scale, presence, mask);
+  return heldScythe(g, P, a, frame, fx, fy, t, face, scale, presence, mask, size);
 }
 
 // Blood marks over a rival: one drop per mark, bobbing above the head; they blink before fading.
