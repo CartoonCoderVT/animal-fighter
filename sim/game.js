@@ -1,5 +1,5 @@
 import { createEngine, buildStatic, Bodies, Body, Composite, Constraint, Events, Query, CAT, MASK, ALL_ONEWAY } from './physics.js';
-import { MAP, buildNav } from './map.js';
+import { MAP, buildNav, useMap } from './map.js';
 import { FIGHTERS } from './fighters.js';
 import { EMPTY_INPUT } from '../engine/input.js';
 import { rnd, dist } from '../engine/const.js';
@@ -16,7 +16,9 @@ import { stepTimeStop } from './timestop.js';
 export { EMPTY_INPUT, FIGHTERS };
 
 export class Game {
-  constructor({ players = [], mode = 'solo', localId = 0, settings = {}, onEvent = () => {}, killsToWin = 5 } = {}) {
+  constructor({ players = [], mode = 'solo', localId = 0, settings = {}, onEvent = () => {}, killsToWin = 5, map = 'depot' } = {}) {
+    // The arena: everything below reads it from MAP.
+    this.map = useMap(map).id;
     this.mode = mode;
     this.localId = localId;
     this.settings = settings;
@@ -186,6 +188,8 @@ export class Game {
 
   step(dt = 1 / 60) {
     if (this.paused || this.winner !== null) return;
+    // Another game (the title screen's) may have played in another arena meanwhile.
+    useMap(this.map);
     dt = 1 / 60;
     this.shake = Math.max(0, this.shake - dt * 25);
     this.flash = Math.max(0, this.flash - dt * 4);
@@ -290,11 +294,11 @@ export class Game {
     const r = v => Math.round(v * 10) / 10, r2 = v => Math.round(v * 100) / 100;
     // Events of the last 0.35 s of steps (by step, so stopped time does not pile them up).
     return {
-      events: this.netEvents.filter(e => e.seq >= this.seq - 21), seq: this.seq, time: this.time, mode: this.mode, winner: this.winner, shake: r(this.shake), flash: r(this.flash), slowmo: this.slowmo > 0, drama: this.drama > 0, countdown: r(this.countdown || 0),
+      events: this.netEvents.filter(e => e.seq >= this.seq - 21), seq: this.seq, time: this.time, mode: this.mode, map: this.map, winner: this.winner, shake: r(this.shake), flash: r(this.flash), slowmo: this.slowmo > 0, drama: this.drama > 0, countdown: r(this.countdown || 0),
       actors: this.actors.map(a => ({
         id: a.id, type: a.type, name: a.name, bot: a.bot, team: a.team, hp: r(a.hp), maxHp: a.maxHp, kills: a.kills, deaths: a.deaths,
         x: r(a.x), y: r(a.y), vx: r(a.vx), vy: r(a.vy), face: a.face, move: a.move, ground: a.ground, climbing: !!a.climbing, crouch: !!a.crouch,
-        dead: a.dead, attack: r(a.attack), attackKind: a.attackKind, attackSeq: a.attackSeq, abilityCd: r(a.abilityCd), hurt: r(a.hurt),
+        dead: a.dead, attack: r2(a.attack), attackKind: a.attackKind, attackSeq: a.attackSeq, abilityCd: r(a.abilityCd), hurt: r(a.hurt),
         invincible: r(a.invincible), dodge: r(a.dodge), dodgeKind: a.dodgeKind, stun: r(a.stun), knocked: a.knocked, getup: r(a.getup), aim: r(a.aim),
         act: a.act, combo: a.combo, gliding: a.gliding, chain: g_chain(this, a),
         parry: r(a.parry || 0), parryLag: r(a.parryLag || 0), perfectT: r(a.perfectT || 0), counter: r(a.counter || 0),
@@ -306,10 +310,10 @@ export class Game {
         powerSeq: a.powerSeq, recoil: r(a.recoil || 0), stats: a.stats, form: a.form || null, formT: r(a.formT || 0),
         wPose: a.wPose || null, wPoseT: r2(a.wPoseT || 0), skips: a.skips || 0
       })),
-      props: this.props.map(p => ({ id: p.id, kind: p.kind, w: p.w, h: p.h, x: r(p.x), y: r(p.y), angle: r(p.angle * 100) / 100, hp: p.hp, armed: !!p.armed, fuse: p.fuse, burning: r(p.burning || 0), weapon: p.weapon, rocket: p.rocket > 0, chain: !!p.chain })),
+      props: this.props.map(p => ({ id: p.id, kind: p.kind, w: p.w, h: p.h, x: r(p.x), y: r(p.y), angle: r(p.angle * 100) / 100, hp: p.hp, armed: !!p.armed, fuse: p.fuse, burning: r(p.burning || 0), weapon: p.weapon, rocket: p.rocket > 0, chain: !!p.chain, look: p.look })),
       // Lola's laid knives also send where they point, how far out of her hand they are (k) and how
       // long they still hang.
-      bullets: this.bullets.map(b => ({ id: b.id, x: r(b.x), y: r(b.y), px: r(b.px), py: r(b.py), word: b.word, color: b.color, vx: r(b.vx), vy: r(b.vy), kind: b.kind, ...(b.set ? { set: 1, ang: r2(b.ang), k: r2(b.k), hold: r2(b.hold) } : null) })),
+      bullets: this.bullets.map(b => ({ id: b.id, x: r(b.x), y: r(b.y), px: r(b.px), py: r(b.py), word: b.word, color: b.color, vx: r(b.vx), vy: r(b.vy), kind: b.kind, ...(b.set ? { set: 1, ang: r2(b.ang), k: r2(b.k), hold: r2(b.hold), hang: b.k < 1 || b.hold > 0 ? 1 : 0 } : null) })),
       timeStop: this.timeStop && { owner: this.timeStop.owner, t: r2(this.timeStop.t), x: r(this.timeStop.x), y: r(this.timeStop.y), targets: this.timeStop.targets },
       knives: this.knives.map(k => ({ id: k.id, x: r(k.x), y: r(k.y), ang: r2(k.ang), k: r2(k.k), ring: !!k.ring })),
       limbs: this.limbs.map(l => ({ id: l.id, type: l.type, form: l.form || null, part: l.part, x: r(l.x), y: r(l.y), angle: r(l.angle * 100) / 100, face: l.face, actor: l.actor, attached: l.attached, wounds: l.wounds, char: r(l.char || 0), frozen: l.frozen, bleed: r(l.bleed), embedded: l.embedded || null, shock: (l.shock || 0) > 0, life: r(l.life), cut: l.cut || null })),

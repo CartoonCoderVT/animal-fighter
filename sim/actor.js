@@ -24,6 +24,7 @@ export function groundInfo(g, a) {
   }
   for (let i = 0; i < MAP.oneway.length; i++) {
     const p = MAP.oneway[i];
+    if (g.hz?.off?.[i]) continue;
     if ((b.collisionFilter.mask & onewayBit(i)) && x + 6 > p.x0 && x - 6 < p.x1 && on(p.y)) return { kind: 'oneway', y: p.y, index: i, id: p.id };
   }
   if (b.collisionFilter.mask & CAT.actor) for (const o of g.actors) {
@@ -32,7 +33,7 @@ export function groundInfo(g, a) {
     if (Math.abs(o.body.position.x - x) < 13 && feet >= top - 3 && feet <= top + 6) return { kind: 'actor', y: top, id: null, actor: o.id };
   }
   const bodies = [];
-  for (const p of g.props) if (!p.held && p.kind !== 'glass') bodies.push(p.body);
+  for (const p of g.props) if (!p.held && p.kind !== 'glass' && !p.body.isSensor) bodies.push(p.body);
   for (const dx of [-5, 5]) {
     const hits = Query.ray(bodies, { x: x + dx, y: feet - 2 }, { x: x + dx, y: feet + 6 }, 2);
     if (hits.length) return { kind: 'prop', y: feet, body: hits[0].body || hits[0].bodyA };

@@ -79,12 +79,14 @@ export function attack(g, a) {
   let id;
   const list = comboOf(a), chaining = a.comboTimer > 0 && (list.includes(a.attackKind) || ['shadowCut', 'scytheDash', 'batStrike', 'jBolt', 'lSkip', 'lFan', 'lRain'].includes(a.attackKind));
   const nox = a.type === 4, side = a.input.left || a.input.right, tapped = g.time - (a.dirTap ?? -9) < 0.2;
+  // A bot's steering makes fresh taps of its own: its knife branches follow its plan instead.
+  const tapSet = tapped && (!a.bot || !!a.ai?.lola?.plan);
   const juma = a.type === 3, beast = juma && a.form === 'beast', lola = a.type === 2;
   if (a.dashStrike) id = 'dashAtk';
   else if (!a.ground && !a.climbing) {
     const air = nox ? NOX_AIR : beast ? BEAST_AIR : juma ? JUMA_AIR : lola ? LOLA_AIR : AIR, prev = air.indexOf(a.attackKind);
     // Lola, a fresh tap of a direction in her air string: the ring of knives; then the dive.
-    if (lola && a.comboTimer > 0 && (a.attackKind === 'lAirCut' || a.attackKind === 'lAirSpin') && side && tapped && !(a.setCd > 0)) { a.setCd = SET.cd; id = 'lAirRing'; }
+    if (lola && a.comboTimer > 0 && (a.attackKind === 'lAirCut' || a.attackKind === 'lAirSpin') && side && tapSet && !(a.setCd > 0)) { a.setCd = SET.cd; id = 'lAirRing'; }
     else if (lola && a.comboTimer > 0 && a.attackKind === 'lAirRing') id = 'lAirDive';
     else id = air[a.comboTimer > 0 && prev >= 0 ? (prev + 1) % air.length : 0];
   } else if (a.input.down) {
@@ -99,7 +101,7 @@ export function attack(g, a) {
   else if (nox && chaining && side && tapped && a.attackKind !== 'scytheDash') { a.face = a.input.right ? 1 : -1; id = 'scytheDash'; }
   // Lola skips through time to a rival a long way off (on a short cooldown, else the string). Inside
   // her string a fresh tap of a direction is the wall of knives instead.
-  else if (lola && chaining && side && tapped && !(a.setCd > 0)) { a.setCd = SET.cd; id = 'lFan'; }
+  else if (lola && chaining && side && tapSet && !(a.setCd > 0)) { a.setCd = SET.cd; id = 'lFan'; }
   else if (lola && !chaining && side && !(a.skipCd > 0)) { a.face = a.input.right ? 1 : -1; a.skipCd = 1.1; id = 'lSkip'; }
   else if (juma && !chaining && side && !(beast && a.chargeCd > 0)) {
     a.face = a.input.right ? 1 : -1;
@@ -166,6 +168,7 @@ function awaySkip(g, a, mv) {
     const x = clamp((b ? b.x : a.x) + dir * d, 18, 942);
     if (Math.abs(x - a.x) < 8) continue;
     if (blocked(x, a.y) || (x > MAP.pit.x0 - 8 && x < MAP.pit.x1 + 8 && !footing(x, a.y, 60, 0)) || (a.ground && !footing(x, a.y))) continue;
+    if (MAP.press && g.hz.press?.state !== 'up' && x > MAP.press.x0 - 12 && x < MAP.press.x1 + 12) continue;
     skipTo(g, a, x, a.y, { face: b ? Math.sign(b.x - x) || a.face : a.face, ground: a.ground });
     if (!a.ground) a.float = Math.max(a.float || 0, mv.dur);
     return;
@@ -624,7 +627,7 @@ function bulletHit(g, b, body, point) {
     const owner = g.actor(l.actor);
     if (l.attached && owner && !owner.dead && owner.knocked) {
       if (owner.team === b.team) return false;
-      damage(g, owner, b.damage, point, b.owner, b.kind, { part: l.part, kb: { x: b.vx * 0.05, y: b.vy * 0.05 } });
+      damage(g, owner, b.damage, point, b.owner, b.kind, { part: l.part, kb: { x: b.vx * 0.05, y: b.vy * 0.05 }, solo: b.kind === 'knife' });
     } else {
       woundLimb(g, l, point, 'hole', 1);
       l.hp -= b.damage;
@@ -751,7 +754,8 @@ export function damage(g, a, amount, point, ownerId, kind = 'punch', opts = {}) 
   if (!DOT.has(cat) || ownerId !== a.id) { a.lastHit = ownerId; a.lastHitTime = g.time; }
   a.lastHitKind = kind;
   if (owner && ownerId !== a.id) owner.stats.damage += amount;
-  if (owner && owner !== a && !DOT.has(cat)) { owner.lastPrey = a.id; owner.lastPreyT = g.time; }
+  // The rival a fighter's string is on: blows only, not a thrown knife that strays into a bystander.
+  if (owner && owner !== a && !DOT.has(cat) && !opts.solo) { owner.lastPrey = a.id; owner.lastPreyT = g.time; }
   const gore = g.settings.gore ?? 2;
   if (gore && !DOT.has(cat)) g.fx('blood', { x: point.x, y: point.y, dx: (opts.kb?.x || 0) * 0.4, dy: -1.5, n: Math.round(Math.min(40, amount * (gore === 2 ? 1.5 : 0.5))), s: cat === 'cut' ? 4.5 : 3 });
 

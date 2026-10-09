@@ -3,7 +3,6 @@
 import { VIEW_W, VIEW_H, S, bayer } from '../engine/const.js';
 import { hexToRgb } from '../engine/palette.js';
 import { MAP } from '../sim/map.js';
-import { WINDOWS } from './world.js';
 
 const mk = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
 const X = v => Math.round(v * S);
@@ -48,14 +47,15 @@ export function cookie(r, color, kind = 'point', angle = 0, spread = 0.55) {
   return c;
 }
 
-function moonShafts(w, h, k) {
+// Moonlight falling through the arena's windows (MAP.windows, view pixels).
+function moonShafts(w, h, k, windows = MAP.windows || []) {
   const c = mk(w, h), g = c.getContext('2d');
   const dx = -0.42, dy = 1;
   const id = g.createImageData(w, h), D = id.data;
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     const vx = x * k, vy = y * k;
     let v = 0;
-    for (const win of WINDOWS) {
+    for (const win of windows) {
       const t = (vy - (win.y + win.h)) / dy;
       if (t < -win.h) continue;
       const sx = vx - dx * Math.max(0, t);
@@ -85,12 +85,18 @@ export class Lighting {
     this.g = this.map.getContext('2d');
     this.tmps = new Map();
     this.occCache = new Map();
-    this.shafts = moonShafts(VIEW_W, VIEW_H, 1);
-    this.shaftsLow = moonShafts(LW, LH, 2);
-    this.occ = occluders();
+    this.setMap();
     this.lights = [];
     this.statics = [];
     this.bases = {};
+  }
+
+  // The arena changed: its moonlight and the shapes that cast shadows.
+  setMap() {
+    this.shafts = moonShafts(VIEW_W, VIEW_H, 1);
+    this.shaftsLow = moonShafts(LW, LH, 2);
+    this.occ = occluders();
+    this.occCache.clear();
   }
 
   tmp(size) {

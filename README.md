@@ -17,6 +17,13 @@ Também funciona com controle e toque.
 
 **Lola** luta com facas e salta no tempo dentro dos combos (some e reaparece atrás, na frente ou acima do rival), deixando facas paradas no ar onde sumiu. No meio do combo ela monta padrões de bullet hell: **S+J** faz chover facas sobre o rival, um toque de **lado+J** ergue uma muralha de facas entre os dois e, no ar, um anel de facas se fecha em espiral. O K dela carrega devagar e para o tempo de verdade: **ZA WARUDO**.
 
+## Arenas
+
+Escolha a arena na tela de lutadores (**M**) ou, online, na sala (o anfitrião escolhe).
+
+- **Depósito 07 · Turno da Noite**: esteira, prensa hidráulica, triturador, cabo elétrico e carga pendurada.
+- **Castelo · Salão do Relógio**: um salão gótico à meia-noite. Velas que soltam itens quando quebradas (corações, água benta, armas), um lustre que despenca se a corrente for cortada, pêndulos que varrem as sacadas, uma pedra solta sobre o fosso de estacas, armaduras que desmontam e deixam a arma... e alguns segredos para quem prestar atenção.
+
 ## Créditos
 
 Física: [Matter.js](https://brm.io/matter-js/) (MIT) · Rede: [PeerJS](https://peerjs.com/) (MIT). Licenças em `vendor/`.

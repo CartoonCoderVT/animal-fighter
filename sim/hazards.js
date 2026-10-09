@@ -5,8 +5,11 @@ import { damage, kill } from './combat.js';
 import { addProp, removeProp, explode, damageProp, THROWABLES } from './props.js';
 import { knockdown, pushActor, ragdollOf } from './ragdoll.js';
 import { HALF_H } from '../render/rig.js';
+import { installCastle, tickCastle, castleSnapshot, castleBulletHit } from './castle.js';
 
+// Each arena has its own things to touch: the depot's are here, the castle's in sim/castle.js.
 export function installHazards(g) {
+  if (MAP.id === 'castle') { installCastle(g); g.hz.onExplosion = () => {}; return; }
   const world = g.engine.world;
   const hz = g.hz = {
     conveyor: { ...MAP.conveyor, dir: 1, offset: 0 }, bulletBodies: [], lamps: [], cable: null, press: null, cargo: null,
@@ -100,6 +103,7 @@ function onExplosion(g, x, y, R) {
 }
 
 export function hazardInteract(g, a) {
+  if (MAP.id !== 'depot') return false;
   const lv = MAP.conveyor.lever;
   if (Math.hypot(a.x - lv.x, a.y - lv.y) < 44) {
     g.hz.conveyor.dir *= -1;
@@ -130,6 +134,7 @@ function segD(px, py, ax, ay, bx, by) {
 }
 
 export function hazardBulletHit(g, b, nx, ny) {
+  if (MAP.id === 'castle') { castleBulletHit(g, b, nx, ny); return; }
   const cargo = g.props.find(p => p.id === g.hz.cargo?.id);
   if (!cargo?.chain || b.kind === 'word') return;
   const c = MAP.cargo;
@@ -156,6 +161,7 @@ function crushZone(x0, x1, y0, y1, x, y) { return x > x0 && x < x1 && y > y0 && 
 
 export function tickHazards(g, dt) {
   const hz = g.hz;
+  if (MAP.id === 'castle') { tickCastle(g, dt); tickPit(g, dt); return; }
   hz.conveyor.offset = (hz.conveyor.offset + hz.conveyor.dir * hz.conveyor.speed * dt * 60) % 1200;
   const cv = hz.conveyor;
   for (const p of g.props) {
@@ -217,23 +223,7 @@ export function tickHazards(g, dt) {
   }
   Body.setPosition(pr.body, { x: (P.x0 + P.x1) / 2, y: pr.y + P.headH / 2 }, true);
 
-  // Shredder pit
-  hz.grindCd -= dt;
-  const pit = MAP.pit;
-  for (const a of g.actors) {
-    if (a.dead) continue;
-    if (inPit(a.x) && a.y + (a.knocked ? 0 : HALF_H) > pit.y0 + 10) {
-      a.hp = 0;
-      kill(g, a, a.lastHit != null && g.time - (a.lastHitTime ?? -9) < 6 ? a.lastHit : null, { kind: 'grind' });
-      g.text(480, 470, 'TRITURADO!', '#ff8f7a');
-    }
-  }
-  for (const l of [...g.limbs]) if (inPit(l.x) && l.y > pit.y0 + 12) { grindFx(g, l.x, 'blood'); g.removeLimb(l); }
-  for (const p of [...g.props]) if (inPit(p.x) && p.y > pit.y0 + 10) {
-    removeProp(g, p);
-    if (p.kind === 'barrel' || p.kind === 'propane' || THROWABLES.includes(p.kind)) explode(g, p.x, pit.y0, p.owner, 0.8);
-    else grindFx(g, p.x, p.kind === 'crate' || p.kind === 'plank' ? 'wood' : 'spark');
-  }
+  tickPit(g, dt);
 
   // Live cable and the puddle it can electrify
   const cable = hz.cable, end = cable.segs[cable.segs.length - 1];
@@ -283,6 +273,26 @@ export function tickHazards(g, dt) {
   }
 }
 
+// The pit in the middle of the floor (the depot's shredder, the castle's spikes): nobody comes out.
+function tickPit(g, dt) {
+  g.hz.grindCd -= dt;
+  const pit = MAP.pit;
+  for (const a of g.actors) {
+    if (a.dead) continue;
+    if (inPit(a.x) && a.y + (a.knocked ? 0 : HALF_H) > pit.y0 + 10) {
+      a.hp = 0;
+      kill(g, a, a.lastHit != null && g.time - (a.lastHitTime ?? -9) < 6 ? a.lastHit : null, { kind: 'grind' });
+      g.text(480, 470, pit.text, '#ff8f7a');
+    }
+  }
+  for (const l of [...g.limbs]) if (inPit(l.x) && l.y > pit.y0 + 12) { grindFx(g, l.x, 'blood'); g.removeLimb(l); }
+  for (const p of [...g.props]) if (inPit(p.x) && p.y > pit.y0 + 10) {
+    removeProp(g, p);
+    if (p.kind === 'barrel' || p.kind === 'propane' || THROWABLES.includes(p.kind)) explode(g, p.x, pit.y0, p.owner, 0.8);
+    else grindFx(g, p.x, p.kind === 'crate' || p.kind === 'plank' ? 'wood' : 'spark');
+  }
+}
+
 function grindFx(g, x, kind) {
   g.fx('grind', { x, k: kind });
   if (g.hz.grindCd <= 0) { g.sound('grind', x); g.hz.grindCd = 0.3; }
@@ -290,9 +300,11 @@ function grindFx(g, x, kind) {
 
 export function hazardSnapshot(g) {
   const hz = g.hz;
+  if (MAP.id === 'castle') return castleSnapshot(g);
   const r = v => Math.round(v * 10) / 10;
   const cargo = g.props.find(p => p.id === hz.cargo?.id);
   return {
+    map: 'depot',
     conveyor: { dir: hz.conveyor.dir, offset: r(hz.conveyor.offset) },
     press: { y: r(hz.press.y), state: hz.press.state, t: r(hz.press.t) },
     cable: hz.cable.segs.map(s => [r(s.position.x), r(s.position.y)]),

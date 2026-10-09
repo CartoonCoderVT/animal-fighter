@@ -292,7 +292,8 @@ export function placeSlot(ch, slot, frame = {}, opts = {}) {
   const extra = [...(opts.wounds?.[slot] || []), ...(opts.stumps?.[slot] || [])];
   if (extra.length) m0 = applyWounds(m0, piv0, extra);
   const { m, piv } = deg ? rotate(m0, piv0, deg) : { m: m0, piv: piv0 };
-  return { m, x: ax + dx - piv[0], y: ay + dy - piv[1] };
+  // Whole cells only: weapon thrusts ease their offsets in between pixels.
+  return { m, x: Math.round(ax + dx - piv[0]), y: Math.round(ay + dy - piv[1]) };
 }
 
 // Maps a point given in a slot's unrotated matrix space (cells from its pivot) to character space.

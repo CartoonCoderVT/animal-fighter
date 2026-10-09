@@ -14,7 +14,7 @@ import { MatchScene } from './scenes/match.js';
 import { LobbyScene, OnlineScene } from './scenes/online.js';
 import { SelectScene } from './scenes/select.js';
 
-const DEFAULTS = { gore: 2, shake: true, camera: true, particles: true, volume: 0.35, music: 0.25, pixel: 'sharp', fps: false, name: '' };
+const DEFAULTS = { gore: 2, shake: true, camera: true, particles: true, volume: 0.35, music: 0.25, pixel: 'sharp', fps: false, name: '', map: 'depot' };
 
 export class Shell {
   constructor(canvas, textInput, live) {
@@ -122,7 +122,7 @@ export class Shell {
     return [{ id: 0, type: this.selected, name, bot: false }, ...[1, 2, 3].slice(0, bots).map(id => ({ id, type: (this.selected + id) % 5, name: FIGHTERS[(this.selected + id) % 5].name, bot: true }))];
   }
 
-  startMatch(players = this.makePlayers(), { mode = this.mode, isRemote = false, instant = false } = {}) {
+  startMatch(players = this.makePlayers(), { mode = this.mode, isRemote = false, instant = false, map = this.settings.map } = {}) {
     this.disposeGame();
     this.mode = mode;
     this.renderer.resetMatch();
@@ -131,7 +131,7 @@ export class Shell {
     this.localId = isRemote ? this.net.localId : 0;
     const countdown = mode === 'sandbox' || isRemote ? 0 : 3;
     if (!isRemote) {
-      this.game = new Game({ players, mode, localId: 0, settings: this.settings, onEvent: e => this.gameEvent(e), killsToWin: 5 });
+      this.game = new Game({ players, mode, localId: 0, settings: this.settings, onEvent: e => this.gameEvent(e), killsToWin: 5, map });
       this.game.paused = countdown > 0;
       this.game.countdown = countdown;
     }
@@ -201,8 +201,9 @@ export class Shell {
     if (e.type === 'status' || e.type === 'error') { scene.status = e.message; if (!(scene instanceof OnlineScene)) this.toast(e.message); }
     else if (e.type === 'lobby') { if (!this.playing) { if (this.base instanceof LobbyScene) this.base.refresh?.(); else this.go(new LobbyScene(this)); } }
     else if (e.type === 'joined') this.lateJoin(e.player);
+    else if (e.type === 'outdated') this.hardRefresh(e.code);
     else if (e.type === 'input') this.game?.inputFor(e.id, e.input);
-    else if (e.type === 'start') { this.mode = 'online'; this.startMatch(e.players, { mode: 'online', isRemote: true }); }
+    else if (e.type === 'start') { this.mode = 'online'; this.startMatch(e.players, { mode: 'online', isRemote: true, map: e.map }); }
     else if (e.type === 'state') {
       this.lastRemote = performance.now();
       this.remotePrev = this.remote;
@@ -235,8 +236,20 @@ export class Shell {
     }
     const players = game.actors.filter(b => b.id >= 0 && b.id < 4).map(b => ({ id: b.id, type: b.type, name: b.name, bot: b.bot }));
     this.lastPlayers = players;
-    this.net.sendTo(player.id, { type: 'start', players });
+    this.net.sendTo(player.id, { type: 'start', players, map: this.net.map });
     this.toast(`${player.name} entrou na partida.`);
+  }
+
+  // The host runs a newer version than this browser kept in its cache: fetch every file again
+  // past the cache, then reload straight back into the room. Once per version, so it never loops.
+  async hardRefresh(code) {
+    let tried = false;
+    try { tried = sessionStorage.getItem('af-refreshed') === code; sessionStorage.setItem('af-refreshed', code); } catch {}
+    if (tried) { this.scene.status = 'O jogo foi atualizado. Feche a aba e abra o link de novo (ou use uma aba anônima).'; return; }
+    this.scene.status = 'Atualizando o jogo para a versão do anfitrião…';
+    const urls = new Set([location.origin + location.pathname, ...performance.getEntriesByType('resource').map(r => r.name).filter(u => u.startsWith(location.origin))]);
+    await Promise.all([...urls].map(u => fetch(u, { cache: 'reload' }).catch(() => {})));
+    location.replace(`${location.pathname}?sala=${code}`);
   }
 
   // ---- loop -----------------------------------------------------------------------------

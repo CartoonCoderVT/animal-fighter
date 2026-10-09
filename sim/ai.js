@@ -1,5 +1,6 @@
 import { EMPTY_INPUT } from '../engine/input.js';
 import { MAP, pathTo } from './map.js';
+import { inPit } from './physics.js';
 import { rnd, dist, clamp } from '../engine/const.js';
 import { FOOT } from '../render/rig.js';
 import { MOVES, comboOf } from './moves.js';
@@ -125,16 +126,24 @@ export function think(g, a, dt) {
   }
 
   // Hazard avoidance overrides the plan.
-  const P = MAP.press, pr = g.hz.press;
-  if ((pr.state === 'warn' || pr.state === 'slam') && a.x > P.x0 - 24 && a.x < P.x1 + 24 && a.y > 400) moveTo = P.x0 - 70;
-  const end = g.hz.cable.segs[g.hz.cable.segs.length - 1].position;
-  if (Math.hypot(end.x - a.x, end.y - a.y) < 46) {
-    moveTo = a.x + Math.sign(a.x - end.x || 1) * 60;
-    // Cornered between the wall and the live cable: jump over it instead.
-    if (moveTo < 24) { moveTo = end.x + 70; if (a.ground) input.jump = true; }
+  if (MAP.id === 'depot') {
+    const P = MAP.press, pr = g.hz.press;
+    if ((pr.state === 'warn' || pr.state === 'slam') && a.x > P.x0 - 24 && a.x < P.x1 + 24 && a.y > 400) moveTo = P.x0 - 70;
+    const end = g.hz.cable.segs[g.hz.cable.segs.length - 1].position;
+    if (Math.hypot(end.x - a.x, end.y - a.y) < 46) {
+      moveTo = a.x + Math.sign(a.x - end.x || 1) * 60;
+      // Cornered between the wall and the live cable: jump over it instead.
+      if (moveTo < 24) { moveTo = end.x + 70; if (a.ground) input.jump = true; }
+    }
+    // Out of the live puddle by the side that has room (the left edge is against the wall).
+    if (g.hz.puddle.live && a.ground && a.x > MAP.puddle.x0 - 10 && a.x < MAP.puddle.x1 + 10 && a.y > 440) moveTo = a.x < (MAP.puddle.x0 + MAP.puddle.x1) / 2 && MAP.puddle.x0 - 30 > 20 ? MAP.puddle.x0 - 30 : MAP.puddle.x1 + 30;
+  } else if (MAP.id === 'castle') {
+    // Out from under a pendulum's sweep: wait at the side for the blade to pass.
+    for (const p of g.hz.pend) {
+      const bx = p.x + Math.sin(p.ang) * p.len, by = p.y + Math.cos(p.ang) * p.len;
+      if (Math.abs(a.y - by) < 30 && Math.abs(a.x - p.x) < 130 && Math.abs(a.x - bx) < 70 && Math.sign(p.w) === Math.sign(a.x - bx)) moveTo = a.x + Math.sign(a.x - bx || 1) * 40;
+    }
   }
-  // Out of the live puddle by the side that has room (the left edge is against the wall).
-  if (g.hz.puddle.live && a.ground && a.x > MAP.puddle.x0 - 10 && a.x < MAP.puddle.x1 + 10 && a.y > 440) moveTo = a.x < (MAP.puddle.x0 + MAP.puddle.x1) / 2 && MAP.puddle.x0 - 30 > 20 ? MAP.puddle.x0 - 30 : MAP.puddle.x1 + 30;
 
   if (moveTo !== null && !(ai.airborne && !a.ground)) steer(input, a, moveTo);
   // Never drift into the shredder: when falling near the pit without a planned leap, steer to the closer lip.
@@ -222,8 +231,11 @@ export function think(g, a, dt) {
       input.dodge = true; input.right = dx > 0; input.left = dx < 0;
     }
     if (a.dodge > 0 && a.dodgeKind === 'roll' && Math.abs(dx) < 50) input.attack = !a.lastInput.attack;
-    // Stomp on heads from above.
-    if (!a.ground && !a.act && Math.abs(dx) < 12 && dy > 12 && dy < 120 && a.vy > -2) { input.down = true; input.attack = true; }
+    // Stomp on heads from above: a rival on their feet and out of a combo, and only where the drop
+    // straight down is safe (not into the pit, not under the press).
+    const safeDrop = !inPit(a.x) && Math.abs(a.x - (MAP.pit.x0 + MAP.pit.x1) / 2) > (MAP.pit.x1 - MAP.pit.x0) / 2 + 30
+      && !(MAP.press && a.x > MAP.press.x0 - 16 && a.x < MAP.press.x1 + 16);
+    if (!a.ground && !a.act && !target.knocked && a.comboTimer <= 0 && !(target.hitstun > 0) && safeDrop && Math.abs(dx) < 12 && dy > 12 && dy < 120 && a.vy > -2) { input.down = true; input.attack = true; }
     // Pick up a downed rival and throw them.
     if (a.act === 'carry') {
       ai.carryT = (ai.carryT || 0) + dt;
@@ -253,6 +265,7 @@ export function think(g, a, dt) {
     if (threat) input.dodge = safeRoll(g, a, input.right ? 1 : input.left ? -1 : a.face);
   }
   if (input.aimX === null) { input.aimX = target.x; input.aimY = target.y; }
-  if (!input.left && !input.right) a.face = dx >= 0 ? 1 : -1;
+  // Turn to the target, but never in the middle of a move (dashes through the rival would shake).
+  if (!input.left && !input.right && !(a.attack > 0)) a.face = dx >= 0 ? 1 : -1;
   return input;
 }

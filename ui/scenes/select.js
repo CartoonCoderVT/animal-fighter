@@ -2,6 +2,7 @@ import { VIEW_W, VIEW_H, bayer } from '../../engine/const.js';
 import { drawText, measure } from '../../engine/font.js';
 import { FIGHTERS } from '../../sim/fighters.js';
 import { panel, paragraph, button, hit, hover } from '../widgets.js';
+import { MAPS, MAP_IDS } from '../../sim/map.js';
 
 const mk = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
 let stageCache = null;
@@ -36,6 +37,15 @@ export class SelectScene {
     this.shell = shell; this.next = next; this.code = code; this.index = shell.selected; this.t = 0; this.selT = 0; this.selOf = this.index;
     this.confirmRect = { x: VIEW_W - 152, y: 12, w: 140, h: 20 };
     this.botsRect = { x: VIEW_W - 152, y: 36, w: 140, h: 16 };
+    this.mapRect = { x: VIEW_W - 152, y: this.next === 'solo' ? 56 : 36, w: 140, h: 16 };
+  }
+  // Solo and the lab choose the arena here (M or a click); it is remembered.
+  get pickMap() { return this.next === 'solo' || this.next === 'sandbox'; }
+  cycleMap() {
+    const s = this.shell, i = MAP_IDS.indexOf(s.settings.map);
+    s.settings.map = MAP_IDS[(i + 1) % MAP_IDS.length];
+    s.saveSettings();
+    s.sound.play('ui_move');
   }
   enter() { this.shell.sound.music('menu'); }
   confirm() {
@@ -66,6 +76,7 @@ export class SelectScene {
       if (i.nav('down')) bots(Math.max(1, n - 1));
       if (hit(i, this.botsRect)) bots(n % 3 + 1);
     }
+    if (this.pickMap && (i.pressed('KeyM') || hit(i, this.mapRect))) this.cycleMap();
     if (i.nav('ok')) this.confirm();
     if (i.nav('back')) import('./title.js').then(m => this.shell.go(new m.MenuScene(this.shell)));
   }
@@ -110,6 +121,7 @@ export class SelectScene {
       const n = Math.max(1, Math.min(3, this.shell.settings.bots ?? 3));
       button(g, this.botsRect, `BOTS: ${n} · ▲▼`, { color: '#8a7f9c' });
     }
-    drawText(g, '◀ ▶ TROCAR · ESC VOLTA', VIEW_W - 12, this.next === 'solo' ? 58 : 38, { color: '#6a5e80', align: 'right' });
+    if (this.pickMap) button(g, this.mapRect, `MAPA: ${(MAPS[this.shell.settings.map] || MAPS.depot).name} · M`, { color: '#a58ad0' });
+    drawText(g, '◀ ▶ TROCAR · ESC VOLTA', VIEW_W - 12, this.next === 'solo' ? 78 : this.pickMap ? 58 : 38, { color: '#6a5e80', align: 'right' });
   }
 }
