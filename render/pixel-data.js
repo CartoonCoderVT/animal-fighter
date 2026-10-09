@@ -106,12 +106,14 @@ function wingRows({ w, th, f, hip }, far) {
     }
     return on;
   };
-  // Panels between the bones alternate bright and deep blood; the far wing is all deep blood.
+  // Panels between the bones alternate dark wine and near black (the blood is his scarf, his
+  // claws and the glow round him: dark wings keep his shape clear against it); the far wing is all
+  // near black.
   const wrap = v => Math.atan2(Math.sin(v), Math.cos(v));
   const a0 = Math.atan2(f[0][1] - w[1], f[0][0] - w[0]);
   const rel = (x, y) => wrap(Math.atan2(y - w[1], x - w[0]) - a0);
   const fa = [...f.slice(1), hip].map(([x, y]) => rel(x, y)), sweep = Math.sign(fa[fa.length - 1]) || 1;
-  const lit = far ? 'y' : 'r', dim = 'y';
+  const lit = far ? '8' : '9', dim = '8';
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const cx = x + x0 + 0.5, cy = y + y0 + 0.5;
     if (!inside(cx, cy)) continue;
@@ -127,11 +129,12 @@ function wingRows({ w, th, f, hip }, far) {
       if (y >= 0 && y < H && x >= 0 && x < W) grid[y][x] = k === n ? c2 : c;
     }
   };
-  // Finger bones, the forearm (lit along its top), and the hooked thumb with a pale claw.
+  // Finger bones, the forearm (lit along its top), and the hooked thumb with a slate claw (not white:
+  // his burning eyes stay the only bright points on him).
   for (const [fx, fy] of f) line(w[0], w[1], fx, fy, far ? '9' : '2');
   line(0, 0, w[0], w[1], far ? '9' : '2');
   line(0, -1, w[0], w[1] - 1, far ? '2' : '1');
-  line(w[0], w[1], th[0], th[1], far ? '2' : '1', 'w');
+  line(w[0], w[1], th[0], th[1], far ? '2' : '1', far ? '1' : '4');
   return { m: grid.map(r => r.join('')), piv: [-x0, -y0] };
 }
 const WINGS = Object.fromEntries(Object.entries(WING_POSES).map(([k, list]) => [k, list.map(s => ({ ...wingRows(s, s.far), far: !!s.far })).sort((a, b) => b.far - a.far)]));

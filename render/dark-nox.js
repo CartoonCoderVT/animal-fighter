@@ -106,20 +106,20 @@ function bat(g, P, x, y, up) {
 // (scythe units, his own scythe's pixels) down the shaft from the head, so it whirls like a thrown
 // blade and, floating at his shoulder, its butt stays clear of the floor; FAM_FORM: how long it
 // takes to form out of the blood (famReturn).
-const FAM_S = 1.3, FAM_PIVOT = 15, SHAFT = 24, FAM_FORM = 0.3;
+const FAM_S = 1.3, FAM_PIVOT = 15, SHAFT = 24, FAM_FORM = 0.3, FAM_LIFT = 6;
 const DEG = Math.PI / 180;
 // The crescents it cuts (famSlash), facing right: the centre of the arc from the cut point (view
 // pixels), its radius, the sweep a0 -> a1 (radians, 0 ahead, positive down), the thickness, how
 // long it lasts and whether it is a whole ring round the cut point.
 const SLASH = {
-  auto: { c: [0, 31], r: 33, a0: -122 * DEG, a1: -58 * DEG, w: 3, life: 0.17 },
-  cross: { c: [0, 42], r: 45, a0: -120 * DEG, a1: -60 * DEG, w: 4, life: 0.2 },
-  reap: { c: [-14, 2], r: 17, a0: 75 * DEG, a1: -85 * DEG, w: 4, life: 0.2 },
-  chop: { c: [-34, -2], r: 36, a0: -50 * DEG, a1: 55 * DEG, w: 5, life: 0.22 },
-  hook: { c: [-4, 0], r: 13, a0: -105 * DEG, a1: 140 * DEG, w: 4, life: 0.2 },
-  spin: { c: [0, 0], r: 20, a0: 0, a1: 360 * DEG, w: 3, life: 0.22, ring: true, sq: 0.85 },
-  orbit: { c: [0, 0], r: 15, a0: 0, a1: 360 * DEG, w: 2, life: 0.18, ring: true, sq: 0.85 },
-  whirl: { c: [0, 0], r: 40, a0: 0, a1: 360 * DEG, w: 5, life: 0.28, ring: true, sq: 0.7 },
+  auto: { c: [0, 31], r: 34, a0: -124 * DEG, a1: -56 * DEG, w: 4, life: 0.2 },
+  cross: { c: [0, 42], r: 46, a0: -122 * DEG, a1: -58 * DEG, w: 5, life: 0.22 },
+  reap: { c: [-14, 2], r: 18, a0: 75 * DEG, a1: -90 * DEG, w: 5, life: 0.22 },
+  chop: { c: [-34, -2], r: 37, a0: -52 * DEG, a1: 58 * DEG, w: 6, life: 0.24 },
+  hook: { c: [-4, 0], r: 14, a0: -105 * DEG, a1: 145 * DEG, w: 5, life: 0.22 },
+  spin: { c: [0, 0], r: 20, a0: 0, a1: 360 * DEG, w: 4, life: 0.24, ring: true, sq: 0.85 },
+  orbit: { c: [0, 0], r: 15, a0: 0, a1: 360 * DEG, w: 3, life: 0.2, ring: true, sq: 0.85 },
+  whirl: { c: [0, 0], r: 40, a0: 0, a1: 360 * DEG, w: 6, life: 0.3, ring: true, sq: 0.7 },
   form: { c: [0, 0], r: 12, a0: 0, a1: 360 * DEG, w: 2, life: 0.25, ring: true, sq: 0.85 }
 };
 // A cut's arc in view pixels, mirrored for a cut facing left; rings start where the blade is.
@@ -145,7 +145,7 @@ function drawSlash(g, P, q, ox, oy) {
     if (w > 1) px(P.black, G.cx + ca * (G.r + 1), G.cy + sa * (G.r + 1));
     for (let d = 0; d < w; d++) {
       const r = G.r - d;
-      px(d === 0 ? (u < 0.45 && prof > 0.4 && !q.red ? P.core : P.hot) : d === 1 ? (q.red ? P.mid : P.hot) : d < w - 1 ? P.mid : P.deep, G.cx + ca * r, G.cy + sa * r);
+      px(d === 0 ? (u < 0.5 && prof > 0.25 && !q.red ? P.core : P.hot) : d === 1 ? (q.red ? P.mid : u < 0.35 && prof > 0.6 ? P.core : P.hot) : d < w - 1 ? P.mid : P.deep, G.cx + ca * r, G.cy + sa * r);
     }
   }
 }
@@ -156,9 +156,27 @@ function drawSlash(g, P, q, ox, oy) {
 // by: the id of the Nox drinking it, -1 when nobody does (ids start at 0).
 const poolX = p => p.x ?? p[0], poolY = p => p.y ?? p[1], poolAmt = p => p.amt ?? p[2], poolBy = p => p.by ?? p[3] ?? -1;
 const POOL = {
-  blood: { ink: '#120106', rim: '#3a040f', deep: '#52060f', body: '#6e0818', top: '#9a1026', gloss: '#ffb0b8', shine: '#d23448', stain: '#2a0610', drop: '#c8142e', hot: '#ff4058' },
-  shadow: { ink: '#06030c', rim: '#1a0a30', deep: '#24103e', body: '#341060', top: '#4e2088', gloss: '#e0c8ff', shine: '#8a5ad0', stain: '#120820', drop: '#7a2ac0', hot: '#b97aff' }
+  blood: { ink: '#16020a', rim: '#4a0612', deep: '#640816', body: '#8a0c20', top: '#c0142c', gloss: '#ffd8dc', shine: '#ff5468', stain: '#2c0612', drop: '#e0182e', hot: '#ff4a5e' },
+  shadow: { ink: '#06030c', rim: '#1e0c38', deep: '#2a1248', body: '#3e1670', top: '#5e28a0', gloss: '#efe0ff', shine: '#a070e8', stain: '#140a24', drop: '#8a3ad8', hot: '#c08aff' }
 };
+// A pool's shape this frame (view pixels): its width and height from its size, the lens rows, the
+// lit top row and its sheen (a run of light with a gloss in it, sliding slowly to and fro), and
+// whether it shivers (being drunk). null when there is too little left to draw.
+function poolGeom(p, ox, oy, t) {
+  const amt = +poolAmt(p) || 0;
+  if (!(amt > 0.05)) return null;
+  const px0 = poolX(p), by = poolBy(p), drink = by >= 0, k = Math.min(1, amt / 20), seed = hash(Math.round(px0 / 8), 3.7);
+  const w = Math.max(3, Math.round(4 + 28 * Math.pow(k, 0.65))), h = amt < 2.5 ? 1 : amt < 9 ? 2 : 3;
+  const sy = Math.round(poolY(p) * S + oy), cx = px0 * S + ox, x0 = Math.round(cx - w / 2), inset = Math.max(1, Math.round(w * 0.16));
+  const shiv = drink ? (Math.floor(t * 36 + seed * 7) % 2 ? 1 : -1) : 0;
+  // The top row: the highest row that is still at least 2 wide.
+  let r = 0;
+  while (r < h - 1 && w - (r + 1) * inset * 2 >= 2) r++;
+  const tw = w - r * inset * 2, tx = x0 + r * inset + (drink && r === h - 1 ? shiv : 0), ty = sy - 1 - r;
+  const ph = Math.abs(((t * 0.22 + seed * 2) % 2) - 1), sw = Math.max(1, Math.min(4, Math.round(tw * 0.3)));
+  const sx0 = tx + 1 + Math.round(ph * Math.max(0, tw - 2 - sw)), gx = sx0 + (ph > 0.5 ? 0 : sw - 1);
+  return { amt, k, w, h, sy, cx, x0, inset, drink, by, seed, shiv, tw, tx, ty, sw, sx0, gx };
+}
 
 // The renderer calls drawBack on its lit layer before his sprite (the mist is lit by the scene),
 // drawFront and drawEffects on its emissive layer (the hot rim of the aura, his eyes, the embers and
@@ -349,21 +367,25 @@ export class DarkNoxFX {
         const i = y * W + x, dd = D[i];
         if (!dd || dd > R) continue;
         const b = bayer(x, y), up = y < waist;
+        // A clean glowing line round him (his shape must read through it), then only a thin haze.
+        // The line burns hot where it lies over him (lit from above), deep red down his sides.
         if (dd === 1) {
-          if (up || b < 0.5 * k + flare) hot(i, b < 0.2 + 0.5 * beat * k + flare ? P.hot : P.mid);
+          const over = y < H - 1 && m[i + W] || x > 0 && y < H - 1 && m[i + W - 1] && m[i - 1];
+          if (up || b < 0.65 * k + flare) hot(i, over && b < 0.55 + 0.45 * beat * k || flare > 0.5 ? P.hot : P.mid);
           else set(i, P.deep);
-        } else if (dd === 2) { if (b < (up ? 0.55 : 0.3) * k + flare * 0.5) set(i, P.deep); }
-        else if (b < (up ? 0.22 : 0.1) * k) set(i, P.mist);
+        } else if (dd === 2) { if (b < (up ? 0.28 : 0.14) * k + flare * 0.5) set(i, P.deep); }
+        else if (b < (up ? 0.08 : 0.04) * k + flare * 0.2) set(i, P.mist);
       }
       // Tongues of dark flame licking up off the top of him, column by column: a glowing root,
       // dark red, then black-red tips broken into wisps; they flicker and climb.
-      const seed = (a.id || 0) * 17.3, tall = (2.5 + 5 * k + flare * 7) * k;
+      // Discrete tongues off his head and shoulders, not a fuzz: only the noise's peaks rise.
+      const seed = (a.id || 0) * 17.3, tall = (1.5 + 4 * k + flare * 7) * k;
       for (let x = 0; x < W; x++) {
         let yt = -1;
         for (let y = 0; y < H; y++) if (D[y * W + x] <= 2) { yt = y; break; }
         if (yt < 0 || yt > waist) continue;
         const n1 = noise(x * 0.27 + seed, t * 3.2), n2 = noise(x * 0.7 + seed + 9, t * 6.1);
-        const h = Math.round(tall * (n1 * 0.85 + n2 * 0.5) - 1.5);
+        const h = Math.round(tall * (n1 * 0.95 + n2 * 0.55) - 2.6);
         for (let j = 1; j <= h && yt - j >= 0; j++) {
           const i = (yt - j) * W + x, u = j / h, b = bayer(x, yt - j);
           if (u <= 0.3) hot(i, P.mid);
@@ -519,7 +541,7 @@ export class DarkNoxFX {
   // ---- the flying scythe ------------------------------------------------------------------------
   famOf(id) {
     let m = this.fams.get(id);
-    if (!m) { m = { hist: [], lastT: null, w: 0, v: 0, dropT: 0, wispT: 0, formT: 9, out: null, st: null }; this.fams.set(id, m); }
+    if (!m) { m = { hist: [], lastT: null, w: 0, v: 0, dropT: 0, wispT: 0, formT: 9, out: null, st: null, lift: 0 }; this.fams.set(id, m); }
     return m;
   }
 
@@ -531,6 +553,8 @@ export class DarkNoxFX {
       const k = SLASH[e.k] ? e.k : 'auto', L = SLASH[k];
       const q = { k, x, y, f, ang: e.ang || 0, t: 0, life: L.life, seed: rnd() };
       this.slashes.push(q);
+      // The bite of the blade where it cuts: a hot star that snaps open and is gone.
+      if (!L.ring || k === 'whirl') this.parts.push({ k: 'star', x, y, t: 0, life: 0.1, big: k === 'chop' || k === 'whirl' || k === 'cross' });
       if (this.slashes.length > 24) this.slashes.shift();
       // Blood thrown off along the cut, flying on the way the blade went.
       const G = slashGeom(q), n = L.ring ? 10 : 7;
@@ -574,16 +598,34 @@ export class DarkNoxFX {
     const P = darkBloodPal(this.gore), X = fxPal(this.gore), grow = clamp01(m.formT / FAM_FORM);
     if (grow <= 0) return;
     m.st = F.st;
+    // Resting at his shoulder it hovers a little higher than where it cuts from (so its butt floats
+    // clear of him and the floor) and passes behind him: his body hides it there.
+    const rest = F.st === 'orbit' || F.st === 'back';
+    if (!glow) {
+      const dt = m.lastT === null ? 0 : Math.min(0.1, Math.max(0, t - m.lastT));
+      m.lift += ((rest ? FAM_LIFT : 0) - m.lift) * Math.min(1, dt * (rest ? 6 : 18));
+    }
+    q.py -= m.lift; q.gy -= m.lift;
+    // ...and leans its blade out over his head, looming, the reaper at his back.
+    if (m.lift > 0.01) {
+      const lean = (m.lift / FAM_LIFT) * 12, r = ((q.th + lean) * Math.PI) / 180, L = (SHAFT - FAM_PIVOT) * q.s;
+      q.th += lean; q.gx = q.px + Math.sin(r) * q.f * L; q.gy = q.py - Math.cos(r) * L;
+    }
+    const sp = rest ? this.at.get(a.id) : null;
+    const mask = sp?.mask ? (x, y) => { const lx = x - sp.mx, ly = y - sp.my; return lx >= 0 && ly >= 0 && lx < sp.mw && ly < sp.mh && sp.mask[ly * sp.mw + lx] === 1; } : null;
     if (!glow) {
       if (m.lastT !== null && t < m.lastT - 0.5) m.hist.length = 0;
       const dt = m.lastT === null ? 0 : Math.min(0.1, Math.max(0, t - m.lastT)), prev = m.hist[m.hist.length - 1];
       if (dt > 0 || !prev) {
         const d = prev ? wrapA((F.ang || 0) - prev.raw) : 0, u = prev ? prev.u + d : F.ang || 0;
         if (prev && dt > 0) { m.w = m.w * 0.4 + (d / dt) * 0.6; m.v = m.v * 0.4 + (Math.hypot(q.px - prev.x, q.py - prev.y) / dt) * 0.6; }
-        m.hist.push({ x: q.px, y: q.py, u, raw: F.ang || 0, s: q.s, f: q.f });
-        if (m.hist.length > 7) m.hist.shift();
+        m.hist.push({ x: q.px, y: q.py, u, raw: F.ang || 0, s: q.s, f: q.f, tx: null, ty: null });
+        if (m.hist.length > 9) m.hist.shift();
       }
-      m.out = art.drawScythe(g, P, q.gx + ox, q.gy + oy, q.th, q.f, q.s, lost ? 0.5 : 1, grow, t);
+      m.out = art.drawScythe(g, P, q.gx + ox, q.gy + oy, q.th, q.f, q.s, lost ? 0.5 : 1, grow, t, false, mask);
+      // Where the point was, for the streak it leaves.
+      const h = m.hist[m.hist.length - 1];
+      if (h && m.out) { h.tx = m.out.tx - ox; h.ty = m.out.ty - oy; }
       if (dt > 0 && m.out && grow >= 1) {
         // Drops flung off the point (a spray when it spins or darts), mist off the blade.
         const fast = Math.abs(m.w) > 9 || m.v > 120;
@@ -610,44 +652,64 @@ export class DarkNoxFX {
     const hx = m.out.x - ox, hy = m.out.y - oy;
     // The scythe itself is painted again over the scene's lighting, so it never sinks into the dark
     // of the arena (it is its own light); dim when it lies lost.
-    const body = () => art.drawScythe(g, P, q.gx + ox, q.gy + oy, q.th, q.f, q.s, lost ? 0.32 : 1, grow, t);
+    const body = () => art.drawScythe(g, P, q.gx + ox, q.gy + oy, q.th, q.f, q.s, lost ? 0.32 : 1, grow, t, false, mask);
     if (lost) {
       // Dropped where he died: hanging dim, its eye opening now and then.
       body();
       if ((t * 0.8) % 1 < 0.35) { dot(X.deep, hx - 1, hy - 1, 3); dot(X.mid, hx, hy - 1, 1, 3); }
       return;
     }
-    const spin = Math.abs(m.w), hunt = F.st === 'hunt' || F.st === 'strike', strike = F.st === 'strike';
-    // The blade at pose h (a past one, or this one turned by du), as points along its edge.
-    const edge = (h, du, alpha, c, c2, step = 0.14) => {
+    const spin = Math.abs(m.w), hunt = F.st === 'hunt' || F.st === 'strike' || F.st === 'combo', strike = F.st === 'strike';
+    // Its streaks stay above the floor he stands on (it may sweep low through it in a wide swing).
+    const lim = a.ground && this.at.get(a.id) ? this.at.get(a.id).fy : 1e9;
+    const line = (x0, y0, x1, y1, c, w = 1) => {
+      const n = Math.max(1, Math.ceil(Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0))));
+      g.fillStyle = c;
+      for (let i = 0; i <= n; i++) { const y = y0 + ((y1 - y0) * i) / n; if (y < lim) g.fillRect(Math.round(x0 + ((x1 - x0) * i) / n + ox), Math.round(y + oy), w, w); }
+    };
+    // The blade at pose h turned by du, filled solid (spine to edge), for afterimages.
+    const ghost = (h, du, c, alpha) => {
       const th = 180 + (h.f * (h.u + du) * 180) / Math.PI, r = (th * Math.PI) / 180, L = (SHAFT - FAM_PIVOT) * h.s;
       const gx = h.x + Math.sin(r) * h.f * L, gy = h.y - Math.cos(r) * L;
       g.globalAlpha = alpha * grow;
-      for (let u = 0.08; u <= 1.001; u += step) {
-        const b = art.bladeSpine(gx, gy, th, h.f, h.s, Math.min(1, u));
-        dot(u > 0.85 ? c2 : c, b.ex, b.ey);
-        if (u < 0.7) dot(c, (b.x + b.ex) / 2, (b.y + b.ey) / 2);
-      }
+      for (let u = 0.04; u <= 1.001; u += 0.07) { const b = art.bladeSpine(gx, gy, th, h.f, h.s, Math.min(1, u)); line(b.x, b.y, b.ex, b.ey, c); }
       g.globalAlpha = 1;
     };
-    const cur = m.hist[m.hist.length - 1];
-    if (cur) {
-      // Spinning: the blade blurs into a wheel behind its edge, a hot ring where the point runs.
-      if (spin > 8) {
-        const sd = Math.sign(m.w), stp = Math.min(0.42, Math.max(0.16, spin / 60 * 0.55)), n = spin > 16 ? 6 : 4;
-        for (let k = n; k >= 1; k--) edge(cur, -sd * k * stp, 0.8 * (1 - k / (n + 1)), k <= 2 ? X.hot : X.mid, k <= 1 ? X.core : X.hot, 0.12);
-        const tip = art.bladeSpine(0, 0, 180, 1, cur.s, 1), R = Math.hypot(tip.x, tip.y + (SHAFT - FAM_PIVOT) * cur.s);
-        const a1 = Math.atan2(m.out.ty - oy - cur.y, m.out.tx - ox - cur.x), arc = Math.min(Math.PI * 1.6, n * stp * 1.2);
-        g.globalAlpha = 0.7 * grow;
-        for (let k = 0; k < arc * R; k += 1.4) { const an = a1 - sd * (k / R); dot(k < R * 0.3 ? X.core : X.hot, cur.x + Math.cos(an) * R, cur.y + Math.sin(an) * R); }
+    const cur = m.hist[m.hist.length - 1], fast = m.v > 90 || spin > 9 || hunt;
+    if (cur && fast) {
+      const sd = Math.sign(m.w) || F.f || 1;
+      // Spinning hard: it blurs into a wheel, a crescent of blood swept round behind its point and
+      // two ghosts of the blade trailing it.
+      if (spin > 9 && cur.tx !== null) {
+        const R = Math.hypot(cur.tx - cur.x, cur.ty - cur.y), a1 = Math.atan2(cur.ty - cur.y, cur.tx - cur.x);
+        const arc = Math.min(Math.PI * 1.5, 0.9 + spin * 0.035), n = Math.ceil(arc * R);
+        for (let i = 0; i <= n; i++) {
+          const v = i / n, an = a1 - sd * arc * v, x = cur.x + Math.cos(an) * R, y = cur.y + Math.sin(an) * R;
+          if (y >= lim) continue;
+          g.globalAlpha = (1 - v) * 0.95 * grow;
+          dot(v < 0.12 ? X.core : v < 0.4 ? X.hot : v < 0.7 ? X.mid : X.deep, x, y, v < 0.5 ? 2 : 1);
+          // A fainter inner ring where the heel of the blade runs.
+          if (v < 0.6 && i % 2 === 0) { g.globalAlpha = (1 - v) * 0.4 * grow; dot(X.mid, cur.x + Math.cos(an) * R * 0.62, cur.y + Math.sin(an) * R * 0.62); }
+        }
         g.globalAlpha = 1;
+        const stp = Math.min(0.5, Math.max(0.22, spin / 90));
+        ghost(cur, -sd * stp * 2, X.deep, 0.55);
+        ghost(cur, -sd * stp, X.mid, 0.7);
       }
-      // Darting: afterimages of the blade along its path.
-      if (m.v > 100 || hunt) for (let i = 0; i < m.hist.length - 1; i++) {
+      // Darting: the streak its point cuts through the air, hot where it just was, and afterimages
+      // of the blade along its path.
+      if (hunt || spin > 9) for (let i = 1; i < m.hist.length; i++) {
+        const p0 = m.hist[i - 1], p1 = m.hist[i];
+        if (p0.tx === null || p1.tx === null) continue;
+        const k = i / (m.hist.length - 1);
+        g.globalAlpha = (0.25 + 0.75 * k) * grow;
+        line(p0.tx, p0.ty, p1.tx, p1.ty, k > 0.92 ? X.core : k > 0.45 ? X.hot : k > 0.2 ? X.mid : X.deep, k > 0.55 ? 2 : 1);
+      }
+      g.globalAlpha = 1;
+      if (m.v > 90) for (let i = Math.max(0, m.hist.length - 4); i < m.hist.length - 1; i++) {
         const h = m.hist[i], nx = m.hist[i + 1];
-        if (Math.hypot(nx.x - h.x, nx.y - h.y) < 2) continue;
-        const k = (i + 1) / m.hist.length;
-        edge(h, 0, 0.55 * k, k > 0.6 ? X.mid : X.deep, X.hot, 0.18);
+        if (Math.hypot(nx.x - h.x, nx.y - h.y) < 3) continue;
+        ghost(h, 0, i === m.hist.length - 2 ? X.mid : X.deep, 0.45);
       }
     }
     body();
@@ -680,42 +742,35 @@ export class DarkNoxFX {
     if (!pools?.length) return;
     const P = this.gore === 0 ? POOL.shadow : POOL.blood;
     for (const p of pools) {
-      const amt = +poolAmt(p) || 0;
-      if (!(amt > 0.05)) continue;
-      const px0 = poolX(p), by = poolBy(p), drink = by >= 0, k = Math.min(1, amt / 20), seed = hash(Math.round(px0 / 8), 3.7);
-      const w = Math.max(2, Math.round(3 + 27 * Math.pow(k, 0.7))), h = amt < 2.5 ? 1 : amt < 9 ? 2 : 3;
-      const sy = Math.round(poolY(p) * S + oy), cx = px0 * S + ox, x0 = Math.round(cx - w / 2);
-      const shiv = drink ? (Math.floor(t * 36 + seed * 7) % 2 ? 1 : -1) : 0;
-      // The floor soaked round it.
+      const q = poolGeom(p, ox, oy, t);
+      if (!q) continue;
+      const { amt, k, w, h, sy, x0, inset, drink, seed } = q;
+      // The floor soaked round it: a dark fringe past its ends and a dotted stain under it.
       g.fillStyle = P.stain;
-      g.fillRect(x0 - 1, sy, w + 2, 1);
-      if (w > 7) for (let x = x0 + 1; x < x0 + w - 1; x += 2) g.fillRect(x + (sy & 1), sy + 1, 1, 1);
+      g.fillRect(x0 - 2, sy, w + 4, 1);
+      if (w > 5) for (let x = x0; x < x0 + w; x += 2) g.fillRect(x + (sy & 1), sy + 1, 1, 1);
       // The lens of blood: a full bottom row, narrower rows over it, a dark rim at the ends.
-      const inset = Math.max(1, Math.round(w * 0.16));
-      let tx = x0, tw = w;
       for (let r = 0; r < h; r++) {
         const ins = r * inset, rw = w - ins * 2;
         if (rw < 2) break;
-        const rx = x0 + ins + (drink && r === h - 1 ? shiv : 0), ry = sy - 1 - r, top = r === h - 1 || w - (r + 1) * inset * 2 < 2;
+        const rx = x0 + ins + (drink && r === h - 1 ? q.shiv : 0), ry = sy - 1 - r, top = ry === q.ty;
         g.fillStyle = top ? P.top : r === 0 ? P.deep : P.body;
         g.fillRect(rx, ry, rw, 1);
         g.fillStyle = P.rim;
         g.fillRect(rx, ry, 1, 1); g.fillRect(rx + rw - 1, ry, 1, 1);
-        if (top) { tx = rx; tw = rw; break; }
+        if (top) break;
       }
       g.fillStyle = P.ink;
       g.fillRect(x0 - 1, sy - 1, 1, 1); g.fillRect(x0 + w, sy - 1, 1, 1);
-      // The gloss: a highlight sliding slowly to and fro over the surface; ripples run in to the
-      // middle while it is drunk.
-      const ty = sy - 1 - Math.min(h - 1, Math.floor((w - 2) / (2 * inset))), ph = Math.abs(((t * 0.22 + seed * 2) % 2) - 1);
-      if (tw >= 4) {
-        const gx = tx + 1 + Math.round(ph * (tw - 3));
-        g.fillStyle = P.gloss; g.fillRect(gx, ty, 1, 1);
-        g.fillStyle = P.shine; g.fillRect(gx + (ph > 0.5 ? -1 : 1), ty, 1, 1);
-      } else if (tw >= 2) { g.fillStyle = P.shine; g.fillRect(tx + 1, ty, 1, 1); }
-      if (drink && tw >= 4) {
-        g.fillStyle = P.shine;
-        for (let j = 0; j < 3; j++) { const d = ((t * 26 + j * (tw / 6)) % (tw / 2)) | 0; g.fillRect(tx + d, ty, 1, 1); g.fillRect(tx + tw - 1 - d, ty, 1, 1); }
+      // Its sheen: a lit run and a gloss sliding slowly to and fro over the surface.
+      if (q.tw >= 4) {
+        g.fillStyle = P.shine; g.fillRect(q.sx0, q.ty, q.sw, 1);
+        g.fillStyle = P.gloss; g.fillRect(q.gx, q.ty, 1, 1);
+      } else if (q.tw >= 2) { g.fillStyle = P.shine; g.fillRect(q.tx + 1, q.ty, 1, 1); }
+      // Ripples running in to where the stream leaves it while it is drunk.
+      if (drink && q.tw >= 4) {
+        g.fillStyle = P.gloss;
+        for (let j = 0; j < 2; j++) { const d = ((t * 22 + j * (q.tw / 4)) % (q.tw / 2)) | 0; g.fillRect(q.tx + d, q.ty, 1, 1); g.fillRect(q.tx + q.tw - 1 - d, q.ty, 1, 1); }
       }
       // Drips running down the face of the floor at its edges.
       if (amt >= 4) for (let j = 0; j < (amt >= 12 ? 2 : 1); j++) {
@@ -726,52 +781,78 @@ export class DarkNoxFX {
         if (dp > 0.7) { g.fillStyle = P.drop; g.fillRect(dx, sy + L + 1 + Math.floor((dp - 0.7) * 14), 1, 1); }
       }
       if (drink) {
-        const a = actors?.find(q => q.id === by);
-        if (a && !a.dead) this.stream(g, P, cx, ty, a.x * S + ox, (a.y - 6) * S + oy, t, a.form === 'dark', seed, false);
+        const a = actors?.find(z => z.id === q.by);
+        if (a && !a.dead) this.stream(g, P, q.cx, q.ty, a.x * S + ox, (a.y - 6) * S + oy, t, a.form === 'dark', seed, false);
       }
     }
   }
 
-  // The bright drops in the streams of blood, for the emissive layer (optional: the streams are
-  // already drawn by drawPools; this makes them glow).
+  // The emissive side of the pools: the wet sheen on every one (they catch the light and read as
+  // blood on the dark floors) and, for those being drunk, the stream itself, bright.
   drawPoolsGlow(g, pools, actors, ox, oy, t) {
     if (!pools?.length) return;
     const P = this.gore === 0 ? POOL.shadow : POOL.blood;
     for (const p of pools) {
-      const by = poolBy(p), amt = +poolAmt(p) || 0;
-      if (!(by >= 0) || !(amt > 0.05)) continue;
-      const a = actors?.find(q => q.id === by);
+      const q = poolGeom(p, ox, oy, t);
+      if (!q) continue;
+      if (q.tw >= 2) {
+        g.globalAlpha = 0.32;
+        g.fillStyle = P.top; g.fillRect(q.tx, q.ty, q.tw, 1);
+        if (q.h > 1) { g.globalAlpha = 0.18; g.fillStyle = P.body; g.fillRect(q.x0 + 1, q.sy - 1, q.w - 2, 1); }
+        g.globalAlpha = 0.75;
+        if (q.tw >= 4) { g.fillStyle = P.shine; g.fillRect(q.sx0, q.ty, q.sw, 1); }
+        g.globalAlpha = 1;
+        if (q.tw >= 4) { g.fillStyle = P.gloss; g.fillRect(q.gx, q.ty, 1, 1); }
+      }
+      if (!q.drink) continue;
+      const a = actors?.find(z => z.id === q.by);
       if (!a || a.dead) continue;
-      const k = Math.min(1, amt / 20), w = Math.max(2, Math.round(3 + 27 * Math.pow(k, 0.7))), h = amt < 2.5 ? 1 : amt < 9 ? 2 : 3;
-      const sy = Math.round(poolY(p) * S + oy), ty = sy - 1 - Math.min(h - 1, Math.floor((w - 2) / (2 * Math.max(1, Math.round(w * 0.16)))));
-      this.stream(g, P, poolX(p) * S + ox, ty, a.x * S + ox, (a.y - 6) * S + oy, t, a.form === 'dark', hash(Math.round(poolX(p) / 8), 3.7), true);
+      this.stream(g, P, q.cx, q.ty, a.x * S + ox, (a.y - 6) * S + oy, t, a.form === 'dark', q.seed, true);
     }
   }
 
-  // A stream of blood from a pool (x0, y0) arcing up into Nox (x1, y1): a thin wavering ribbon with
-  // drops riding along it, a little column rising off the pool where it leaves; faster and fuller as
-  // DARK NOX. glow: only the bright drops.
+  // A stream of blood from a pool (x0, y0) arcing up into Nox (x1, y1): a wavering ribbon with
+  // beads riding along it, a column pulled up off the pool where it leaves and a little whirl where
+  // it pours into him; faster and fuller as DARK NOX. glow: the bright side of it (emissive).
   stream(g, P, x0, y0, x1, y1, t, dark, seed, glow) {
     const dist = Math.hypot(x1 - x0, y1 - y0), mx = (x0 + x1) / 2, my = Math.min(y0, y1) - 6 - dist * 0.22;
     const at = u => { const a = 1 - u; return [a * a * x0 + 2 * a * u * mx + u * u * x1, a * a * y0 + 2 * a * u * my + u * u * y1]; };
-    const n = Math.max(6, Math.round(dist / 1.6)), speed = dark ? 1.9 : 1.1, wob = dark ? 1.4 : 1;
+    const n = Math.max(6, Math.round(dist / 1.4)), speed = dark ? 1.9 : 1.2, wob = dark ? 1.4 : 1;
+    const off = u => Math.sin(u * 11 - t * 16 + seed * 6) * wob * Math.sin(u * Math.PI);
     if (!glow) {
       g.fillStyle = P.rim;
       for (let i = 0; i <= n; i++) {
-        const u = i / n, [x, y] = at(u), o = Math.sin(u * 11 - t * 16 + seed * 6) * wob * Math.sin(u * Math.PI);
-        g.fillRect(Math.round(x), Math.round(y + o), 1, dark && u > 0.08 && u < 0.92 ? 2 : 1);
+        const u = i / n, [x, y] = at(u);
+        g.fillRect(Math.round(x), Math.round(y + off(u)), 1, dark && u > 0.08 && u < 0.92 ? 2 : 1);
       }
       // Where it leaves the pool: a column pulled up off the surface.
       g.fillStyle = P.body;
       g.fillRect(Math.round(x0) - 1, Math.round(y0) - 1, 3, 1);
-      g.fillRect(Math.round(x0), Math.round(y0) - 2 - (Math.floor(t * 20) & 1), 1, 2);
+      g.fillRect(Math.round(x0), Math.round(y0) - 3 - (Math.floor(t * 20) & 1), 1, 3);
+      return;
     }
-    const m = Math.max(4, Math.round(dist / (dark ? 7 : 10)));
+    // The body of the stream glows dimly, thinning toward him; the beads run bright along it.
+    g.globalAlpha = 0.6;
+    g.fillStyle = P.drop;
+    for (let i = 0; i <= n; i++) {
+      const u = i / n, [x, y] = at(u);
+      if (u > 0.94 || (i + Math.floor(t * 40)) % 5 === 0) continue;
+      g.fillRect(Math.round(x), Math.round(y + off(u)), 1, 1);
+    }
+    g.globalAlpha = 1;
+    const m = Math.max(4, Math.round(dist / (dark ? 6 : 9)));
     for (let j = 0; j < m; j++) {
-      const u = (j / m + t * speed + seed) % 1, [x, y] = at(u), o = Math.sin(u * 11 - t * 16 + seed * 6) * wob * Math.sin(u * Math.PI);
-      const big = j % 3 === 0 && u > 0.1 && u < 0.85;
-      g.fillStyle = glow ? (big ? P.hot : P.drop) : big ? P.drop : P.top;
-      g.fillRect(Math.round(x), Math.round(y + o) - (big ? 1 : 0), big ? 2 : 1, big ? 2 : 1);
+      const u = (j / m + t * speed + seed) % 1, [x, y] = at(u), big = j % 3 === 0 && u > 0.1 && u < 0.85;
+      g.fillStyle = big ? P.gloss : P.hot;
+      g.fillRect(Math.round(x), Math.round(y + off(u)) - (big ? 1 : 0), big ? 2 : 1, big ? 2 : 1);
+    }
+    // The column off the pool, and the whirl at his chest where it goes into him.
+    g.fillStyle = P.hot;
+    g.fillRect(Math.round(x0), Math.round(y0) - 3 - (Math.floor(t * 20) & 1), 1, 2);
+    for (let j = 0; j < 4; j++) {
+      const an = t * 14 + (j * Math.PI) / 2, r = 2.5 + (j & 1);
+      g.fillStyle = j & 1 ? P.drop : P.hot;
+      g.fillRect(Math.round(x1 + Math.cos(an) * r), Math.round(y1 + Math.sin(an) * r * 0.7), 1, 1);
     }
   }
 
@@ -832,6 +913,15 @@ export class DarkNoxFX {
         // Blood flung off the flying blade and off its cuts.
         if (u > 0.75 && Math.floor(p.t * 30) % 2) continue;
         dot(u < 0.25 && p.k === 'fleck' ? P.core : u < 0.55 ? P.hot : P.mid, p.x, p.y, 1, Math.abs(p.vy) > 90 ? 2 : 1);
+      } else if (p.k === 'star') {
+        // Four long rays and four short ones from the cut, shrinking to a point.
+        const L = Math.round((p.big ? 9 : 6) * (1 - u)), x = Math.round(p.x), y = Math.round(p.y);
+        dot(P.core, x - 1, y - 1, 3);
+        for (let d = 2; d <= L; d++) {
+          const c = d < L * 0.5 ? P.core : P.hot;
+          dot(c, x + d, y); dot(c, x - d, y); dot(c, x, y + d); dot(c, x, y - d);
+          if (d <= L * 0.5) { dot(P.hot, x + d, y + d); dot(P.hot, x - d, y - d); dot(P.hot, x + d, y - d); dot(P.hot, x - d, y + d); }
+        }
       } else if (p.k === 'wisp') {
         // Dark mist curling up off the blade.
         dot(u < 0.3 ? P.deep : u < 0.7 ? P.mist : P.black, p.x, p.y);
@@ -886,7 +976,19 @@ export function familiarLights(a, t, gore = 2) {
 // surface burns.
 // paused: he is dead and the time holds (the blood stands still, dim); low: the last seconds, the
 // vial flashes.
-export function bloodMeter(g, x, y, w, k, { time = 0, dark = false, full = false, gore = 2, paused = false, low = false } = {}) {
+// secs: as DARK NOX, the seconds he has left, written small just past the vial.
+const DIGITS = ['111101101101111', '010110010010111', '111001111100111', '111001111001111', '101101111001001', '111100111001111', '111100111101111', '111001010010010', '111101111101111', '111101111001111'];
+function tinyNumber(g, n, x, y, color, ink) {
+  const str = String(n);
+  for (let i = 0; i < str.length; i++) {
+    const d = DIGITS[+str[i]], dx = x + i * 4;
+    g.fillStyle = ink;
+    for (let p = 0; p < 15; p++) if (d[p] === '1') g.fillRect(dx + (p % 3), y + ((p / 3) | 0) + 1, 1, 1);
+    g.fillStyle = color;
+    for (let p = 0; p < 15; p++) if (d[p] === '1') g.fillRect(dx + (p % 3), y + ((p / 3) | 0), 1, 1);
+  }
+}
+export function bloodMeter(g, x, y, w, k, { time = 0, dark = false, full = false, gore = 2, paused = false, low = false, secs = null } = {}) {
   k = clamp01(k);
   const P = gore === 0
     ? { glass: '#160c22', shine: '#2a1c40', tick: '#3a2a56', top: '#b97aff', body: '#7a2ac0', low: '#3c1260', meniscus: '#efe0ff', glow: '#9a5aff', hot: '#d8b8ff' }
@@ -940,6 +1042,11 @@ export function bloodMeter(g, x, y, w, k, { time = 0, dark = false, full = false
     const ph = (time * 0.8) % 1, dx = x + fw - 2;
     if (ph < 0.55) { if (ph > 0.2) px(dark ? '#9a0a20' : P.body, dx, y + 2, 1, 1); }
     else if (ph < 0.8) px(dark ? '#e0142e' : P.top, dx, y + 2 + Math.floor((ph - 0.55) * 12), 1, 1);
+  }
+  // The seconds left, burning, dim while he is dead, flashing in the last ones.
+  if (dark && secs !== null) {
+    const c = paused ? '#7a3a48' : alarm ? '#ffffff' : low ? '#ff8a96' : gore === 0 ? '#c8a0ff' : '#ff5068';
+    tinyNumber(g, Math.max(0, Math.ceil(secs)), x + w + 3, y - 3, c, '#0b0812');
   }
   // Full: a drop beside the vial beats with his heart.
   if (full && !dark) {

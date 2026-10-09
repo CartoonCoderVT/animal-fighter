@@ -122,8 +122,8 @@ export const FRAMES = {
   // picks their pose, see pixel-data.js). Almost no wind-up: a coil of a frame or two, the snap,
   // a savage impact pose leaning far into the rival, and he is already loaded for the next.
   // His guard: hunched right over, head low and forward, both claws out, wings half open, panting.
-  dkIdle1: { head: [2, 3, 22.5], body: [1, 1], armF: [4, 1, -65], armB: [3, 0, -95], footF: [3, 0], footB: [-3, 0], wing: 'half' },
-  dkIdle2: { head: [2, 4, 22.5], body: [1, 2], armF: [4, 2, -55], armB: [3, 1, -85], footF: [3, 0], footB: [-3, 0], wing: 'half' },
+  dkIdle1: { head: [2, 1, 22.5], body: [1, 0], armF: [4, 0, -65], armB: [3, -1, -95], footF: [3, 0], footB: [-3, 0], wing: 'half' },
+  dkIdle2: { head: [2, 2, 22.5], body: [1, 1], armF: [4, 1, -55], armB: [3, 0, -85], footF: [3, 0], footB: [-3, 0], wing: 'half' },
   // The run: a low lurching charge, head down, claws pumping, wings swept back.
   dkRun1: { head: [3, 2, 22.5], body: [1, 1], footF: [3, 0], footB: [-3, -1], armF: [4, 1, -40], armB: [1, 0, 30], wing: 'back', tailDeg: 8 },
   dkRunP: { head: [3, 1, 22.5], body: [1, 0], footF: [1, -1], footB: [0, -2], armF: [3, 0, -70], armB: [2, -1, -10], wing: 'back', tailDeg: 0 },

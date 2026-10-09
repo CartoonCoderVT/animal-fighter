@@ -86,15 +86,26 @@ export function bladeSpine(gx, gy, th, face, s, u, flip = false) {
   return { x, y, ex, ey, w };
 }
 export const SCYTHE = { SHAFT, BUTT, BLADE, CURL };
-export function drawScythe(g, P, gx, gy, th, face, s = 1, alpha = 1, grow = 1, t = 0, flip = false) {
+export function drawScythe(g, P, gx, gy, th, face, s = 1, alpha = 1, grow = 1, t = 0, flip = false, mask = null) {
   if (alpha <= 0 || grow <= 0) return null;
+  // mask (x, y): pixels to leave out, behind whoever covers them (the flying scythe at his back).
+  if (mask) { const was = occlude; occlude = mask; const r = drawScythe(g, P, gx, gy, th, face, s, alpha, grow, t, flip); occlude = was; return r; }
   const F = frameOf(gx, gy, th, face, flip), len = SHAFT * s * grow, bl = Math.min(1, grow * 1.4);
+  // Flying free (the familiar, drawn bigger) the shaft is two pixels thick and inked on both sides,
+  // so it reads as a weapon and not a thread while it whirls about.
+  const bold = s >= 1.2;
   g.globalAlpha = alpha;
   // Shaft: banded blood red with a dark line down its back and a wrapped grip.
   for (let k = -BUTT * s * grow; k <= len; k += 0.6) {
     const [bx, by] = F.at(F.dx * k - F.nx * 0.9, F.dy * k - F.ny * 0.9);
     put(g, P.out, bx, by);
-    const [x, y] = F.at(F.dx * k, F.dy * k), band = Math.floor(k / (3 * s)) % 2;
+    const band = Math.floor(k / (3 * s)) % 2;
+    if (bold) {
+      const [ox, oy] = F.at(F.dx * k + F.nx * 1.8, F.dy * k + F.ny * 1.8), [sx, sy] = F.at(F.dx * k + F.nx * 0.9, F.dy * k + F.ny * 0.9);
+      put(g, P.out, ox, oy);
+      put(g, band ? P.dark : P.mid, sx, sy);
+    }
+    const [x, y] = F.at(F.dx * k, F.dy * k);
     put(g, Math.abs(k) < 3 * s ? P.dark : band ? P.mid : P.light, x, y);
   }
   // A thorn for a pommel.

@@ -108,7 +108,7 @@ export class HUD {
       // holds while he is dead, and burns faster to the eye in its last seconds).
       else if (a.type === 4) {
         const dark = a.form === 'dark', k = dark ? clamp((a.formT || 0) / DARK.time, 0, 1) : clamp((a.blood || 0) / (DARK.max || 100), 0, 1);
-        bloodMeter(g, cx + 29, 27, 58, k, { time, dark, full: !dark && k >= 1, gore: this.r.fx?.gore ?? 2, paused: dark && !!a.dead, low: dark && (a.formT || 0) < 5 });
+        bloodMeter(g, cx + 29, 27, 58, k, { time, dark, full: !dark && k >= 1, gore: this.r.fx?.gore ?? 2, paused: dark && !!a.dead, low: dark && (a.formT || 0) < 5, secs: dark && !a.weapon ? a.formT || 0 : null });
       } else bar(g, cx + 29, 27, 58, 1, cd, beast ? '#ff8a3a' : cd >= 1 ? '#f2c35b' : '#8a7aa8');
       if (mode !== 'sandbox' && mode !== 'attract') {
         for (let k = 0; k < killsToWin; k++) {
