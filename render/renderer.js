@@ -136,6 +136,9 @@ export class Renderer {
     this.castleArt = null;
     this.light.setStatic(STATIC_LIGHTS.depot);
     import('./castle-art.js').then(m => { this.castleArt = m; }).catch(e => console.warn('castle art', e));
+    // DARK NOX's aura, eyes and transformation (render/dark-nox.js).
+    this.darkNox = null; this.darkNoxMod = null;
+    import('./dark-nox.js').then(m => { this.darkNoxMod = m; this.darkNox = new m.DarkNoxFX(this); }).catch(e => console.warn('dark nox', e));
     import('./castle-world.js').then(m => { this.worlds.castle = new m.CastleWorld(); }).catch(e => console.warn('castle world', e));
     this.resize();
   }
@@ -155,6 +158,7 @@ export class Renderer {
   resetMatch() {
     this.fx.reset();
     this.lola.reset();
+    this.darkNox?.reset?.();
     this.figCache.clear();
     this.secondary.clear();
     this.trails.clear();
@@ -481,7 +485,7 @@ export class Renderer {
     this.fx.gore = settings.gore ?? 2;
     this.fx.limit = settings.particles === false ? 300 : 900;
     const events = state.fxQueue ? state.fxQueue.splice(0) : (state.events || []).filter(e => e.type === 'fx' && e.id > this.fx.lastId);
-    for (const e of events) { this.fx.event(e); this.lola.event(e); this.hype(e, settings); if (!state.fxQueue) this.fx.lastId = Math.max(this.fx.lastId, e.id); }
+    for (const e of events) { this.fx.event(e); this.lola.event(e); this.darkNox?.event(e); this.hype(e, settings); if (!state.fxQueue) this.fx.lastId = Math.max(this.fx.lastId, e.id); }
     this.updateCamera(state, dt, settings, localId);
     const hz = state.hazards || null;
     // Effects run on game time: they slow down with the dramatic slow motion and the LAB's, and
@@ -492,6 +496,7 @@ export class Renderer {
     }
     this.lola.update(dt * (state.drama && !state.timeStop ? 0.35 : 1));
     this.lola.watch(state);
+    this.darkNox?.update(dt * (state.drama ? 0.35 : 1));
 
     const [ox, oy] = this.shakeOffset(dt, settings);
     const rich = settings.particles !== false && !this.autoLow;
@@ -546,6 +551,7 @@ export class Renderer {
     this.drawLimbs(lg, state, ox, oy, t);
     this.lola.drawLit(lg, state, ox, oy);
     this.drawTrails(lg, figures, ox, oy);
+    if (this.darkNox) for (const f of figures) if (f.a.type === 4 && (f.a.form === 'dark' || f.a.act === 'darkRise' || f.a.act === 'darkFade')) this.darkNox.drawBack(lg, f, ox, oy, state.time ?? t);
     for (const f of figures) {
       if (f.a.invincible > 0.1 && Math.floor(t * 12) % 2) lg.globalAlpha = 0.55;
       lg.drawImage(f.fc.body.c, f.x, f.y);
@@ -985,6 +991,7 @@ export class Renderer {
       if (f.a.form === 'beast' && f.info?.eye && !(f.a.severed || []).includes('head')) add({ x: f.info.eye.x, y: f.info.eye.y, r: 10, color: '#ffc040', i: 0.7, noRim: true });
       if (k > 0.05) add({ x: f.hx, y: f.hy - 12, r: 26 + k * 46, color: k > 0.8 ? '#ffe2a0' : '#ff8a3a', i: k * 1.3 });
     }
+    if (this.darkNoxMod) for (const f of figures) if (f.a.type === 4 && (f.a.form === 'dark' || f.a.act === 'darkRise')) for (const l of this.darkNoxMod.darkLights(f, t) || []) add(l);
     for (const f of figures) if (f.a.type === 4 && f.info?.eye) {
       add({ x: f.info.eye.x, y: f.info.eye.y, r: 10, color: '#ff4f6e', i: 0.7, noRim: true });
       // The blood orb lights the claw up as it condenses.
@@ -1034,6 +1041,10 @@ export class Renderer {
     for (const f of figures) if (f.a.type === 4 && f.info?.eye && !(f.a.severed || []).includes('head')) { eg.fillStyle = '#ff6f86'; eg.fillRect(Math.round(f.info.eye.x) + ox, Math.round(f.info.eye.y) + oy, 1, 1); }
     const st = state.time ?? t;
     for (const f of figures) if (f.a.type === 3) this.drawJuma(eg, f, ox, oy, st);
+    if (this.darkNox) {
+      for (const f of figures) if (f.a.type === 4 && (f.a.form === 'dark' || f.a.act === 'darkRise' || f.a.act === 'darkFade')) this.darkNox.drawFront(eg, f, ox, oy, st);
+      this.darkNox.drawEffects(eg, ox, oy, st);
+    }
     for (const f of figures) {
       if (f.a.type === 4 && f.a.act === 'swarm') this.drawSwarm(eg, f, ox, oy, st);
       if (f.a.type === 4) {
