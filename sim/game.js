@@ -197,6 +197,8 @@ export class Game {
     if (this.paused || this.winner !== null) return;
     // Another game (the title screen's) may have played in another arena meanwhile.
     useMap(this.map);
+    // One-way platforms that are gone for now (the castle's loose stone): placement checks skip them.
+    MAP.off = this.hz?.off || null;
     dt = 1 / 60;
     this.shake = Math.max(0, this.shake - dt * 25);
     this.flash = Math.max(0, this.flash - dt * 4);

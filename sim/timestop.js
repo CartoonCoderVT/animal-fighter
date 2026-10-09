@@ -31,7 +31,7 @@ const overPit = x => x > MAP.pit.x0 - 6 && x < MAP.pit.x1 + 6;
 export function footing(x, y, reach = 4, edge = 6) {
   const feet = y + HALF_H;
   return MAP.solids.some(s => s.kind !== 'wall' && s.kind !== 'pit' && x + edge > s.x0 && x - edge < s.x1 && s.y0 >= feet - 4 && s.y0 <= feet + reach)
-    || MAP.oneway.some(p => x + edge > p.x0 && x - edge < p.x1 && p.y >= feet - 4 && p.y <= feet + reach);
+    || MAP.oneway.some((p, i) => !MAP.off?.[i] && x + edge > p.x0 && x - edge < p.x1 && p.y >= feet - 4 && p.y <= feet + reach);
 }
 // A point (a knife) inside a wall, a block or the floor.
 const solidAt = (x, y) => x < 4 || x > 956 || MAP.solids.some(q => q.kind !== 'pit' && x > q.x0 && x < q.x1 && y > q.y0 && y < q.y1);

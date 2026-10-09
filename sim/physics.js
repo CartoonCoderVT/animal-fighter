@@ -49,7 +49,7 @@ export function buildStatic(world) {
 export function surfaceY(x, y, { oneway = true } = {}) {
   let best = Infinity;
   for (const s of MAP.solids) if (s.kind !== 'wall' && x >= s.x0 && x <= s.x1 && s.y0 >= y - 2 && s.y0 < best) best = s.y0;
-  if (oneway) for (const p of MAP.oneway) if (x >= p.x0 && x <= p.x1 && p.y >= y - 2 && p.y < best) best = p.y;
+  if (oneway) MAP.oneway.forEach((p, i) => { if (!MAP.off?.[i] && x >= p.x0 && x <= p.x1 && p.y >= y - 2 && p.y < best) best = p.y; });
   return best === Infinity ? MAP.floorY + 60 : best;
 }
 

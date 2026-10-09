@@ -85,6 +85,9 @@ function land(g, a, impact, height = 0) {
   }
 }
 
+// Held by a rival: in Nox's requiem, or ridden by Mingau.
+const heldBy = (g, a) => g.actors.some(o => o !== a && ((o.act === 'requiem' && o.reqId === a.id) || (o.act === 'ride' && o.rideOn === a.id)));
+
 export function stepActor(g, a, dt) {
   if (a.dead) {
     a.respawn -= dt;
@@ -285,7 +288,8 @@ export function stepActor(g, a, dt) {
   if (pressed('left') || pressed('right')) a.dirTap = g.time;
   // Reeling from a hit, Shift is a split second of parry: timed to the next blow it breaks the combo
   // (combat.js parried); missed, Shift does nothing for a while (no mashing out of a string).
-  if (pressed('dodge') && a.hitstun > 0 && !a.knocked && !(a.frozen > 0) && !(a.burstCd > 0) && !a.act) {
+  // Not out of a hold (the requiem, a rider): those have their own way out.
+  if (pressed('dodge') && a.hitstun > 0 && !a.knocked && !(a.frozen > 0) && !(a.burstCd > 0) && !a.act && !heldBy(g, a)) {
     a.parry = BURST.window; a.burstCd = BURST.cd;
     g.fx('ring', { x: a.x, y: a.y, size: 20, color: '#c8f0ff' });
     g.sound('swing', a.x);

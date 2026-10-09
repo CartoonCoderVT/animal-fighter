@@ -337,11 +337,12 @@ export function strike(g, a, mv, i) {
     if (juma && !a.form) a.abilityCd = Math.max(0, a.abilityCd - 0.3);
     // Lola's watch winds up a little with every knife that lands.
     if (lola) a.abilityCd = Math.max(0, a.abilityCd - 0.12);
-    if (mv.lift && !b.knocked && !b.dead) { Body.setVelocity(b.body, { x: side * kb[0], y: kb[1] / weightOf(b) }); b.stun = Math.max(b.stun, 0.55); b.float = 0.5; }
+    if (mv.lift && !b.knocked && !b.dead) { Body.setVelocity(b.body, { x: side * kb[0], y: kb[1] / weightOf(b) }); b.stun = Math.max(b.stun, 0.55); b.float = 0.5; reeling(b); }
     if (mv.launch && last && !b.knocked && !b.dead) {
       Body.setVelocity(b.body, { x: face * kb[0], y: kb[1] / weightOf(b) });
       b.stun = Math.max(b.stun, 0.7);
       b.float = 0.75;
+      reeling(b);
       a.chase = { id: b.id, until: g.time + 1.1 };
       g.fx('focus', { x: b.x, y: b.y, p: 0.7 });
     }
@@ -409,6 +410,12 @@ export function strike(g, a, mv, i) {
   const fy = mv.flurry ? [-5, 4, -2, 6, -7][i % 5] : 0;
   g.fx('slash', { x: a.x + face * Math.round(mv.range * 0.6), y: a.y + (low ? 12 : mv.launch ? -6 : 2) + fy, face, size: Math.max(18, mv.range * 0.55), kind, fin: finisher ? 1 : 0, color: SLASH[kind] || '#fff', up: mv.launch ? 1 : 0, down: mv.spike ? 1 : 0 });
   if (struck) g.sound(kind === 'claw' ? 'slash' : kind === 'knife' ? 'cut' : kind === 'fang' ? 'squish' : kind === 'blood' ? 'blood' : 'punch', a.x);
+}
+
+// Thrown up and stunned: reeling as long as the stun lasts, so the combo breaker works there too.
+function reeling(b) {
+  b.hitstun = Math.max(b.hitstun || 0, b.stun);
+  b.hitstunMax = Math.max(b.hitstunMax || 0, b.hitstun);
 }
 
 // A velocity that survives the hitlag freeze the hit just started.

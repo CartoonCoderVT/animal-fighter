@@ -116,8 +116,8 @@ function becomeDark(g, a) {
   const x = a.x, y = a.y, R = 96;
   for (const b of enemiesNear(g, a, b => !b.knocked && Math.abs(b.x - x) < R && Math.abs(b.y - y) < 60)) {
     const s = Math.sign(b.x - x) || a.face, f = 1 - Math.abs(b.x - x) / R;
-    damage(g, b, 5 + 6 * f, { x: b.x - s * 4, y: b.y }, a.id, 'hemo', { kb: { x: s * (5 + 5 * f), y: -3.5 - 2 * f } });
-    if (!b.dead && !b.knocked) { b.hitstun = Math.max(b.hitstun || 0, 0.5); b.hitstunMax = Math.max(b.hitstunMax || 0, b.hitstun); b.bleed = Math.min(6, (b.bleed || 0) + 1); b.bleedBy = a.id; b.bleedByT = g.time; }
+    const dealt = damage(g, b, 5 + 6 * f, { x: b.x - s * 4, y: b.y }, a.id, 'hemo', { kb: { x: s * (5 + 5 * f), y: -3.5 - 2 * f } });
+    if (dealt && !b.dead && !b.knocked) { b.hitstun = Math.max(b.hitstun || 0, 0.5); b.hitstunMax = Math.max(b.hitstunMax || 0, b.hitstun); b.bleed = Math.min(6, (b.bleed || 0) + 1); b.bleedBy = a.id; b.bleedByT = g.time; }
   }
   for (const l of g.limbs) if (Math.abs(l.x - x) < R + 10 && Math.abs(l.y - y) < 60) Body.setVelocity(l.body, { x: l.body.velocity.x + Math.sign(l.x - x) * 5, y: l.body.velocity.y - 3 });
   g.fx('darkNoxPop', { x, y, who: a.id });

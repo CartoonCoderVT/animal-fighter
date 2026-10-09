@@ -437,7 +437,7 @@ export function propCollision(g, b1, b2, pair) {
       limb.throwTime = 0;
     }
     // Ragdolls slammed into the level take impact damage.
-    if (otherBody.isStatic && limb.attached && limb.body.speed > 9) {
+    if (otherBody.isStatic && !otherBody.isSensor && limb.attached && limb.body.speed > 9) {
       const owner = g.actor(limb.actor);
       if (owner && !owner.dead && owner.knocked && g.time - (owner.slamAt || 0) > 0.25) {
         owner.slamAt = g.time;
