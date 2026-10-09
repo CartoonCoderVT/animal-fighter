@@ -228,7 +228,7 @@ export class LolaFX {
   // A knife bullet, point at its position: flying along its velocity, or hanging where she laid it
   // along the line it will fly.
   drawBulletKnife(g, b, ox, oy) {
-    const ang = hangs(b) ? b.ang : Math.atan2(b.vy, b.vx), x = X(b.x) + ox, y = X(b.y) + oy, c = Math.cos(ang), sn = Math.sin(ang);
+    const ang = hangs(b) || (!b.vx && !b.vy && b.ang != null) ? b.ang : Math.atan2(b.vy, b.vx), x = X(b.x) + ox, y = X(b.y) + oy, c = Math.cos(ang), sn = Math.sin(ang);
     drawKnife(g, x - c * 7, y - sn * 7, ang, { len: 7 });
   }
 

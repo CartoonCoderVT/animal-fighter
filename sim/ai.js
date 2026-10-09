@@ -233,7 +233,7 @@ export function think(g, a, dt) {
     if (a.dodge > 0 && a.dodgeKind === 'roll' && Math.abs(dx) < 50) input.attack = !a.lastInput.attack;
     // Stomp on heads from above: a rival on their feet and out of a combo, and only where the drop
     // straight down is safe (not into the pit, not under the press).
-    const safeDrop = !inPit(a.x) && Math.abs(a.x - (MAP.pit.x0 + MAP.pit.x1) / 2) > (MAP.pit.x1 - MAP.pit.x0) / 2 + 16
+    const safeDrop = !inPit(a.x) && Math.abs(a.x - (MAP.pit.x0 + MAP.pit.x1) / 2) > (MAP.pit.x1 - MAP.pit.x0) / 2 + 30
       && !(MAP.press && a.x > MAP.press.x0 - 16 && a.x < MAP.press.x1 + 16);
     if (!a.ground && !a.act && !target.knocked && a.comboTimer <= 0 && !(target.hitstun > 0) && safeDrop && Math.abs(dx) < 12 && dy > 12 && dy < 120 && a.vy > -2) { input.down = true; input.attack = true; }
     // Pick up a downed rival and throw them.
