@@ -18,8 +18,8 @@ export class OnlineScene {
     this.name.onEnter = () => this.setFocus(1);
     this.code.onEnter = () => this.setFocus(3);
   }
-  enter() { this.setFocus(this.focus); }
-  exit() { this.shell.input.blurText(); }
+  enter() { this.shell.input.textZones = [this.rects.name, this.rects.code]; this.setFocus(this.focus); }
+  exit() { this.shell.input.textZones = []; this.shell.input.blurText(); }
   setFocus(i) {
     this.focus = (i + this.items.length) % this.items.length;
     const key = this.items[this.focus];

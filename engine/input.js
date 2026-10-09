@@ -33,6 +33,7 @@ export class Input {
     this.pad = { connected: false, buttons: [], axes: [0, 0, 0, 0], prev: [] };
     this.touches = new Map();
     this.touchMode = false;
+    this.textZones = [];
     this.stick = null;
     this.textTarget = null;
     this.anyPressed = false;
@@ -134,7 +135,11 @@ export class Input {
   touchEnd(e) {
     const t = this.touches.get(e.pointerId);
     if (!t) return;
-    if (t.role === 'ui') this.clicks.push({ x: t.x, y: t.y, button: 0, down: false, touch: true });
+    if (t.role === 'ui') {
+      this.clicks.push({ x: t.x, y: t.y, button: 0, down: false, touch: true });
+      // Phones only open the keyboard for a focus made inside the tap itself, not on the next frame.
+      if (this.textZones.some(r => t.x >= r.x && t.x <= r.x + r.w && t.y >= r.y && t.y <= r.y + r.h)) this.textInput.focus();
+    }
     if (this.stick === t) this.stick = null;
     this.touches.delete(e.pointerId);
   }
