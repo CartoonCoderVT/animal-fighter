@@ -997,7 +997,7 @@ export class Renderer {
       if (k > 0.05) add({ x: f.hx, y: f.hy - 12, r: 26 + k * 46, color: k > 0.8 ? '#ffe2a0' : '#ff8a3a', i: k * 1.3 });
     }
     if (this.darkNoxMod) for (const f of figures) if (f.a.type === 4 && (f.a.form === 'dark' || f.a.act === 'darkRise')) for (const l of this.darkNoxMod.darkLights(f, t) || []) add(l);
-    if (this.darkNoxMod?.familiarLights) for (const a of state.actors) if (a.fam) for (const l of this.darkNoxMod.familiarLights(a, t) || []) add(l);
+    if (this.darkNoxMod?.familiarLights) for (const a of state.actors) if (a.fam) for (const l of this.darkNoxMod.familiarLights(a, t, this.fx.gore) || []) add(l);
     for (const f of figures) if (f.a.type === 4 && f.info?.eye) {
       add({ x: f.info.eye.x, y: f.info.eye.y, r: 10, color: '#ff4f6e', i: 0.7, noRim: true });
       // The blood orb lights the claw up as it condenses.
