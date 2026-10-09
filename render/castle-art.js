@@ -37,7 +37,7 @@ const PAL = {
   // glow
   E: '#ff4040', F: '#ffd8a8', H: '#ff9a35',
   // the gargoyle's sleeping coals
-  e: '#a01a26'
+  i: '#a01a26', j: '#5e1020'
 };
 const RGB = {};
 for (const [k, v] of Object.entries(PAL)) { const n = parseInt(v.slice(1), 16); RGB[k] = [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
@@ -519,7 +519,7 @@ export function drawChest(g, x, y, open = false, t = 0, { emissive = false } = {
 // A horned demon's head seen from the front (18 x 18) on a moulded console, set at the lower left corner
 // of the hidden room's roof (its right edge laps 3 px over the roof's face, so it reads as carved into
 // the corner). (x, y) is the middle of the head. The left half is drawn; the right half is its mirror, a
-// shade darker (the light comes from the upper left). Coals sleep in its eye sockets ('e', 'E'): almost
+// shade darker (the light comes from the upper left). Coals sleep in its eye sockets ('j', 'i'): almost
 // black under the hall's ambient light, they glint red whenever castleLights lights them (now and then,
 // the hint that it is more than decor), and they burn when it is struck.
 const GARG_HALF = [
@@ -532,7 +532,7 @@ const GARG_HALF = [
   'kk.kuxxxu',
   'kxkkkkuxx',
   '.kxtnnkkx',
-  '..kteEnux',
+  '..ktjinux',
   '..ktqnnux',
   '..kqtuuxn',
   '.kkqkknnk',
@@ -552,8 +552,6 @@ const GARG_CONSOLE = [
   '...kppppk...',
   '....kkkk....'
 ];
-// Where its eyes are, from the middle of the head: castleLights aims the glint there.
-export const GARGOYLE_EYES = { dx: 0, dy: 0 };
 export function drawGargoyle(g, x, y, face = -1, { glow = 0, t = 0, emissive = false } = {}) {
   const flip = face < 0;
   const head = bake('gargoyle', GARGOYLE), con = bake('gargCon', GARG_CONSOLE);
@@ -797,21 +795,29 @@ export function drawPendulum(g, px, py, ang = 0, len = 133, { t = 0, emissive = 
   }
 }
 function drawPendulumBody(g, px, py, sx, cy, ex, ey, ang, len) {
-  // the mounting plate under the gallery and the pivot hub
-  fill(g, px - 5, py - 4, 11, 3, '#2b2640'); fill(g, px - 5, py - 4, 11, 1, '#6a6088'); dot(g, px - 4, py - 3, '#9a92b4'); dot(g, px + 4, py - 3, '#9a92b4');
-  // the rod: three pixels across, lit on its left
-  const n = Math.ceil(len) - 4;
-  for (let i = 3; i <= n; i++) {
+  // The rod: three pixels across, lit on its left. Drawn as vertical runs, one fill colour at a time
+  // (two rods of ~130 rows swing every frame).
+  const n = Math.ceil(len) - 4, xs = [], ys = [];
+  for (let i = 3; i <= n; i++) { xs.push(Math.round(px + sx * i)); ys.push(Math.round(py + cy * i)); }
+  const runs = (dx, col) => {
+    g.fillStyle = col;
+    let x0 = null, ya = 0, yb = 0, yl = 0;
+    for (let k = 0; k < xs.length; k++) {
+      const x = xs[k] + dx, y = ys[k];
+      if (x === x0 && Math.abs(y - yl) <= 1) { if (y < ya) ya = y; if (y > yb) yb = y; yl = y; continue; }
+      if (x0 !== null) g.fillRect(x0, ya, 1, yb - ya + 1);
+      x0 = x; ya = yb = yl = y;
+    }
+    if (x0 !== null) g.fillRect(x0, ya, 1, yb - ya + 1);
+  };
+  runs(-1, '#837a9c'); runs(0, '#4a4462'); runs(1, '#1e1a2b');
+  // iron collars every 34 px
+  for (let i = 34; i <= n; i += 34) {
     const x = Math.round(px + sx * i), y = Math.round(py + cy * i);
-    const collar = i % 34 === 0;
-    dot(g, x - 1, y, collar ? '#b4adc8' : '#837a9c');
-    dot(g, x, y, collar ? '#837a9c' : '#4a4462');
-    dot(g, x + 1, y, '#1e1a2b');
-    if (collar) { dot(g, x - 2, y, '#5a5276'); dot(g, x + 2, y, '#1e1a2b'); }
+    dot(g, x - 2, y, '#5a5276'); dot(g, x - 1, y, '#b4adc8'); dot(g, x, y, '#837a9c'); dot(g, x + 1, y, '#1e1a2b'); dot(g, x + 2, y, '#1e1a2b');
   }
-  // hub
-  const hub = ['.k3k.', 'k563k', '35731', 'k431k', '.k1k.'];
-  hub.forEach((row, j) => { for (let i = 0; i < 5; i++) { const c = PAL[row[i]]; if (c && row[i] !== '.') dot(g, px - 2 + i, py - 2 + j, c); } });
+  // The axle cap, right over the hub castle-world paints under the gallery (its bracket holds it).
+  g.drawImage(bake('pendHub', ['.k3k.', 'k563k', '35731', 'k431k', '.k1k.']).c, px - 2, py - 1);
   // the blade turns with the rod (its own sprite angle is the opposite sense of 'ang')
   const sp = sprite(pendulumBladeDef(), mats(), { angle: -ang });
   g.drawImage(sp.canvas, Math.round(ex) - sp.ox, Math.round(ey) - sp.oy);
@@ -948,6 +954,11 @@ export function castleLights(state = {}, t = 0) {
     } else if (p.kind === 'gargoyle') {
       const glow = Math.max(look.glow || 0, hz.gargoyle?.glow || 0);
       if (glow > 0.03) out.push({ x: X(p.x) - 2, y: X(p.y) - 1, r: 20 + glow * 26, color: '#ff3a3a', i: glow * (0.75 + Math.sin(t * 17) * 0.15), noRim: glow < 0.4 });
+      else {
+        // Asleep, the coals in its eyes glint now and then (about once every 7 s, for under a second).
+        const k = Math.max(0, Math.sin(t * 0.9 + 1.3)) ** 16;
+        if (k > 0.04) out.push({ x: X(p.x), y: X(p.y), r: 14, color: '#ff3030', i: k, noRim: true });
+      }
     } else if (p.kind === 'roast') {
       out.push({ x: X(p.x), y: X(foot(p)) - 6, r: 12, color: '#ffd8a0', i: 0.25, noRim: true });
     }
