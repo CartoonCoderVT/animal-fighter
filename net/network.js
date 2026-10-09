@@ -1,4 +1,4 @@
-const PROTOCOL=3;const PREFIX='animalfighter-v3-';
+const PROTOCOL=4;const PREFIX='animalfighter-v3-';
 const validPlayers=p=>Array.isArray(p)&&p.length<=4&&p.every(a=>a&&Number.isInteger(a.id)&&a.id>=0&&a.id<4&&Number.isInteger(a.type)&&a.type>=0&&a.type<5&&typeof a.name==='string'&&a.name.length<=32);
 const validState=s=>s&&typeof s==='object'&&Number.isInteger(s.seq)&&Number.isFinite(s.time)&&validPlayers(s.actors)&&s.actors.every(a=>Number.isFinite(a.x)&&Number.isFinite(a.y)&&Number.isFinite(a.hp))&&['props','limbs','bullets','effects','fires','events'].every(k=>Array.isArray(s[k])&&s[k].length<=1000)&&s.hazards&&typeof s.hazards==='object'&&Array.isArray(s.hazards.lamps)&&Array.isArray(s.hazards.cable);
 const safeName=value=>String(value||'Visitante').replace(/[<>\x00-\x1f]/g,'').trim().slice(0,18)||'Visitante';
