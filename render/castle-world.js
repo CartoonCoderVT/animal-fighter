@@ -297,10 +297,11 @@ function paintClockFace(p) {
       col = b > 2.5 ? (lit > 0 ? GOLD[3] : GOLD[2]) : b > 1.5 ? (lit > 0.3 ? GOLD[5] : lit > -0.4 ? GOLD[4] : GOLD[3]) : (lit > 0 ? GOLD[3] : GOLD[1]);
     } else if (d > R - 0.5) col = GOLD[0];
     else if (d > 21.5) {
+      // The ivory chapter ring: flat, a cool shade on the lower right, a sheen on the upper left.
       col = CREAM[4];
       if (d > R - 1.5 || d < 22.5) col = CREAM[2];
-      else if (bayer(x, y) < 0.12 + Math.max(0, -lit) * 0.2) col = CREAM[3];
-      if (lit > 0.6 && d > 30 && bayer(x, y) < 0.3) col = CREAM[5];
+      else if (lit < -0.75 || (lit < -0.45 && bayer(x, y) < 0.5)) col = CREAM[3];
+      else if ((lit > 0.75 && d > 29) || (lit > 0.55 && d > 29 && bayer(x, y) < 0.5)) col = CREAM[5];
     } else if (d > 20.5) col = GOLD[2];
     else col = d > 19.5 ? '#0d0a16' : '#171324';
     if (col) p.set(x, y, col);
@@ -438,16 +439,13 @@ function greatArch(p) {
 }
 
 // Pointed vault ribs springing from a capital at (x, y) toward both sides.
+// Only their springing shows under the top edge, so they leave the capital on a steep diagonal: the
+// inner edge is the rib's upper face (lit, more so on the right-hand rib), the outer edge its underside.
 function ribs(p, cx, y, span, dirs = [-1, 1]) {
-  for (const dir of dirs) {
-    const r = span * 0.9;
-    const ccx = cx + dir * r, ccy = y;
-    for (let yy = -6; yy < y; yy++) for (let xx = Math.min(cx, ccx) - 2; xx <= Math.max(cx, ccx) + 2; xx++) {
-      const d = Math.hypot(xx + 0.5 - ccx, yy + 0.5 - ccy) - r;
-      if (d < -5 || d > 0) continue;
-      if ((xx - cx) * dir < -1) continue;
-      p.set(xx, yy, d > -1 ? '#0d0a15' : d > -2 ? '#2a2342' : d > -4 ? '#3c3459' : '#130f1f');
-    }
+  for (const dir of dirs) for (let yy = y - 1; yy >= 0; yy--) {
+    const k = y - 1 - yy, c = cx + dir * (2 + Math.floor(k * span / 40));
+    const cols = [dir > 0 ? '#5a5084' : '#463d68', '#2e2748', '#262040', '#0d0a15'];
+    cols.forEach((col, i) => p.set(c + dir * (i - 1), yy, col));
   }
 }
 
@@ -1219,7 +1217,7 @@ export class CastleWorld {
         p.set(x, y, col);
       }
       // A steel wheel turns under the hands; two brass pinions mesh with it.
-      const step = f / 4, STEEL = [IRON[0], IRON[2], IRON[3], IRON[4], IRON[6]], BRASS = [IRON[0], GOLD[0], GOLD[1], GOLD[2], GOLD[3]];
+      const step = f / 4, STEEL = [IRON[0], IRON[3], IRON[4], IRON[5], IRON[6]], BRASS = [IRON[0], GOLD[0], GOLD[1], GOLD[2], GOLD[3]];
       gearPaint(p, c - 11, c + 11.5, 7, 8, -step * (TAU / 8) + 0.2, BRASS, 3);
       gearPaint(p, c + 11.5, c - 11, 7, 8, -step * (TAU / 8) + 0.6, BRASS, 3);
       gearPaint(p, c, c, 11, 12, step * (TAU / 12), STEEL, 4);

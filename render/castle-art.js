@@ -290,43 +290,44 @@ export function drawArmor(g, x, y, face = 1, { weapon = 'axe', hp, max = 36, t =
 }
 
 // ---- cracked brick wall (secret) -----------------------------------------------------------------
+// The niche at the left end of the floor was bricked up with smaller, newer bricks than the hall's
+// masonry. It is a solid you can hit, so it takes the violet stone of the play surfaces (castle-world's
+// PLAY ramp) a shade lighter: it stands in front of the darker back wall and, to a sharp eye, reads as a
+// patch. The top course sits in the shadow of the alcove's lintel; light comes from the upper left.
+const BRICK = {
+  mortar: '#191426', shadow: '#120e1c', side: '#231d36',
+  f: ['#3b3452', '#423a5a', '#4a4164'], hi: ['#4f466c', '#5a5178', '#685e88'], lo: ['#2c2541', '#322a49', '#383052'],
+  lip: '#7d749b', crack: '#07050c', wide: '#110d1b', hole: '#000000', grit: ['#463e5f', '#5d5479', '#7d749b']
+};
+const rgbMemo = new Map();
+const rgbOf = hex => { let v = rgbMemo.get(hex); if (!v) { const n = parseInt(hex.slice(1), 16); v = [(n >> 16) & 255, (n >> 8) & 255, n & 255]; rgbMemo.set(hex, v); } return v; };
 const wallCache = new Map();
+// The bricks, the crack network (points in growth order) and the stones that fall out first.
 function wallBase(w, h) {
   const key = w + 'x' + h;
   if (wallCache.has(key)) return wallCache.get(key);
-  const c = mk(w, h), g = c.getContext('2d'), id = g.createImageData(w, h), D = id.data;
-  const set = (x, y, ch) => { if (x < 0 || y < 0 || x >= w || y >= h) return; const rgb = RGB[ch], i = (y * w + x) * 4; D[i] = rgb[0]; D[i + 1] = rgb[1]; D[i + 2] = rgb[2]; D[i + 3] = 255; };
   const rnd = seeded(4242 + w * 7 + h);
   const CH = 6, BW = 8;
-  const bricks = [];
+  const cells = new Array(w * h).fill(BRICK.mortar), bricks = [];
   for (let row = 0, y = 0; y < h; row++, y += CH) {
     const off = row % 2 ? -BW / 2 : 0;
-    for (let x = off; x < w; x += BW) {
-      const tone = rnd();
-      bricks.push({ x0: Math.max(0, x), x1: Math.min(w, x + BW) - 1, y0: y, y1: Math.min(h, y + CH) - 1, tone });
-    }
+    for (let x = off; x < w; x += BW) bricks.push({ x0: Math.max(0, x), x1: Math.min(w, x + BW) - 1, y0: y, y1: Math.min(h, y + CH) - 1, tone: rnd() });
   }
-  // mortar
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) set(x, y, 'n');
   for (const b of bricks) {
-    const base = b.tone < 0.25 ? 'q' : b.tone > 0.8 ? 'u' : 't';
-    const dark = base === 'u' ? 't' : base === 'q' ? 'p' : 'q', lite = base === 'u' ? 'x' : base === 'q' ? 't' : 'u';
+    const k = b.tone < 0.3 ? 0 : b.tone > 0.8 ? 2 : 1;
     for (let y = b.y0; y < b.y1; y++) for (let x = b.x0; x < b.x1; x++) {
-      let ch = base;
-      if (y === b.y0) ch = lite;
-      else if (y === b.y1 - 1) ch = dark;
-      else if (x === b.x0) ch = lite;
-      else if (x === b.x1 - 1) ch = dark;
-      else if (bayer(x * 3 + b.x0, y * 5) < 0.12) ch = dark;
-      set(x, y, ch);
+      let c = BRICK.f[k];
+      if (y === b.y0 || x === b.x0) c = BRICK.hi[k];
+      else if (y === b.y1 - 1 || x === b.x1 - 1) c = BRICK.lo[k];
+      else if (bayer(x * 3 + b.x0, y * 5) < 0.1) c = BRICK.lo[k];
+      cells[y * w + x] = c;
     }
-    // a pit or two in the face of the stone
-    if (b.x1 - b.x0 > 3) { const px = b.x0 + 1 + Math.floor(rnd() * (b.x1 - b.x0 - 2)), py = b.y0 + 2; set(px, py, dark); }
+    // a pit in the face of the stone
+    if (b.x1 - b.x0 > 3 && b.y1 - b.y0 > 3) cells[(b.y0 + 2) * w + b.x0 + 1 + Math.floor(rnd() * (b.x1 - b.x0 - 2))] = BRICK.lo[k];
   }
-  // a darker cap stone row on top and a lit edge on the side facing the hall
-  for (let x = 0; x < w; x++) { set(x, 0, 'x'); set(x, 1, 'u'); }
-  for (let y = 0; y < h; y++) { set(w - 1, y, y % CH === CH - 1 ? 'q' : 'p'); }
-  g.putImageData(id, 0, 0);
+  // in the lintel's shadow on top, the shadow side on the right
+  for (let x = 0; x < w; x++) { cells[x] = BRICK.shadow; if (cells[w + x] !== BRICK.mortar) cells[w + x] = BRICK.lo[0]; }
+  for (let y = 1; y < h; y++) cells[y * w + w - 1] = y % CH === 0 ? BRICK.mortar : BRICK.side;
   // The crack network: one long fissure from a weak point and its branches, in growth order.
   const pts = [];
   const ox = Math.floor(w * 0.45), oy = Math.floor(h * 0.58);
@@ -346,46 +347,68 @@ function wallBase(w, h) {
   walk(ox, oy, 0.9, 0.35, Math.floor(w * 0.5), 0.3, 1);
   // Stones that fall out as it weakens, nearest the weak point first.
   const holes = bricks.filter(b => b.x1 - b.x0 >= 3 && b.y0 > 1).map(b => ({ ...b, d: Math.hypot((b.x0 + b.x1) / 2 - ox, (b.y0 + b.y1) / 2 - oy) })).sort((a, b) => a.d - b.d).slice(0, 6);
-  const out = { c, pts, holes, w, h };
+  const out = { cells, pts, holes, w, h, looks: new Map() };
   wallCache.set(key, out);
   return out;
+}
+// The wall at one damage step (0..24), baked: PAD columns each side catch the grit at its foot.
+const WALL_STEPS = 24, PAD = 4;
+function wallLook(base, q) {
+  let c = base.looks.get(q);
+  if (c) return c;
+  const { w, h } = base, d = q / WALL_STEPS, W = w + PAD * 2;
+  const cells = base.cells.slice();
+  const put = (x, y, col) => { if (x >= 0 && y >= 0 && x < w && y < h) cells[y * w + x] = col; };
+  // Fallen-out stones: the dark alcove behind, with the lit lower lip of the hole.
+  const nh = d > 0.85 ? 4 : d > 0.7 ? 2 : d > 0.55 ? 1 : 0;
+  for (let i = 0; i < nh; i++) {
+    const b = base.holes[i];
+    // a ragged hole: the stone's edges chip off unevenly
+    for (let yy = b.y0 - 1; yy <= b.y1; yy++) for (let xx = b.x0 - 1; xx <= b.x1; xx++) {
+      const rim = xx < b.x0 || xx >= b.x1 || yy < b.y0 || yy >= b.y1;
+      const hv = hash(xx * 17 + yy * 53 + i * 7);
+      if (rim ? hv > 0.3 : (xx === b.x0 || xx === b.x1 - 1) && (yy === b.y0 || yy === b.y1 - 1) && hv < 0.5) continue;
+      put(xx, yy, yy <= b.y0 ? BRICK.hole : BRICK.crack);
+    }
+    for (let xx = b.x0; xx < b.x1; xx++) if (hash(xx * 5 + i) > 0.25) put(xx, b.y1, BRICK.lip);
+  }
+  // Cracks: a hairline even when whole (a hint), growing and widening with the damage. The groove's
+  // lower right lip catches the light.
+  const reach = 0.06 + d * 1.05, crack = new Set();
+  for (const p of base.pts) if (p.t <= reach && p.x >= 0 && p.y >= 0 && p.x < w && p.y < h) crack.add(p.y * w + p.x);
+  for (const p of base.pts) {
+    if (!crack.has(p.y * w + p.x)) continue;
+    put(p.x, p.y, BRICK.crack);
+    if (d > 0.3 && p.t < reach - 0.25 && p.x + 1 < w && !crack.has(p.y * w + p.x + 1)) put(p.x + 1, p.y, BRICK.wide);
+  }
+  for (const p of base.pts) {
+    if (!crack.has(p.y * w + p.x)) continue;
+    const lx = p.x + 1, ly = p.y + 1;
+    if (lx < w - 1 && ly < h && !crack.has(ly * w + lx) && cells[ly * w + lx] !== BRICK.crack && cells[ly * w + lx] !== BRICK.wide && cells[ly * w + lx] !== BRICK.hole) put(lx, ly, BRICK.hi[2]);
+  }
+  c = mk(W, h);
+  const g = c.getContext('2d'), id = g.createImageData(W, h), D = id.data;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const rgb = rgbOf(cells[y * w + x]), i = (y * W + x + PAD) * 4;
+    D[i] = rgb[0]; D[i + 1] = rgb[1]; D[i + 2] = rgb[2]; D[i + 3] = 255;
+  }
+  g.putImageData(id, 0, 0);
+  // Grit at its foot.
+  const grit = Math.floor(d * 7);
+  for (let i = 0; i < grit; i++) {
+    const gx = PAD + Math.floor(hash(i * 13 + w) * (w + 6)) - 2, big = hash(i * 7 + 3) > 0.6;
+    fill(g, gx, h - (big ? 2 : 1), big ? 2 : 1, big ? 2 : 1, big ? BRICK.grit[1] : BRICK.grit[0]);
+    if (big) dot(g, gx, h - 2, BRICK.grit[2]);
+  }
+  base.looks.set(q, c);
+  return c;
 }
 export function drawCracked(g, x0, y0, x1, y1, hp, max = 60) {
   x0 = Math.round(x0); y0 = Math.round(y0);
   const w = Math.round(x1) - x0, h = Math.round(y1) - y0;
   if (w < 2 || h < 2) return;
-  const base = wallBase(w, h);
   const d = 1 - clamp(max > 0 && hp != null ? hp / max : 1, 0, 1);
-  g.drawImage(base.c, x0, y0);
-  // Fallen-out stones: the dark alcove behind, with the lit lower lip of the hole.
-  const nh = d > 0.85 ? 4 : d > 0.7 ? 2 : d > 0.55 ? 1 : 0;
-  for (let i = 0; i < nh; i++) {
-    const b = base.holes[i];
-    // a ragged hole: the stone's edges chip off unevenly, its lower lip catches the light
-    for (let yy = b.y0 - 1; yy <= b.y1; yy++) for (let xx = b.x0 - 1; xx <= b.x1; xx++) {
-      if (xx < 0 || xx >= w || yy < 0 || yy >= h) continue;
-      const rim = xx < b.x0 || xx >= b.x1 || yy < b.y0 || yy >= b.y1;
-      const hv = hash(xx * 17 + yy * 53 + i * 7);
-      if (rim ? hv > 0.3 : (xx === b.x0 || xx === b.x1 - 1) && (yy === b.y0 || yy === b.y1 - 1) && hv < 0.5) continue;
-      dot(g, x0 + xx, y0 + yy, yy === b.y0 - 1 || yy === b.y0 ? '#000000' : PAL.Z);
-    }
-    for (let xx = b.x0; xx < b.x1; xx++) if (hash(xx * 5 + i) > 0.25) dot(g, x0 + xx, y0 + b.y1, PAL.u);
-  }
-  // Cracks: a hairline even when whole (a hint), growing with the damage.
-  const reach = 0.06 + d * 1.05;
-  for (const p of base.pts) {
-    if (p.t > reach || p.x < 0 || p.y < 0 || p.x >= w || p.y >= h) continue;
-    dot(g, x0 + p.x, y0 + p.y, PAL.Z);
-    if (d > 0.3 && p.t < reach - 0.25 && p.x + 1 < w) dot(g, x0 + p.x + 1, y0 + p.y, PAL.k);
-    if (p.y + 1 < h && p.x - 1 >= 0) dot(g, x0 + p.x - 1, y0 + p.y + 1, PAL.u);
-  }
-  // Grit at its foot.
-  const grit = Math.floor(d * 7);
-  for (let i = 0; i < grit; i++) {
-    const gx = x0 + Math.floor(hash(i * 13 + w) * (w + 6)) - 2, big = hash(i * 7 + 3) > 0.6;
-    fill(g, gx, y0 + h - (big ? 2 : 1), big ? 2 : 1, big ? 2 : 1, big ? PAL.t : PAL.q);
-    if (big) dot(g, gx, y0 + h - 2, PAL.u);
-  }
+  g.drawImage(wallLook(wallBase(w, h), Math.round(d * WALL_STEPS)), x0 - PAD, y0);
 }
 
 // ---- the roast (wall meat) ---------------------------------------------------------------------
