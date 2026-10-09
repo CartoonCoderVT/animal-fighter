@@ -5,25 +5,26 @@ import { S, rnd, clamp } from '../engine/const.js';
 import { knockdown, pushActor, buildRagdoll, ragdollOf, breakJoint, gib, makeLimb, releaseHeld, pinLimb, addStump } from './ragdoll.js';
 import { extendedAttack, dropWeapon, damageProp } from './props.js';
 import { hazardBulletHit, breakLamp } from './hazards.js';
-import { MOVES, HEAVY, AIR, NOX_AIR, JUMA_AIR, BEAST_AIR, TITAN_AIR, NATURAL, comboOf, airOf } from './moves.js';
+import { MOVES, HEAVY, AIR, NOX_AIR, JUMA_AIR, BEAST_AIR, TITAN_AIR, AXO_AIR, NATURAL, comboOf, airOf } from './moves.js';
 import { MAP } from './map.js';
 import { startSpecial, startStomp, throwCarried, startChase, endAct, startPlunge, startSwarm, startBite, startCharge, feedRage, frogPower } from './specials.js';
 import { isMelee, WEAPON_INFO, weaponSlot } from './weapons.js';
-import { axoHit } from './axolotl.js';
-import { hitMinions, hurtMinion } from './minions.js';
+import { axoHit, axoPower, shedStrike, throwClone, blowBubble } from './axolotl.js';
+import { hitMinions, hurtMinion, targetable, queueEcho, pileOn, bubbleBonus } from './minions.js';
 
 export const KIND = {
   punch: 'blunt', board: 'blunt', impact: 'blunt', fall: 'blunt', crush: 'blunt', power: 'blunt', pipe: 'blunt',
   whip: 'blunt', kick: 'blunt', paw: 'blunt', stomp: 'blunt', sonic: 'blunt', slam: 'blunt',
   claw: 'cut', blade: 'cut', katana: 'cut', axe: 'cut', hammer: 'blunt', spear: 'pierce',
   spit: 'blunt', tongue: 'blunt', slap: 'blunt', croak: 'blunt', belly: 'blunt', bullet: 'pierce', pellet: 'pierce', shard: 'pierce', thrown: 'pierce', fang: 'pierce', bite: 'pierce', blood: 'cut', hemo: 'pierce', scythe: 'cut', roar: 'blunt',
+  gill: 'blunt', fin: 'blunt', gulp: 'blunt', bubble: 'blunt', nibble: 'pierce', ember: 'explosion',
   explosion: 'explosion', fire: 'fire', shock: 'shock', bleed: 'bleed', grind: 'grind', freeze: 'freeze'
 };
 const DOT = new Set(['fire', 'bleed', 'shock', 'freeze']);
 const isGun = w => w === 'pistol' || w === 'shotgun';
 const LIMB = ['armF', 'armB', 'footF', 'footB'];
 const limbOf = part => (LIMB.includes(part) ? part : null);
-const SLASH = { slap: '#e8ffd0', tongue: '#ff9cb4', blood: '#ff3a5a', claw: '#f1d9a8', whip: '#ffc8d8', kick: '#ffe8f0', paw: '#ffe0a0', fang: '#e8d0ff', air: '#ffffff', blade: '#f4f8ff', katana: '#ffffff', spear: '#e8f0ff', pipe: '#f0d8c8', axe: '#fff0e0', hammer: '#ffe8d0' };
+const SLASH = { gill: '#ff8fa8', fin: '#ffd6e0', gulp: '#c8f0ff', bubble: '#e0f6ff', belly: '#ffe4ec', slap: '#e8ffd0', tongue: '#ff9cb4', blood: '#ff3a5a', claw: '#f1d9a8', whip: '#ffc8d8', kick: '#ffe8f0', paw: '#ffe0a0', fang: '#e8d0ff', air: '#ffffff', blade: '#f4f8ff', katana: '#ffffff', spear: '#e8f0ff', pipe: '#f0d8c8', axe: '#fff0e0', hammer: '#ffe8d0' };
 const HEAVY_WEAPONS = ['pipe', 'axe', 'hammer'];
 
 // Hitlag (Smash's freeze frames): only the fighters involved in a hit stop for a moment; the
@@ -59,6 +60,8 @@ function moveUsable(a) {
 export function attack(g, a) {
   if (a.dead || a.attackCd > 0 || a.invincible > 0.8 || a.knocked || a.frozen > 0 || a.parryLag > 0 || a.hitstun > 0) return;
   if (a.act) { if (a.act === 'carry') throwCarried(g, a); return; }
+  // The axolotl with a clone in its mouth: J fires it at whoever is ahead (Estilingue).
+  if (a.axo?.carry != null) { throwClone(g, a); return; }
   if (!a.ground && !a.climbing && a.input.down && !a.weapon && !a.holding) { startStomp(g, a); return; }
   if (isMelee(a.weapon) && !a.holding) { weaponAttack(g, a, false); return; }
   if (extendedAttack(g, a)) return;
@@ -79,9 +82,9 @@ export function attack(g, a) {
   const prey = a.chase && g.time < a.chase.until ? g.actor(a.chase.id) : null;
   if (prey && !prey.dead && !prey.knocked && !prey.ground) { a.chase = null; startChase(g, a, prey); return; }
   let id;
-  const list = comboOf(a), chaining = a.comboTimer > 0 && (list.includes(a.attackKind) || ['shadowCut', 'scytheDash', 'batStrike', 'jBolt', 'jCross', 'fGrapple'].includes(a.attackKind));
+  const list = comboOf(a), chaining = a.comboTimer > 0 && (list.includes(a.attackKind) || ['shadowCut', 'scytheDash', 'batStrike', 'jBolt', 'jCross', 'fGrapple', 'xSlide'].includes(a.attackKind));
   const style = styleOf(a), nox = style === 4, side = a.input.left || a.input.right, tapped = g.time - (a.dirTap ?? -9) < 0.2;
-  const juma = style === 3, small = juma && !a.form, titan = juma && a.form === 'titan', frog = style === 5;
+  const juma = style === 3, small = juma && !a.form, titan = juma && a.form === 'titan', frog = style === 5, axo = style === 6;
   if (a.dashStrike) id = 'dashAtk';
   else if (!a.ground && !a.climbing) {
     const air = airOf(a), prev = air.indexOf(a.attackKind);
@@ -92,11 +95,17 @@ export function attack(g, a) {
     if (titan) id = downedNear(g, a) ? 'tPound' : 'tQuake';
     else if (juma && a.form) id = 'bQuake';
     else if (juma && !chaining && !(a.biteCd > 0)) { startBite(g, a); return; }
+    // The axolotl: in the string the tail scoops the rival up; over a downed one it feasts; else
+    // it blows a bubble.
+    else if (axo) id = chaining ? 'xScoop' : downedNear(g, a) ? 'xFeast' : 'xBubble';
     else id = nox && chaining ? 'scytheSweep' : nox && downedNear(g, a) ? 'execute' : frog && downedNear(g, a) ? 'fSquash' : HEAVY[style];
   }
   // The frog with a direction: the tongue-hook, out of the string or on a fresh tap inside it.
   else if (frog && side && (!chaining || tapped) && a.attackKind !== 'fGrapple') { a.face = a.input.right ? 1 : -1; id = 'fGrapple'; }
   else if (nox && !chaining && side) { a.face = a.input.right ? 1 : -1; id = 'shadowCut'; }
+  // The axolotl with a direction: the mud slide out of the string, the tidal bore on a fresh tap inside it.
+  else if (axo && side && !chaining) { a.face = a.input.right ? 1 : -1; id = 'xSlide'; }
+  else if (axo && side && chaining && tapped && a.attackKind !== 'xPororoca') { a.face = a.input.right ? 1 : -1; id = 'xPororoca'; }
   else if (nox && chaining && side && tapped && a.attackKind !== 'scytheDash') { a.face = a.input.right ? 1 : -1; id = 'scytheDash'; }
   // Juma with a direction: small, the lightning pounce (a fresh tap inside the string: the cross);
   // the beast and the titan charge, out of the string too.
@@ -108,7 +117,7 @@ export function attack(g, a) {
   else {
     // The shadow cut opens the string at the reap; the phantom reap picks it up at the guillotine;
     // Juma's pounce goes on into the storm of claws, her cross into the rake.
-    a.combo = chaining ? (a.attackKind === 'shadowCut' || a.attackKind === 'batStrike' ? 1 : a.attackKind === 'scytheDash' ? 3 : a.attackKind === 'jBolt' ? 2 : a.attackKind === 'jCross' ? 3 : a.attackKind === 'fGrapple' ? 3 : (a.combo + 1) % list.length) : 0;
+    a.combo = chaining ? (a.attackKind === 'shadowCut' || a.attackKind === 'batStrike' ? 1 : a.attackKind === 'scytheDash' ? 3 : a.attackKind === 'jBolt' ? 2 : a.attackKind === 'jCross' ? 3 : a.attackKind === 'fGrapple' ? 3 : a.attackKind === 'xSlide' ? 2 : (a.combo + 1) % list.length) : 0;
     // A string can outlive the style it began in (the frog swallowing mid-combo): start the new one over.
     if (!list[a.combo]) a.combo = 0;
     id = list[a.combo];
@@ -208,6 +217,10 @@ export function strike(g, a, mv, i) {
   if (mv.blink) { blinkCut(g, a, mv); return; }
   if (mv.execute) { execute(g, a, mv); return; }
   if (mv.pound) { pound(g, a, mv, i); return; }
+  if (mv.bubble) { blowBubble(g, a); return; }
+  if (mv.shed) { shedStrike(g, a); return; }
+  // The axolotl's tail blows reach less while its tail grows back.
+  if (mv.tail && a.axo?.tailCut) mv = { ...mv, range: mv.range - 8 };
   const face = a.face;
   const kind = mv.kind === 'air' ? NATURAL[styleOf(a)] : mv.kind;
   const counter = a.counter > 0;
@@ -234,7 +247,9 @@ export function strike(g, a, mv, i) {
     // The kiss drinks the blood marks: each one adds to the bite and to the heal.
     const feast = mv.feast && last ? markOf(g, b) : 0;
     if (feast) { b.bloodMark = 0; g.fx('bloodBurst', { x: b.x, y: b.y - 4, n: feast }); g.text(b.x, b.y - 36, 'BANQUETE!', '#ff5a6e'); }
-    const dealt = damage(g, b, amount + feast * 4, point, a.id, kind, { kb: { x: side * kb[0] * (counter ? 1.6 : 1), y: kb[1] }, knock: (mv.knock && last) || (counter && last), launch: !!(mv.launch || mv.lift || mv.bounce), dir: kind === 'claw' || kind === 'katana' || kind === 'axe' || kind === 'blade' ? rnd(-0.9, 0.9) : undefined, part, lag: mv.lag });
+    // A rival trapped in the axolotl's bubble: its blow pops it for a little more.
+    const pop = bubbleBonus(g, b, a.id);
+    const dealt = damage(g, b, amount + feast * 4 + pop, point, a.id, kind, { kb: { x: side * kb[0] * (counter ? 1.6 : 1), y: kb[1] }, knock: (mv.knock && last) || (counter && last), launch: !!(mv.launch || mv.lift || mv.bounce), dir: kind === 'claw' || kind === 'katana' || kind === 'axe' || kind === 'blade' ? rnd(-0.9, 0.9) : undefined, part, lag: mv.lag });
     if (!dealt) continue;
     struck = true;
     first ||= b;
@@ -267,7 +282,7 @@ export function strike(g, a, mv, i) {
     }
     // Air strings rise with the rival: the attacker is carried along with them, so the next hit connects.
     if (vamp && !a.ground && NOX_AIR.includes(a.attackKind)) shove(a, a.body.velocity.x * 0.5, Math.min(a.body.velocity.y, -0.6));
-    else if (!vamp && !a.ground && !mv.spike && !b.knocked && (AIR.includes(a.attackKind) || JUMA_AIR.includes(a.attackKind) || BEAST_AIR.includes(a.attackKind) || TITAN_AIR.includes(a.attackKind))) shove(a, b.body.velocity.x * 0.9, Math.min(a.body.velocity.y, b.body.velocity.y));
+    else if (!vamp && !a.ground && !mv.spike && !b.knocked && (AIR.includes(a.attackKind) || JUMA_AIR.includes(a.attackKind) || BEAST_AIR.includes(a.attackKind) || TITAN_AIR.includes(a.attackKind) || AXO_AIR.includes(a.attackKind))) shove(a, b.body.velocity.x * 0.9, Math.min(a.body.velocity.y, b.body.velocity.y));
     if (mv.drain) {
       a.hp = Math.min(a.maxHp, a.hp + dealt * (mv.drain + feast * 0.1));
       g.fx(last ? 'drainStream' : 'drain', { x: b.x, y: b.y - 6, tx: a.x + a.face * 3, ty: a.y - 6 });
@@ -278,11 +293,17 @@ export function strike(g, a, mv, i) {
     }
     if (vamp && !mv.feast && !b.dead) markBlood(g, b);
   }
+  // Eco: the axolotl's clones close to the rival repeat the blow a beat later.
+  if (mv.echo && first && a.type === 6 && (i === mv.hits.length - 1)) queueEcho(g, a, a.attackKind, first, amount);
   // The axolotl's clones in reach take the blow too.
   if (hitMinions(g, a.team, m => reaches(a, mv, m.x, m.y, 4, low), m => {
     const side = mv.around || mv.pass ? (Math.sign(m.x - a.x) || face) : face;
     hurtMinion(g, m, amount, { x: m.x - side * 3, y: m.y }, a.id, kind, { kb: { x: side * kb[0], y: kb[1] } });
   })) struck = true;
+  // The geyser shoots up where the tail lands; the tidal bore rolls a wave out ahead.
+  if (mv.geyser && a.ground) g.fx('geyser', { x: a.x + face * 16, y: a.y + 16, face });
+  if (mv.wave && a.ground) { g.fx('pororoca', { x: a.x + face * 14, y: a.y + 16, face }); if (struck) g.text(a.x + face * 20, a.y - 32, 'POROROCA!', '#ffd6e0'); g.shake = Math.max(g.shake, 4); }
+  if (mv.bolt && a.attackKind === 'xSlide' && i === 0 && a.ground) g.fx('slime', { x: a.x, y: a.y + 16, face });
   if (mv.spikes) g.fx('bloodSpikes', { x: a.x, y: a.y + 16, face, at: mv.spikes });
   if (mv.sweep && a.ground) g.fx('scytheSweep', { x: a.x + face * 8, y: a.y + 16, x2: a.x + face * mv.sweep, face });
   // The guillotine's blade bites into the floor ahead.
@@ -326,7 +347,7 @@ export function strike(g, a, mv, i) {
     if (struck) g.sound(kind === 'axe' ? 'chop' : kind === 'hammer' || kind === 'pipe' ? 'thud' : 'slash', a.x);
     return;
   }
-  if (mv.noSmear) { if (struck) g.sound(kind === 'fang' || kind === 'tongue' ? 'squish' : kind === 'scythe' ? 'slash' : kind === 'croak' ? 'punch' : 'blood', a.x); return; }
+  if (mv.noSmear) { if (struck) g.sound(kind === 'gulp' ? 'chomp' : kind === 'fang' || kind === 'tongue' ? 'squish' : kind === 'scythe' ? 'slash' : kind === 'croak' ? 'punch' : 'blood', a.x); return; }
   // A storm of claws scatters its gashes up and down the rival.
   const fy = mv.flurry ? [-5, 4, -2, 6, -7][i % 5] : 0;
   g.fx('slash', { x: a.x + face * Math.round(mv.range * 0.6), y: a.y + (low ? 12 : mv.launch ? -6 : 2) + fy, face, size: Math.max(18, mv.range * 0.55), kind, fin: finisher ? 1 : 0, color: SLASH[kind] || '#fff', up: mv.launch ? 1 : 0, down: mv.spike ? 1 : 0 });
@@ -379,6 +400,19 @@ function pound(g, a, mv, i) {
   const b = g.enemies(a).filter(b => !b.dead && b.knocked && Math.abs(b.x - a.x) < mv.range + 8 && Math.abs(b.y - a.y) < mv.band + 10)
     .sort((p, q) => Math.abs(p.x - a.x) - Math.abs(q.x - a.x))[0];
   const last = i === mv.hits.length - 1, x = b ? b.x : a.x + a.face * 22;
+  // The axolotl's feast: bites instead of blows, and its brood leaps on at the first one.
+  if (mv.nibble) {
+    g.sound('chomp', x);
+    if (!b) return;
+    const dealt = damage(g, b, mv.dmg[i] ?? mv.dmg[0], { x: b.x, y: b.y }, a.id, mv.kind, { part: 'body', kb: { x: 0, y: 2 }, force: true });
+    if (!dealt) return;
+    b.knock = Math.max(b.knock || 0, 0.8);
+    g.fx('toothMarks', { x: b.x, y: b.y });
+    if (mv.drain) { a.hp = Math.min(a.maxHp, a.hp + dealt * mv.drain); g.fx('drain', { x: b.x, y: b.y - 6, tx: a.x + a.face * 3, ty: a.y - 6 }); }
+    if (i === 0 && a.type === 6 && pileOn(g, a, b)) g.text(b.x, b.y - 36, 'BANQUETE!', '#ff9cb8');
+    if (last) g.text(b.x, b.y - 30, 'NHAC!', '#ff9cb8');
+    return;
+  }
   g.fx('quake', { x, y: a.y + 16, p: last ? 6 : mv.quake, face: a.face, both: 1 });
   g.fx('land', { x, y: a.y + 16, p: 1 });
   g.shake = Math.max(g.shake, last ? 10 : 6);
@@ -574,7 +608,7 @@ export function stepBullets(g, dt) {
     const candidates = [...statics];
     for (const a of g.actors) if (!a.dead && !a.knocked && a.swallowedBy == null && a.id !== b.owner && a.team !== b.team) candidates.push(a.body);
     for (const p of g.props) if (!p.held) candidates.push(p.body);
-    for (const m of g.minions) if (m.team !== b.team) candidates.push(m.body);
+    for (const m of g.minions) if (m.team !== b.team && m.body && targetable(m)) candidates.push(m.body);
     for (const l of g.limbs) candidates.push(l.body);
     g.hz?.bulletBodies?.forEach(x => candidates.push(x));
     const hits = Query.ray(candidates, { x: b.x, y: b.y }, { x: nx, y: ny }, 3);
@@ -619,7 +653,7 @@ function bulletHit(g, b, body, point) {
   const angle = Math.atan2(b.vy, b.vx);
   const a = body.plugin.actor, p = body.plugin.prop, l = body.plugin.limb, m = body.plugin.minion;
   if (m) {
-    if (m.dead || m.team === b.team) return false;
+    if (!targetable(m) || m.team === b.team) return false;
     hurtMinion(g, m, b.damage ?? 10, point, b.owner, b.kind || 'bullet', { kb: { x: b.vx * 0.16, y: b.vy * 0.1 - 1 } });
     removeBullet(g, b);
     return true;
@@ -735,7 +769,9 @@ export function damage(g, a, amount, point, ownerId, kind = 'punch', opts = {}) 
     return 0;
   }
   if (a.parry > 0 && owner && owner !== a && owner.team !== a.team && !DOT.has(cat) && !opts.environment && !['explosion', 'grind'].includes(cat) && kind !== 'fall' && kind !== 'crush') {
-    parried(g, a, owner, point);
+    // A clone's bite caught in the parry: the clone reels, not the axolotl across the arena.
+    if (opts.src) parriedClone(g, a, opts.src, point);
+    else parried(g, a, owner, point);
     return 0;
   }
   if (owner && ownerId !== a.id && owner.team === a.team) return 0;
@@ -769,7 +805,7 @@ export function damage(g, a, amount, point, ownerId, kind = 'punch', opts = {}) 
   if (!DOT.has(cat) || ownerId !== a.id) { a.lastHit = ownerId; a.lastHitTime = g.time; }
   a.lastHitKind = kind;
   if (owner && ownerId !== a.id) owner.stats.damage += amount;
-  if (owner && owner !== a && !DOT.has(cat)) { owner.lastPrey = a.id; owner.lastPreyT = g.time; }
+  if (owner && owner !== a && !DOT.has(cat) && !opts.src) { owner.lastPrey = a.id; owner.lastPreyT = g.time; }
   const gore = g.settings.gore ?? 2;
   if (gore && !DOT.has(cat)) g.fx('blood', { x: point.x, y: point.y, dx: (opts.kb?.x || 0) * 0.4, dy: -1.5, n: Math.round(Math.min(40, amount * (gore === 2 ? 1.5 : 0.5))), s: cat === 'cut' ? 4.5 : 3 });
 
@@ -780,14 +816,30 @@ export function damage(g, a, amount, point, ownerId, kind = 'punch', opts = {}) 
   if (cat === 'fire') a.char = Math.min(1, a.char + 0.035);
   if (cat === 'explosion') a.char = Math.min(1, a.char + 0.3);
   if (cat === 'shock') { a.char = Math.min(1, a.char + 0.02); a.shock = Math.max(a.shock, 0.35); }
-  if (a.type === 6 && !DOT.has(cat)) axoHit(g, a, part, amount, ownerId);
-  else if (gore === 2 && cat === 'cut' && part !== 'body' && a.partDmg[part] > (kind === 'axe' ? 22 : 30) && (kind === 'claw' || kind === 'blade' || kind === 'katana' || kind === 'axe' || amount > 18) && (part !== 'head' || a.hp < 25)) sever(g, a, part, ownerId);
+  // The axolotl sheds by its own rule; only its head can be cut off the usual way.
+  if (a.type === 6 && !DOT.has(cat)) {
+    axoHit(g, a, part, amount, cat, !!opts.low);
+    if (gore === 2 && cat === 'cut' && part === 'head' && a.partDmg.head > 30 && a.hp < 25 && ['claw', 'blade', 'katana', 'axe'].includes(kind)) sever(g, a, 'head', ownerId);
+  } else if (gore === 2 && cat === 'cut' && part !== 'body' && a.partDmg[part] > (kind === 'axe' ? 22 : 30) && (kind === 'claw' || kind === 'blade' || kind === 'katana' || kind === 'axe' || amount > 18) && (part !== 'head' || a.hp < 25)) sever(g, a, part, ownerId);
   if (a.dead) return amount;
 
   const w = weightOf(a);
   const kb = opts.kb || { x: (owner && owner !== a ? (a.x >= owner.x ? 1 : -1) : rnd(-1, 1)) * amount * 0.12, y: -2 };
   const kx = kb.x / w, ky = kb.y / w, mag = Math.hypot(kx, ky);
   let knock = false;
+  // A clone's nibble only stings: no push, no stagger, no freeze. It keeps a rival that is already
+  // reeling from the axolotl's string reeling, and never starts it.
+  if (opts.chip) {
+    if (a.hp <= 0) kill(g, a, ownerId, { kind: opts.killKind || kind, part, kb: { x: 0, y: -2 } });
+    else {
+      const t = a.dmgText;
+      if (t && t.life > 0.55 && g.effects.includes(t)) { t.sum += amount; t.text = `-${Math.round(t.sum)}`; t.life = 1; t.x = a.x; t.y = a.y - 26; }
+      else { g.text(a.x + rnd(-6, 6), a.y - 26, `-${Math.round(amount)}`, '#ffb3c8'); a.dmgText = g.effects[g.effects.length - 1]; a.dmgText.sum = amount; }
+      g.fx('hit', { x: point.x, y: point.y, p: 0.4, a: 0, cut: 0 });
+      if (opts.echo && owner && owner.team !== a.team) countHit(g, owner);
+    }
+    return amount;
+  }
   if (a.hp > 0) {
     // Launchers send the target flying instead of ragdolling it, so the air combo can follow.
     knock = !tough && (opts.knock || (!opts.launch && mag > 10.5) || (cat === 'explosion' && amount > 10) || (cat === 'blunt' && amount >= 28 && kind !== 'fall'));
@@ -809,7 +861,7 @@ export function damage(g, a, amount, point, ownerId, kind = 'punch', opts = {}) 
     const heavy = knock || amount >= 14;
     g.shake = Math.max(g.shake, Math.min(heavy ? 9 : 6, amount / (heavy ? 4 : 7)));
     // A fighter plunging through the air (stomps, the beast's leap and meteor) keeps falling.
-    hitlag(a, owner && owner !== a && Math.abs(owner.x - a.x) < 70 && !['stomp', 'leap', 'meteor'].includes(owner.act) ? owner : null, (heavy ? clamp(amount * 0.005, 0.07, 0.13) : clamp(amount * 0.003, 0.03, 0.06)) * (opts.lag || 1));
+    hitlag(a, owner && owner !== a && !opts.src && Math.abs(owner.x - a.x) < 70 && !['stomp', 'leap', 'meteor'].includes(owner.act) ? owner : null, (heavy ? clamp(amount * 0.005, 0.07, 0.13) : clamp(amount * 0.003, 0.03, 0.06)) * (opts.lag || 1));
     const dir = Math.atan2(ky, kx || (owner ? a.x - owner.x : 1));
     g.fx('hit', { x: point.x, y: point.y, p: Math.min(3, amount / 8), a: dir, cut: cat === 'cut' ? 1 : 0, blood: kind === 'blood' || kind === 'hemo' ? 1 : 0 });
     if (heavy && owner && owner !== a) {
@@ -825,8 +877,22 @@ export function damage(g, a, amount, point, ownerId, kind = 'punch', opts = {}) 
     if (t && t.life > 0.55 && g.effects.includes(t)) { t.sum += amount; t.text = `-${Math.round(t.sum)}`; t.life = 1; t.x = a.x; t.y = a.y - 26; }
     else { g.text(a.x + rnd(-6, 6), a.y - 26, `-${Math.round(amount)}`, '#f6bb9f'); a.dmgText = g.effects[g.effects.length - 1]; a.dmgText.sum = amount; }
   } else if (amount >= 4) g.text(a.x + rnd(-8, 8), a.y - 26, `-${Math.round(amount)}`, '#e6a37a');
-  if (a.hp <= 0) kill(g, a, ownerId, { kind, part, kb: { x: kx, y: ky }, overkill: -a.hp + amount > a.maxHp * 0.6 || opts.overkill });
+  if (a.hp <= 0) kill(g, a, ownerId, { kind: opts.killKind || kind, part, kb: { x: kx, y: ky }, overkill: -a.hp + amount > a.maxHp * 0.6 || opts.overkill });
   return amount;
+}
+
+// A clone or a thrown part caught in a parry: it bounces back dazed; its axolotl is not punished.
+function parriedClone(g, a, m, point) {
+  a.parry = 0; a.parryLag = 0; a.counter = 0.9;
+  a.face = m.x >= a.x ? 1 : -1;
+  if (m.body && !m.dead) {
+    m.act = m.kind === 'seed' ? m.act : null; m.latch = null;
+    m.hitstun = Math.max(m.hitstun || 0, 0.6); m.hitstunMax = m.hitstun;
+    Body.setVelocity(m.body, { x: (m.x >= a.x ? 1 : -1) * 5, y: -3 });
+  }
+  g.fx('parry', { x: point.x, y: point.y });
+  g.text(a.x, a.y - 34, 'PARRY!', '#7ce8ff');
+  g.sound('ricochet', a.x);
 }
 
 // Getting hit interrupts whatever the fighter was doing and locks them out for a moment (hitstun),
@@ -985,6 +1051,9 @@ export function power(g, a) {
   if (isMelee(a.weapon) && !a.holding && !(frog && a.belly != null)) { weaponAttack(g, a, true); return; }
   if (a.dead || a.invincible > 0.8 || a.knocked || a.frozen > 0 || a.hitstun > 0 || a.act) return;
   if (frog) { frogPower(g, a); return; }
+  // The axolotl's K and S+K have their own rules (the shed has its own cooldown, and K again
+  // during the awakening sets the demons off).
+  if (a.type === 6) { axoPower(g, a); return; }
   if (a.abilityCd > 0) return;
   startSpecial(g, a);
 }
@@ -993,7 +1062,7 @@ export function power(g, a) {
 export function tickStatuses(g, dt) {
   for (const a of g.actors) {
     if (a.dead) continue;
-    const stumpBleed = a.stumps.length * 1.1;
+    const stumpBleed = a.type === 6 ? 0 : a.stumps.length * 1.1;
     a.bleed = Math.max(stumpBleed, a.bleed * (1 - 0.07 * dt));
     a.bleedTick = (a.bleedTick || 0) - dt;
     if (a.bleed > 0.35 && a.bleedTick <= 0) {

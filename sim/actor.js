@@ -8,7 +8,7 @@ import { attack, power, damage, breakBone, tickAttack } from './combat.js';
 import { interact, dropWeapon, detonateCharges, updateHolding } from './props.js';
 import { knockdown, recover, ragdollOf } from './ragdoll.js';
 import { stepSpecial, startSwarm, tickForm, tickTitan, stepSwallowed, tickBelly } from './specials.js';
-import { tickRegrow } from './axolotl.js';
+import { tickAxolotl, axoGrab } from './axolotl.js';
 import { HALF_H, FOOT } from '../render/rig.js';
 
 export { HALF_H };
@@ -41,10 +41,13 @@ export function groundInfo(g, a) {
   return null;
 }
 
+// Speed and jump with the feet it has left. The axolotl crawls on its belly as much as it walks:
+// a lost foot only slows it a little.
 function legState(a) {
   const legs = ['footF', 'footB'].filter(f => !a.severed.includes(f)).length;
   const broken = (a.broken.footF ? 1 : 0) + (a.broken.footB ? 1 : 0);
-  return { legs, broken };
+  if (a.type === 6) return { legs, broken, run: 0.88 ** (2 - legs), jump: 0.92 ** (2 - legs) };
+  return { legs, broken, run: legs === 2 ? 1 : legs === 1 ? 0.62 : 0.32, jump: legs === 2 ? 1 : 0.8 };
 }
 
 // A rival slammed down by Nox's scythe hits the floor and bounces back up, still reeling; whoever
@@ -108,7 +111,7 @@ export function stepActor(g, a, dt) {
   for (const k in a.drop) a.drop[k] = Math.max(0, a.drop[k] - dt);
   tickForm(g, a);
   tickBelly(g, a, dt);
-  tickRegrow(g, a);
+  tickAxolotl(g, a, dt);
   if (a.frozen > 0) {
     a.frozen -= dt;
     if (a.frozen <= 0) { a.frozen = 0; g.fx('shatter', { x: a.x, y: a.y, n: 6, small: true }); g.text(a.x, a.y - 28, 'DESCONGELOU', '#bdeeff'); }
@@ -145,7 +148,7 @@ export function stepActor(g, a, dt) {
   const wasGround = a.ground;
   a.ground = !!gi && !a.climbing;
   a.groundInfo = gi;
-  const { legs, broken } = legState(a);
+  const { broken, run, jump } = legState(a);
   if (a.ground) {
     a.jumpGrace = 0.1;
     a.airJumps = 0;
@@ -187,7 +190,8 @@ export function stepActor(g, a, dt) {
 
   const reeling = a.stun > 0 || a.hitstun > 0;
   const control = reeling ? 0.12 : a.shock > 0 ? 0.2 : 1;
-  let speed = speedOf(a) * (legs === 2 ? 1 : legs === 1 ? 0.62 : 0.32) * (1 - broken * 0.22);
+  // Clones latched on a rival weigh them down; an axolotl with a clone in its mouth goes a little slower.
+  let speed = speedOf(a) * run * (1 - broken * 0.22) * (1 - 0.1 * Math.min(3, a.latchN || 0)) * (a.axo?.carry != null ? 0.85 : 1);
   a.crouch = a.ground && input.down && !a.climbing;
   if (a.crouch) speed *= 0.45;
   const move = control > 0.5 && a.parryLag <= 0 ? (input.right ? 1 : 0) - (input.left ? 1 : 0) : 0;
@@ -260,7 +264,7 @@ export function stepActor(g, a, dt) {
   if (!a.climbing && a.jumpBuffer > 0 && control >= 1 && (a.jumpGrace > 0 || (a.airJumps > 0 && pressed('jump')))) {
     const doubleJump = a.jumpGrace <= 0;
     if (doubleJump) { a.airJumps--; vy = -9.6; g.fx('ring', { x: a.x, y: a.y + 24, size: 16, color: '#b8c8f0' }); }
-    else { vy = -10.8 * (legs === 2 ? 1 : 0.8) * (a.form === 'titan' ? 0.86 : a.form ? 0.9 : 1) * (a.type === 5 ? (a.belly != null ? 0.94 : 1.08) : 1); g.fx('dust', { x: a.x, y: a.y + FOOT, n: a.form === 'titan' ? 9 : 5 }); }
+    else { vy = -10.8 * jump * (a.form === 'titan' ? 0.86 : a.form ? 0.9 : 1) * (a.type === 5 ? (a.belly != null ? 0.94 : 1.08) : 1); g.fx('dust', { x: a.x, y: a.y + FOOT, n: a.form === 'titan' ? 9 : 5 }); }
     vx += sv * 0.5;
     a.jumpBuffer = 0; a.jumpGrace = 0; a.jumpHeld = true; a.ground = false; a.jumpAt = g.time;
     g.sound('jump', a.x);
@@ -318,7 +322,9 @@ export function stepActor(g, a, dt) {
   if (canAct && (a.bufP > 0 || (a.bot && input.power))) { const s = a.attackSeq, p = a.powerSeq; power(g, a); if (a.attackSeq !== s || a.powerSeq !== p) a.bufP = 0; }
   // A move or special that just started set its own velocity (steps, lunges, leaps): keep it.
   if (was[0] !== a.attackSeq || was[1] !== a.powerSeq || was[2] !== a.act) { vx = body.velocity.x; vy = body.velocity.y; }
-  if (pressed('grab') && canAct) interact(g, a);
+  if (pressed('grab') && canAct && !axoGrab(g, a)) interact(g, a);
+  // Trapped in a bubble: every press wears it thinner.
+  if (a.bubbled > 0 && (pressed('attack') || pressed('jump'))) a.bubbled -= 0.12;
   if (pressed('bats') && canAct && styleOf(a) === 4 && !(a.batCd > 0) && !a.act && !a.climbing) startSwarm(g, a);
   if (pressed('drop')) dropWeapon(g, a);
   if (pressed('detonate')) detonateCharges(g, a);

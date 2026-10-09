@@ -117,6 +117,34 @@ export const MOVES = {
   fAirSpin: { dur: 0.36, hits: [0.2, 0.4, 0.6, 0.8], range: 30, band: 30, dmg: [3, 3, 3, 4], kind: 'kick', kb: [[0, 0], [0, 0], [0, 0], [0.6, -1]], cd: 0.12, around: true, pull: true },
   fAirLash: { dur: 0.3, hits: [0.32], range: 48, band: 30, dmg: [5], kind: 'tongue', kb: [[-2, 0.5]], cd: 0.12, tongue: 48, noSmear: true },
   fStomp: { dur: 0.32, hits: [0.4], range: 30, band: 34, dmg: [11], kind: 'kick', kb: [[1.5, 9]], cd: 0.26, spike: true, bounce: true },
+  // Xolo, the axolotl. Whips of the feathery gills, a tail like a paddle, a throat that sucks prey
+  // in. echo: its clones repeat the blow a beat late (see minions.js); tail: needs the tail (8 less
+  // reach while it grows back).
+  xGill: { dur: 0.22, hits: [0.4], range: 30, band: 24, dmg: [5], kind: 'gill', kb: [[1.1, 0]], cd: 0.12, step: 2.2, echo: true },
+  xGill2: { dur: 0.22, hits: [0.42], range: 30, band: 24, dmg: [5], kind: 'gill', kb: [[1.3, 0]], cd: 0.12, step: 2.2, echo: true },
+  xTail: { dur: 0.3, hits: [0.48], range: 40, band: 24, dmg: [7], kind: 'fin', kb: [[1.4, -0.5]], cd: 0.16, hold: 0.42, step: 1.6, tail: true, echo: true },
+  // The suction gulp: the throat pulls a rival who backed off in, then the jaws snap on them.
+  xGulp: { dur: 0.4, hits: [0.3, 0.64], range: 56, reach: [56, 28], band: 24, dmg: [3, 5], kind: 'gulp', kb: [[-2.8, 0], [1.2, -0.8]], cd: 0.2, hold: 0.5, crumple: true, noSmear: true, echo: true },
+  // The geyser: a tail-flip that shoots the rival up on a column of water.
+  xGeyser: { dur: 0.38, hits: [0.42], range: 30, band: 30, dmg: [9], kind: 'fin', kb: [[1.2, -10.6]], cd: 0.28, launch: true, step: 1.5, tail: true, geyser: true },
+  // S+J inside the string: the tail scoops under the rival and pops them straight up.
+  xScoop: { dur: 0.36, hits: [0.44], range: 36, band: 22, dmg: [8], kind: 'fin', kb: [[0.8, -9.8]], cd: 0.3, low: true, launch: true, tail: true },
+  // A fresh tap of a direction + J inside the string: the tail coils and lets go a tidal bore.
+  xPororoca: { dur: 0.5, hits: [0.46], range: 44, band: 28, dmg: [12], kind: 'fin', kb: [[7.5, -4.5]], cd: 0.45, knock: true, step: 3, lag: 1.5, tail: true, wave: 40 },
+  // Standing S+J: a bubble that rises ahead and traps whoever it catches (see axolotl.js).
+  xBubble: { dur: 0.5, hits: [0.56], range: 0, band: 0, dmg: [3], kind: 'bubble', kb: [[0, 0]], cd: 0.6, noSmear: true, bubble: true },
+  // Side+J: the mud slide, on its belly through the rival's legs; the string goes on at the tail.
+  xSlide: { dur: 0.34, hits: [0.3, 0.56], range: 40, band: 20, dmg: [4, 6], kind: 'belly', kb: [[0.4, -0.5], [1.4, -2.5]], cd: 0.24, low: true, pass: true, bolt: 7, hold: 0.42, echo: true },
+  // S+J over a downed rival: nibble, nibble, a tearing bite that heals; the brood piles on.
+  xFeast: { dur: 0.9, hits: [0.28, 0.52, 0.8], range: 40, band: 34, dmg: [4, 4, 8], kind: 'bite', kb: [[0, 2], [0, 2], [0, 3]], cd: 0.6, pound: true, nibble: true, drain: 0.3 },
+  // S+K: bites off a part of itself and hurls it; where it lands it buds into a clone.
+  xShed: { dur: 0.42, hits: [0.4], range: 0, band: 0, dmg: [6], kind: 'fin', kb: [[2.5, -3]], cd: 0.3, noSmear: true, shed: true },
+  // K with no clones: its own smile tears open into the demon's maw for one lunging bite.
+  xMaw: { dur: 0.46, hits: [0.45], range: 34, band: 26, dmg: [12], kind: 'fang', kb: [[2.2, -2.5]], cd: 0.3, bolt: 6, crumple: true, hold: 0.55, noSmear: true },
+  // Its air string: twin gill lashes, the undertow barrel-roll, the belly flop that bounces them.
+  xAirGill: { dur: 0.22, hits: [0.3, 0.62], range: 28, band: 26, dmg: [4, 4], kind: 'gill', kb: [[0.4, -0.5], [0.5, -0.5]], cd: 0.1 },
+  xAirSpin: { dur: 0.38, hits: [0.2, 0.4, 0.6, 0.8], range: 30, band: 30, dmg: [3, 3, 3, 4], kind: 'fin', kb: [[0, 0], [0, 0], [0, 0], [0.6, -1]], cd: 0.12, around: true, pull: true, tail: true },
+  xAirFlop: { dur: 0.34, hits: [0.42], range: 32, band: 36, dmg: [11], kind: 'belly', kb: [[1.5, 9]], cd: 0.28, spike: true, bounce: true },
   // Everyone: the air string (the last one spikes down), the dash strike
   airA: { dur: 0.22, hits: [0.4], range: 28, band: 26, dmg: [7], kind: 'air', kb: [[1.5, 0]], cd: 0.12 },
   airB: { dur: 0.26, hits: [0.45], range: 28, band: 28, dmg: [8], kind: 'air', kb: [[1.8, 0]], cd: 0.14 },
@@ -125,22 +153,23 @@ export const MOVES = {
 };
 Object.assign(MOVES, WEAPON_MOVES);
 
-export const COMBOS = [['scratchA', 'scratchB', 'upper'], ['whipA', 'whipB', 'tailUp'], ['kickA', 'kickB', 'hopkick'], ['jSwipe', 'jSwipe2', 'jFlurry', 'jRake', 'jPounceUp'], ['bloodClaw', 'scytheReap', 'scytheSpin', 'scytheGuillotine', 'bloodSpikes'], ['fSlap', 'fSlap2', 'fLash', 'fBigPalm', 'fSpring']];
+export const COMBOS = [['scratchA', 'scratchB', 'upper'], ['whipA', 'whipB', 'tailUp'], ['kickA', 'kickB', 'hopkick'], ['jSwipe', 'jSwipe2', 'jFlurry', 'jRake', 'jPounceUp'], ['bloodClaw', 'scytheReap', 'scytheSpin', 'scytheGuillotine', 'bloodSpikes'], ['fSlap', 'fSlap2', 'fLash', 'fBigPalm', 'fSpring'], ['xGill', 'xGill2', 'xTail', 'xGulp', 'xGeyser']];
 // S+J on the ground: each fighter's heavy blow.
-export const HEAVY = ['lowclaw', 'sweep', 'kick', 'jLow', 'vampKiss', 'fCroak'];
+export const HEAVY = ['lowclaw', 'sweep', 'kick', 'jLow', 'vampKiss', 'fCroak', 'xBubble'];
 export const AIR = ['airA', 'airB', 'spike'];
 export const NOX_AIR = ['nAirClaw', 'nAirVortex', 'nAirCross', 'nAirScythe'];
 export const JUMA_AIR = ['jAirClaw', 'jAirSpin', 'jAirDive'];
 export const FROG_AIR = ['fAirSlap', 'fAirSpin', 'fAirLash', 'fStomp'];
+export const AXO_AIR = ['xAirGill', 'xAirSpin', 'xAirFlop'];
 export const BEAST_COMBO = ['bSlam', 'bHammer', 'bClap', 'bUpper'];
 export const BEAST_AIR = ['bAirClaw', 'bAirSmash'];
 export const TITAN_COMBO = ['tHook', 'tSmash', 'tUpper'];
 export const TITAN_AIR = ['tAirClaw', 'tAirSmash'];
 // The ground and air strings a fighter is on right now (Juma's depend on her form).
 export const comboOf = a => { const s = styleOf(a); return s === 3 && a.form ? (a.form === 'titan' ? TITAN_COMBO : BEAST_COMBO) : COMBOS[s]; };
-export const airOf = a => { const s = styleOf(a); return s === 4 ? NOX_AIR : s === 5 ? FROG_AIR : s === 3 ? (a.form === 'titan' ? TITAN_AIR : a.form === 'beast' ? BEAST_AIR : JUMA_AIR) : AIR; };
+export const airOf = a => { const s = styleOf(a); return s === 4 ? NOX_AIR : s === 5 ? FROG_AIR : s === 6 ? AXO_AIR : s === 3 ? (a.form === 'titan' ? TITAN_AIR : a.form === 'beast' ? BEAST_AIR : JUMA_AIR) : AIR; };
 // Air moves and the dash strike hit with each fighter's natural weapon.
-export const NATURAL = ['claw', 'whip', 'kick', 'claw', 'blood', 'slap'];
+export const NATURAL = ['claw', 'whip', 'kick', 'claw', 'blood', 'slap', 'fin'];
 
 // Specials (K). Durations are upper bounds; most end on contact or landing.
 export const SPECIALS = [
@@ -155,5 +184,9 @@ export const SPECIALS = [
   // through the arena; diagonally down from the air. Three blood marks on a rival go supernova.
   { id: 'beam', cd: 6, dur: 0.78, charge: 0.34 },
   // The frog's K is his inhale (or the spit, with someone inside); S+K throws the special he copied.
-  { id: 'inhale', cd: 1.1 }
+  { id: 'inhale', cd: 1.1 },
+  // The axolotl's awakening: every clone it has becomes a demon of Xolotl for `dur` seconds (the
+  // cast pose takes `cast`); the cooldown runs from the end of it. Alone, it bites with the
+  // demon's maw instead, on the shorter `maw` cooldown.
+  { id: 'xolotl', cd: 9, dur: 6, cast: 0.35, maw: 5 }
 ];

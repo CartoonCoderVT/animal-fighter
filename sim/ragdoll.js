@@ -1,4 +1,5 @@
 import { Bodies, Body, Composite, Constraint, CAT, MASK, inPit, surfaceY } from './physics.js';
+import { shedLimb } from './axolotl.js';
 import { pose, PARENT, MASS, LIMITS, subtree, partBox, HALF_H } from '../render/rig.js';
 import { rnd, clamp, wrapAngle } from '../engine/const.js';
 import { MAP } from './map.js';
@@ -131,6 +132,17 @@ export function settleLimits(g) {
 
 export function breakJoint(g, r, j, cause = 'cut') {
   if (j.broken) return;
+  // A living axolotl never comes apart at the neck; any other part it loses comes off clean and
+  // buds into a clone (see axolotl.js).
+  const live = g.actor(r.actor);
+  if (live && live.type === 6 && !live.dead && !r.detached && live.axo) {
+    if (j.child === 'head' || j.child === 'body') return;
+    j.broken = true;
+    Composite.remove(g.engine.world, j.c);
+    const l = r.limbs[j.child];
+    if (l) shedLimb(g, live, l);
+    return;
+  }
   j.broken = true;
   Composite.remove(g.engine.world, j.c);
   const child = r.limbs[j.child];

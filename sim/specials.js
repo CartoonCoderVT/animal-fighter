@@ -11,6 +11,8 @@ import { breakLamp } from './hazards.js';
 import { rnd, clamp } from '../engine/const.js';
 import { HALF_H } from '../render/rig.js';
 import { MAP } from './map.js';
+import { blastMinions, hitMinions, hurtMinion, inhaleMinions } from './minions.js';
+import { axoSpecial, stepXolotl } from './axolotl.js';
 
 const LOCK = { lock: true };
 
@@ -35,6 +37,8 @@ export function endAct(g, a) {
 export function startSpecial(g, a) {
   const style = styleOf(a);
   if (style === 3) { jumaSpecial(g, a); return; }
+  // The axolotl's style (the frog that swallowed one gets only the maw).
+  if (style === 6) { axoSpecial(g, a); return; }
   const sp = SPECIALS[style];
   const v = a.body.velocity;
   a.powerSeq = (a.powerSeq || 0) + 1;
@@ -246,6 +250,7 @@ export function stepSpecial(g, a, input, pressed, dt) {
         a.ballV = -s * Math.abs(a.ballV) * 0.5;
         g.shake = Math.max(g.shake, 4);
       }
+      hitMinions(g, a.team, m => Math.hypot(m.x - a.x, m.y - a.y) < 22 && g.time - (a.ballHit['m' + m.id] ?? -9) > 0.5, m => { a.ballHit['m' + m.id] = g.time; const s = Math.sign(m.x - a.x) || a.face; hurtMinion(g, m, 12, { x: m.x, y: m.y }, a.id, 'impact', { kb: { x: s * 8, y: -5 } }); });
       for (const l of g.limbs) if (Math.hypot(l.x - a.x, l.y - a.y) < 20) Body.setVelocity(l.body, { x: l.body.velocity.x + a.ballV * 0.4, y: l.body.velocity.y - 2 });
       for (const p of g.props) if (!p.held && !p.fixed && !p.body.isStatic && Math.hypot(p.x - a.x, p.y - a.y) < 24) Body.setVelocity(p.body, { x: p.body.velocity.x + a.ballV * 0.3, y: p.body.velocity.y - 1 });
       if (a.actT > a.actMax) { endAct(g, a); g.fx('poof', { x: a.x, y: a.y }); return null; }
@@ -321,6 +326,11 @@ export function stepSpecial(g, a, input, pressed, dt) {
       return { lock: true, vx: v.x * 0.8, vy: a.ground ? v.y : Math.min(v.y, 0.6) };
     }
     case 'frenzy': return stepFrenzy(g, a, v);
+    // The axolotl's awakening: it rears up while its brood changes; in the air it hangs there.
+    case 'xolotl': {
+      if (stepXolotl(g, a)) { endAct(g, a); return null; }
+      return { lock: true, vx: v.x * 0.7, vy: a.ground ? v.y : Math.min(v.y, 0.6) };
+    }
     case 'inhale': return stepInhale(g, a, input, v);
     case 'gulp': return stepGulp(g, a, v);
     case 'spit': return stepSpit(g, a, v);
@@ -361,6 +371,8 @@ export function stepSpecial(g, a, input, pressed, dt) {
       return { lock: true, vx: a.body.velocity.x * 0.82, vy: a.ground ? v.y : Math.min(v.y, a.beamFired ? 1.4 : 0.25) };
     }
     case 'stomp': {
+      // A clone or a bud under the stomp is squashed, and the stomp bounces off it.
+      if (hitMinions(g, a.team, m => !a.slamHit['m' + m.id] && Math.abs(m.x - a.x) < 12 && m.y - a.y > 6 && m.y - a.y < 34, m => { a.slamHit['m' + m.id] = true; hurtMinion(g, m, 12, { x: m.x, y: m.y - 6 }, a.id, 'stomp', { kb: { x: 0, y: 3 } }); })) { endAct(g, a); return { lock: true, vx: v.x, vy: -8 }; }
       for (const b of enemiesNear(g, a, b => !a.slamHit[b.id] && Math.abs(b.x - a.x) < 14 && b.y - a.y > 10 && b.y - a.y < 40)) {
         a.slamHit[b.id] = true;
         damage(g, b, 12, { x: b.x, y: b.y - 14 }, a.id, 'stomp', { kb: { x: 0, y: 3 }, part: 'head', knock: v.y > 16 });
@@ -444,6 +456,7 @@ function shockwave(g, a, R = 120, beast = false) {
     const f = 1 - d / R, s = Math.sign(dx) || a.face;
     damage(g, b, (beast ? 8 : 6) + 14 * f, { x: b.x - s * 4, y: b.y + 12 }, a.id, 'slam', { kb: { x: s * (3 + 8 * f), y: -4 - 4 * f }, knock: f > 0.25, lag: beast ? 1.4 : 1 });
   }
+  blastMinions(g, a.team, a.id, x, y - 10, R, 50, k => (beast ? 8 : 6) + 14 * k, 'slam');
   for (const l of g.limbs) {
     const d = Math.abs(l.x - x);
     if (d < R && Math.abs(l.y - y) < 50) Body.setVelocity(l.body, { x: l.body.velocity.x + Math.sign(l.x - x) * 6 * (1 - d / R), y: l.body.velocity.y - 6 * (1 - d / R) });
@@ -537,6 +550,7 @@ function transform(g, a, to) {
     damage(g, b, (titan ? 6 : 4) + (titan ? 8 : 4) * k, { x: b.x - s * 4, y: b.y }, a.id, 'roar', { kb: { x: s * (titan ? 6 + 6 * k : 4 + 5 * k), y: -3 - (titan ? 4 : 2) * k }, knock: titan && k > 0.45 });
     if (!b.dead && !b.knocked) { b.hitstun = Math.max(b.hitstun || 0, titan ? 0.7 : 0.5); b.hitstunMax = Math.max(b.hitstunMax || 0, b.hitstun); }
   }
+  blastMinions(g, a.team, a.id, x, y, R, titan ? 80 : 50, k => (titan ? 6 : 4) + (titan ? 8 : 4) * k, 'roar');
   for (const l of g.limbs) if (Math.abs(l.x - x) < R + 10 && Math.abs(l.y - y) < 60) Body.setVelocity(l.body, { x: l.body.velocity.x + Math.sign(l.x - x) * (titan ? 7 : 4), y: l.body.velocity.y - 3 });
   for (const p of [...g.props]) {
     if (p.held || p.fixed || p.body.isStatic || Math.abs(p.x - x) > R + 10 || Math.abs(p.y - y) > (titan ? 120 : 60)) continue;
@@ -647,6 +661,7 @@ function thunderclap(g, a) {
     const k = ahead ? 1 - Math.max(0, (b.x - x0) * face) / R : 0.3, s = ahead ? face : Math.sign(b.x - a.x) || -face;
     damage(g, b, ahead ? 10 + 14 * k : 6, { x: b.x - s * 4, y: b.y }, a.id, 'sonic', { kb: { x: s * (6 + 9 * k), y: -4 - 4 * k }, knock: ahead && k > 0.2, lag: 1.6 });
   }
+  hitMinions(g, a.team, m => inCone(m.x, m.y) || (Math.abs(m.x - a.x) < 50 && Math.abs(m.y - a.y) < 40), m => { const s = inCone(m.x, m.y) ? face : Math.sign(m.x - a.x) || -face; hurtMinion(g, m, inCone(m.x, m.y) ? 16 : 6, { x: m.x, y: m.y }, a.id, 'sonic', { kb: { x: s * 9, y: -5 } }); });
   for (const l of g.limbs) if (inCone(l.x, l.y)) Body.setVelocity(l.body, { x: l.body.velocity.x + face * 10, y: l.body.velocity.y - 5 });
   for (const p of [...g.props]) {
     if (p.held || p.fixed || !inCone(p.x, p.y)) continue;
@@ -700,6 +715,7 @@ function stepCrush(g, a, v, dt) {
     for (const l of r ? Object.values(r.limbs) : [limb]) Body.setVelocity(l.body, { x: l.body.velocity.x * 0.3, y: Math.min(l.body.velocity.y, 0) - 3 });
     // Anyone else under the impact is caught by it too.
     for (const b of enemiesNear(g, a, b => b !== victim && !b.knocked && Math.abs(b.x - px) < 26 && Math.abs(b.y + 16 - py) < 30)) damage(g, b, 10, { x: b.x, y: b.y + 8 }, a.id, 'slam', { kb: { x: Math.sign(b.x - px) * 5, y: -5 }, knock: true });
+    blastMinions(g, a.team, a.id, px, py - 10, 26, 30, 10, 'slam');
     g.fx('quake', { x: px, y: py, p: a.slamN === 3 ? 8 : 5, face: side, both: 1 });
     g.fx('land', { x: px, y: py, p: 1 });
     g.text(px, py - 46, a.slamN === 3 ? 'ESMAGA!!' : 'ESMAGA!', '#ff9a3a');
@@ -758,6 +774,7 @@ function stepCharge(g, a, v) {
   const face = a.face;
   if (!a.chargeGo) { a.chargeGo = true; g.fx('dash', { x: a.x, y: a.y, face }); g.fx('quake', { x: a.x - face * 6, y: a.y + 16, p: titan ? 3 : 1, face }); g.sound('whoosh', a.x); }
   const reach = titan ? 34 : 26;
+  hitMinions(g, a.team, m => (m.x - a.x) * face > -4 && (m.x - a.x) * face < reach && Math.abs(m.y - a.y) < (titan ? 34 : 26), m => hurtMinion(g, m, C.end, { x: m.x, y: m.y }, a.id, 'paw', { kb: { x: face * 9, y: -5 } }));
   for (const b of enemiesNear(g, a, b => !b.knocked && !a.chargeHit[b.id] && (b.x - a.x) * face > -4 && (b.x - a.x) * face < reach && Math.abs(b.y - a.y) < (titan ? 34 : 26))) {
     a.chargeHit[b.id] = true;
     if (!damage(g, b, C.hit, { x: b.x - face * 4, y: b.y }, a.id, 'paw', { kb: { x: 0, y: 0 }, lag: 1.2 }) || b.dead || b.knocked) continue;
@@ -970,6 +987,7 @@ function bloodBeam(g, a) {
     return Math.hypot(x0 + dx * t - px, y0 + dy * t - py) < r ? t : -1;
   };
   let drank = 0;
+  hitMinions(g, a.team, m => along(m.x, m.y, 15) >= 0, m => hurtMinion(g, m, 14, { x: m.x, y: m.y }, a.id, 'hemo', { kb: { x: dx * 6, y: dy * 6 - 2 } }));
   for (const b of g.enemies(a)) {
     if (b.dead || b.knocked || along(b.x, b.y, 15) < 0) continue;
     if (b.iframes > 0 && b.dodge > 0) continue;
@@ -1057,6 +1075,8 @@ function stepInhale(g, a, input, v) {
     b.inhaled = g.time;
     if (k > 0.55 && !big) { b.stun = Math.max(b.stun, 0.12); b.attack = 0; b.hits = null; }
   }
+  // Buds and clones are snacks; a demon burns his mouth and ends the breath.
+  if (inhaleMinions(g, a, ahead, m, R)) { endAct(g, a); a.abilityCd = INHALE.cd; return null; }
   // Loose limbs and props drift toward him too, at a gentle pace that never builds up (they would
   // shove him around or slam into things), and stop once they reach his face.
   const drift = (body, d, top) => { const bv = body.velocity, to = -face * top * (0.4 + 0.6 * (1 - d / R)); Body.setVelocity(body, { x: bv.x + (to - bv.x) * 0.2, y: bv.y - 0.15 }); };

@@ -11,7 +11,7 @@ import { stepRagdolls, settleLimits, knockdown, ragdollOf } from './ragdoll.js';
 import { HALF_H, BODY_W } from '../render/rig.js';
 import { MELEE, isMelee } from './weapons.js';
 import { stepMinions, syncMinions, minionSnapshot } from './minions.js';
-import { tickSprouts } from './axolotl.js';
+import { axoInit, axoSnapshot } from './axolotl.js';
 
 export { EMPTY_INPUT, FIGHTERS };
 
@@ -56,7 +56,7 @@ export class Game {
       respawn: 0, lastHit: null, lastHitTime: -9, jumpGrace: 0, jumpBuffer: 0, airJumps: 0, drop: {}, knocked: false, knock: 0, getup: 0,
       aim: 0, burning: 0, stats: { damage: 0, kills: 0, limbs: 0 }, powerSeq: 0, act: null, actT: 0, gliding: false,
       form: null, rage: 0, morphTo: null, frenzy: null, biteCd: 0, chargeCd: 0, carry: null,
-      copy: null, belly: null, bellyT: 0, swallowedBy: null, regrow: {}, shedCd: 0
+      copy: null, belly: null, bellyT: 0, swallowedBy: null, axo: type === 6 ? axoInit() : null
     };
     body.plugin.actor = a;
     this.actors.push(a);
@@ -177,7 +177,7 @@ export class Game {
       act: null, actT: 0, hits: null, gliding: false, holdingLimb: null, holdJoint: null, ghostClear: true, hitlag: 0, lagPos: null,
       parry: 0, parryLag: 0, counter: 0, perfectT: 0, chase: null, float: 0, airDodged: false, hitstun: 0, hitstunMax: 0, stunN: 0, bloodMark: 0, beamAir: false, bounced: false, bounceArm: 0, turnT: 0, batCd: 0, swarm: null,
       form: null, rage: 0, morphTo: null, frenzy: null, biteCd: 0, chargeCd: 0, carry: null,
-      copy: null, belly: null, bellyT: 0, swallowedBy: null, copied: false, wobble: 0, regrow: {}, shedCd: 0
+      copy: null, belly: null, bellyT: 0, swallowedBy: null, copied: false, wobble: 0, axo: a.type === 6 ? axoInit() : null, bubbled: 0, latchN: 0
     });
     this.fx('spawn', { x: a.x, y: a.y, color: FIGHTERS[a.type].color });
   }
@@ -253,11 +253,10 @@ export class Game {
       if (l.life <= 0 || l.y > 700) this.removeLimb(l);
     }
     if (this.limbs.length > 150) {
-      const old = this.limbs.filter(l => !l.sprout && (!l.ragdoll || l.ragdoll.detached || !l.attached)).sort((a, b) => a.life - b.life).slice(0, this.limbs.length - 150);
+      const old = this.limbs.filter(l => (!l.ragdoll || l.ragdoll.detached || !l.attached)).sort((a, b) => a.life - b.life).slice(0, this.limbs.length - 150);
       old.forEach(l => this.removeLimb(l));
     }
     for (const p of [...this.pins]) { p.life -= dt; if (p.life <= 0) { Composite.remove(this.engine.world, p.c); this.pins.splice(this.pins.indexOf(p), 1); } }
-    tickSprouts(this);
     this.ragdolls = this.ragdolls.filter(r => Object.keys(r.limbs).length);
     this.dropWeapons(dt);
     tickStatuses(this, dt);
@@ -303,7 +302,8 @@ export class Game {
         freeze: r(a.freeze), frozen: r(a.frozen), shock: r(a.shock), weapon: a.weapon, ammo: a.ammo, holding: a.holding,
         burning: r(a.burning || 0), holdingLimb: a.holdingLimb || null, respawn: r(a.respawn), skid: r(a.skid || 0), landImpact: r(a.landT > 0 ? a.landImpact : 0),
         powerSeq: a.powerSeq, recoil: r(a.recoil || 0), stats: a.stats, form: a.form || null, rage: r(a.rage || 0), morphTo: a.morphTo || null, rip: a.frenzy?.prey != null ? 1 : 0, slamN: a.slamN || 0,
-        copy: a.copy ?? null, belly: a.belly ?? null, bellyT: r(a.bellyT || 0), swallowedBy: a.swallowedBy ?? null, wobble: r2(a.wobble || 0), copied: !!a.copied
+        copy: a.copy ?? null, belly: a.belly ?? null, bellyT: r(a.bellyT || 0), swallowedBy: a.swallowedBy ?? null, wobble: r2(a.wobble || 0), copied: !!a.copied,
+        axo: a.axo ? axoSnapshot(this, a) : null, bubbled: r2(a.bubbled || 0)
       })),
       props: this.props.map(p => ({ id: p.id, kind: p.kind, w: p.w, h: p.h, x: r(p.x), y: r(p.y), angle: r(p.angle * 100) / 100, hp: p.hp, armed: !!p.armed, fuse: p.fuse, burning: r(p.burning || 0), weapon: p.weapon, rocket: p.rocket > 0, chain: !!p.chain })),
       bullets: this.bullets.map(b => ({ id: b.id, x: r(b.x), y: r(b.y), px: r(b.px), py: r(b.py), word: b.word, color: b.color, vx: r(b.vx), vy: r(b.vy), kind: b.kind })),

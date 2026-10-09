@@ -35,6 +35,12 @@ export const FIGHTERS = [
     desc: 'Chefão de chapéu e charuto. Engole os rivais vivos e vira uma aberração com o estilo deles.',
     ability: 'Engolir · Cuspir', icon: '◉', stats: [3, 4, 5], hp: 125, speed: 4.9, weight: 0.95, cooldown: 7,
     detail: 'J: tapas e língua. Segure K: suga e engole. Com alguém na pança: K cospe; S+K usa o especial do engolido.'
+  },
+  {
+    id: 'axolotl', name: 'Xolo', species: 'O AXOLOTE', role: 'REGENERAÇÃO / CLONES', word: 'BLUB.', color: '#ff9cb8',
+    desc: 'Sorriso eterno e corpo de gelatina. Cada pedaço que perde cresce de novo, e o pedaço vira um irmãozinho que morde.',
+    ability: 'Despertar de Xolotl', icon: '*', stats: [3, 3, 5], hp: 115, speed: 4.7, weight: 0.85, cooldown: 9,
+    detail: 'J: guelras e cauda; lado+J: barrigada; S+J: bolha. Partes perdidas viram brotos (até 3) que copiam seus golpes. S+K solta a cauda; E pega e J arremessa um broto. K: os brotos viram demônios.'
   }
 ];
 // Juma's forms. Each one is heavier and slower than the last, takes blows on a thicker hide

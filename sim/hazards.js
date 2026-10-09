@@ -1,5 +1,5 @@
 import { Bodies, Body, Composite, Constraint, CAT, MASK, approach, inPit } from './physics.js';
-import { killMinion, hurtMinion } from './minions.js';
+import { killMinion, hurtMinion, targetable } from './minions.js';
 import { MAP } from './map.js';
 import { rnd, dist, clamp } from '../engine/const.js';
 import { damage, kill } from './combat.js';
@@ -260,7 +260,7 @@ export function tickHazards(g, dt) {
   }
   for (const m of [...g.minions]) {
     m.shockCd = Math.max(0, (m.shockCd || 0) - dt);
-    if (m.shockCd > 0) continue;
+    if (m.shockCd > 0 || !targetable(m)) continue;
     if (Math.hypot(m.x - ex, m.y - ey) < 16 || (pd.live > 0 && m.ground && m.x > pd.x0 && m.x < pd.x1)) {
       m.shockCd = 0.3;
       hurtMinion(g, m, 6, { x: m.x, y: m.y }, null, 'shock', { kb: { x: Math.sign(m.x - ex || 1) * 2.5, y: -2 } });

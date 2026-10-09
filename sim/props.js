@@ -362,6 +362,8 @@ export function tickProps(g, dt) {
     if (f.cd <= 0) {
       f.cd = 0.45;
       for (const a of g.actors) if (!a.dead && a.swallowedBy == null && Math.abs(a.x - f.x) < 38 && Math.abs(a.y - f.y) < 55 && !(a.dodge > 0)) { a.burning = 3.5; a.burnOwner = f.owner; }
+      // Clones and buds in the flames just cook (demons are made of fire).
+      hitMinions(g, null, m => m.kind !== 'demon' && Math.abs(m.x - f.x) < 30 && Math.abs(m.y - f.y) < 40, m => hurtMinion(g, m, 4, { x: m.x, y: m.y + 4 }, f.owner, 'fire', { kb: { x: 0, y: -2 }, hold: 0.15 }));
     }
   }
   g.fires = g.fires.filter(f => f.life > 0);

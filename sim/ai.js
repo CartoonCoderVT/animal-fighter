@@ -5,6 +5,7 @@ import { FOOT } from '../render/rig.js';
 import { MOVES, comboOf } from './moves.js';
 import { styleOf } from './fighters.js';
 import { MELEE, isMelee } from './weapons.js';
+import { minionsOf, adultsOf, targetable } from './minions.js';
 
 const RANGED = a => a.weapon === 'pistol' || a.weapon === 'shotgun';
 
@@ -19,7 +20,13 @@ const SPECIAL_RANGE = [
   // The blood beam: level along the floor, or down and ahead (about 30 degrees) from the air.
   (dx, dy, a, t, g) => t && t.bloodMark >= 3 && g.time - (t.markT ?? -9) < 5 ? Math.abs(dx) < 70 && Math.abs(dy) < 40 : a.ground ? Math.abs(dx) > 30 && Math.abs(dx) < 320 && Math.abs(dy) < 16 : Math.abs(dx) < 300 && Math.abs(dy - Math.abs(dx) * 0.61) < 18,
   // The frog breathes in at a rival a few steps ahead, level with his mouth.
-  (dx, dy) => Math.abs(dx) > 12 && Math.abs(dx) < 105 && Math.abs(dy) < 24
+  (dx, dy) => Math.abs(dx) > 12 && Math.abs(dx) < 105 && Math.abs(dy) < 24,
+  // The axolotl awakens its brood when it has two clones or more (or is in trouble) and a rival is
+  // around; alone (or as the frog's borrowed style) it bites with the maw from up close.
+  (dx, dy, a, t, g) => {
+    const n = a.type === 6 ? minionsOf(g, a).length : 0;
+    return n ? (n >= 2 || a.hp < 50) && Math.abs(dx) < 220 && Math.abs(dy) < 80 : Math.abs(dx) > 10 && Math.abs(dx) < 40 && Math.abs(dy) < 24;
+  }
 ];
 
 export function nodeAt(g, x, feetY) {
@@ -215,6 +222,24 @@ export function think(g, a, dt) {
       // Small Juma, mid-string: a fresh tap toward the rival for the cross now and then.
       else if (a.comboTimer > 0 && Math.abs(dx) < 50 && Math.random() < 0.06) { aimed = true; input.attack = !a.lastInput.attack; if (!a.lastInput.left && !a.lastInput.right) { input.right = dx > 0; input.left = dx < 0; } }
     }
+    // The axolotl: plants clones when it has room and nobody is on it, blows bubbles at rivals above,
+    // slides in from a few steps away, ends strings with the tidal bore, feasts on a downed rival,
+    // fires a clone at a rival further off, and sets its demons off near the end of the awakening.
+    if (a.type === 6 && !armed && !a.act) {
+      const ax = a.axo, near = g.enemies(a).some(b => !b.dead && Math.hypot(b.x - a.x, b.y - a.y) < 70);
+      const brood = minionsOf(g, a).length;
+      if (ax.carry != null) { ai.carryT = (ai.carryT || 0) + dt; if (ai.carryT > 0.25 && facing && Math.abs(dy) < 30) { input.attack = !a.lastInput.attack; aimed = true; ai.carryT = 0; } }
+      else if (g.time >= ax.shedReady && brood < 2 && a.hp > 35 && a.ground && ((!near && Math.random() < 0.02) || (a.attackKind === 'xTail' && a.comboTimer > 0 && !a.hits?.length && Math.random() < 0.3))) { aimed = true; input.power = true; input.down = true; }
+      else if (a.ground && a.comboTimer <= 0 && dy < -30 && dy > -90 && dx * a.face > 40 && dx * a.face < 110 && Math.random() < 0.04) { aimed = true; input.attack = !a.lastInput.attack; input.down = true; }
+      else if (a.ground && target.knocked && Math.abs(dx) < 40 && Math.abs(dy) < 36 && Math.random() < 0.12) { aimed = true; input.attack = !a.lastInput.attack; input.down = true; }
+      else if (a.ground && a.comboTimer <= 0 && Math.abs(dx) > 30 && Math.abs(dx) < 66 && Math.abs(dy) < 18 && !target.knocked && Math.random() < 0.04) { aimed = true; input.attack = !a.lastInput.attack; input.right = dx > 0; input.left = dx < 0; }
+      else if (a.comboTimer > 0 && a.attackKind === 'xGulp' && Math.abs(dx) < 50 && Math.random() < 0.1) { aimed = true; input.attack = !a.lastInput.attack; if (!a.lastInput.left && !a.lastInput.right) { input.right = dx > 0; input.left = dx < 0; } }
+      else if (a.ground && Math.abs(dx) > 70 && Math.abs(dx) < 200 && Math.abs(dy) < 24 && ai.grabCd <= 0 && Math.random() < 0.01 && adultsOf(g, a).some(m => Math.abs(m.x - a.x) < 20 && Math.abs(m.y - a.y) < 20)) { input.grab = true; ai.grabCd = 1; ai.carryT = 0; }
+      if (ax.demon && g.time - ax.demon.at > 4.5 && g.minions.some(m => m.owner === a.id && m.kind === 'demon' && Math.hypot(m.x - target.x, m.y - target.y) < 40)) input.power = !a.lastInput.power;
+    }
+    // A rival's clone in reach when no fighter is: swat it. A clone latched on: shake it off.
+    if (!armed && !input.attack && a.ground && Math.random() < 0.08 && g.minions.some(m => m.team !== a.team && targetable(m) && (m.x - a.x) * a.face > -4 && (m.x - a.x) * a.face < natural && Math.abs(m.y - a.y) < 24)) input.attack = true;
+    if ((a.latchN || 0) > 0 && a.dodgeCd <= 0 && Math.random() < 0.04) input.dodge = true;
     // Close the gap with a roll that turns into a dashing strike.
     if (a.ground && !a.act && !a.weapon && a.dodgeCd <= 0 && Math.abs(dx) > 44 && Math.abs(dx) < 95 && Math.abs(dy) < 20 && Math.random() < 0.03 && safeRoll(g, a, Math.sign(dx))) {
       input.dodge = true; input.right = dx > 0; input.left = dx < 0;
