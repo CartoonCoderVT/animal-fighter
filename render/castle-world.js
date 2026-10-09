@@ -466,7 +466,7 @@ function drapes(p) {
   const inner = y => {
     if (y <= yT) { const t = clamp01((y - yA) / (yT - yA)); return xT + (xm - xT) * (1 - t) ** 1.55; }
     const t = (y - yT) / (yBot - yT);
-    return xT + (xB - xT) * t ** 1.4 + (y > yBot - 5 ? (y - (yBot - 5)) * 0.8 : 0);
+    return xT + (xB - xT) * t ** 1.4;
   };
   const IN = (x, y) => y >= yA && y < yBot && x + 0.5 >= outer(y + 0.5) && x + 0.5 <= inner(y + 0.5);
   const put = (x, y, col) => { p.set(x, y, col); p.set(VIEW_W - 1 - x, y, col); };
@@ -474,7 +474,7 @@ function drapes(p) {
   for (let y = yA - 1; y <= yBot; y++) for (let x = x0 - 1; x < xm; x++) {
     if (!IN(x, y)) {
       // A dark line between the drape's edge and the passage.
-      if (x >= x0 && (IN(x - 1, y) || IN(x, y - 1))) put(x, y, '#07040a');
+      if (x >= x0 && y < yBot && (IN(x - 1, y) || IN(x, y - 1))) put(x, y, '#07040a');
       continue;
     }
     const yo = outer(y + 0.5), wdt = Math.max(1, inner(y + 0.5) - yo), u = (x + 0.5 - yo) / wdt;
@@ -1281,8 +1281,9 @@ export class CastleWorld {
         else if (d > 15.5 && (-dx * 0.6 - dy * 0.8) / d > 0.2) col = bayer(x, y) < 0.5 ? '#0b0812' : '#100c1a';
         p.set(x, y, col);
       }
-      // A steel wheel turns under the hands; two brass pinions mesh with it.
-      const step = f / 4, STEEL = [IRON[0], IRON[3], IRON[4], IRON[5], IRON[6]], BRASS = [IRON[0], GOLD[0], GOLD[1], GOLD[2], GOLD[3]];
+      // A steel wheel turns under the hands; two brass pinions mesh with it. The works sit two steps
+      // darker than the hands so the time stays readable over them.
+      const step = f / 4, STEEL = [IRON[0], IRON[1], IRON[2], IRON[3], IRON[4]], BRASS = [IRON[0], '#24160e', GOLD[0], GOLD[1], GOLD[2]];
       gearPaint(p, c - 11, c + 11.5, 7, 8, -step * (TAU / 8) + 0.2, BRASS, 3);
       gearPaint(p, c + 11.5, c - 11, 7, 8, -step * (TAU / 8) + 0.6, BRASS, 3);
       gearPaint(p, c, c, 11, 12, step * (TAU / 12), STEEL, 4);

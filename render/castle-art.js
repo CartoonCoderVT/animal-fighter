@@ -153,9 +153,9 @@ export function drawCandle(g, x, y, { lit = true, t = 0, hurt = 0, emissive = fa
 
 // ---- wall torch (the hidden room) -----------------------------------------------------------
 // An iron sconce fixed to the wall at (x, y) (the cup's rim), with a bigger flame. Its light is in
-// castleLights (HIDDEN_TORCH). castle-world.js paints this very sconce (with a still flame) in the hidden
-// room at (584, 118..126): keep the two in step, the light has to sit on the painted flame.
-export const HIDDEN_TORCH = { x: 584, y: 120 };
+// castleLights (HIDDEN_TORCH). castle-world.js paints its own sconce with a still flame in the hidden room
+// (its TORCH, the cup's rim at 626, 120): keep the two in step, the light has to sit on the painted flame.
+export const HIDDEN_TORCH = { x: 626, y: 120 };
 const SCONCE = [
   'k66665k',
   'k45543k',
@@ -878,7 +878,7 @@ function ledgeStones(w) {
   for (let x = 0; x < w;) {
     let sw = Math.min(w - x, 9 + Math.floor(rnd() * 6));
     if (w - (x + sw) < 5) sw = w - x;
-    const s = { x, w: sw, seed: rnd(), crack: 2 + Math.floor(rnd() * Math.max(1, sw - 5)), hair: rnd() < 0.6, crumb: rnd() < 0.7, cv: [], chunks: new Map() };
+    const s = { x, w: sw, seed: rnd(), crack: 2 + Math.floor(rnd() * Math.max(1, sw - 5)), hair: rnd() < 0.6 && sw >= 8, crumb: rnd() < 0.7, cv: [], chunks: new Map() };
     s.px = stonePixels(s, stones.length === 0);
     stones.push(s);
     x += sw;
@@ -1056,8 +1056,9 @@ export function castleLights(state = {}, t = 0) {
       out.push({ x: X(p.x), y: X(foot(p)) - 6, r: 12, color: '#ffd8a0', i: 0.25, noRim: true });
     }
   }
-  // The torch in the hidden room: dim behind the closed door, it spills out as the slab rises.
+  // The torch in the hidden room, at its far end: it reaches the chest and, once the slab rises, spills
+  // out through the doorway (the roof and the tower floor shade everything else).
   const open = hz.door?.open ?? 0;
-  out.push({ x: HIDDEN_TORCH.x, y: HIDDEN_TORCH.y - 6, r: 72, color: '#ffb060', i: (0.35 + open * 0.55) * flick(9.1), occlude: true });
+  out.push({ x: HIDDEN_TORCH.x, y: HIDDEN_TORCH.y - 6, r: 120, color: '#ffb060', i: (0.35 + open * 0.55) * flick(9.1), occlude: true });
   return out;
 }
