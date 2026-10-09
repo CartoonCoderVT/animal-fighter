@@ -29,7 +29,7 @@ export const FIGHTERS = [
     id: 'bat', name: 'Nox', species: 'O MORCEGO BRANCO', role: 'VAMPIRO / HEMOMANCIA', word: 'SHHH.', color: '#9fb9ea',
     desc: 'Vampiro de cachecol vermelho. Faz do sangue garra, chicote e lança, e bebe o troco.',
     ability: 'DARK NOX', icon: '⌁', stats: [4, 4, 5], hp: 110, speed: 5.1, weight: 0.8, cooldown: 6,
-    detail: 'Todo golpe faz sangrar, e ele bebe o sangue: barra cheia + K = DARK NOX (golpes devastadores, alcance enorme; K vira o sangue perfurante, com 3 marcas o RÉQUIEM).'
+    detail: 'Faz sangrar e bebe o sangue, até das poças. Barra cheia + K = DARK NOX por 30 s (nem a morte tira): a foice voa sozinha e comba junto.'
   }
 ];
 // Juma's beast form is far heavier and slower than she is.

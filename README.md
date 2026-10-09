@@ -17,6 +17,10 @@ Também funciona com controle e toque.
 
 **Lola** luta com facas e salta no tempo dentro dos combos (some e reaparece atrás, na frente ou acima do rival), deixando facas paradas no ar onde sumiu. No meio do combo ela monta padrões de bullet hell: **S+J** faz chover facas sobre o rival, um toque de **lado+J** ergue uma muralha de facas entre os dois e, no ar, um anel de facas se fecha em espiral. O K dela carrega devagar e para o tempo de verdade: **ZA WARUDO**.
 
+**Nox** faz sangrar com cada golpe e bebe o sangue, inclusive as poças que ficam no chão da arena. Com a barra cheia, **K** o transforma no **DARK NOX** por 30 segundos (e ele continua DARK mesmo se morrer): ele solta a foice, que voa sozinha como um familiar cortando quem chega perto, e luta com as garras num combo frenético em que a foice ataca junto.
+
+**Quebrar o combo:** apanhando, aperte **Shift** no momento certo do próximo golpe.
+
 ## Arenas
 
 Escolha a arena na tela de lutadores (**M**) ou, online, na sala (o anfitrião escolhe).
