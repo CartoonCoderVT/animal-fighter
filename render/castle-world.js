@@ -517,7 +517,7 @@ function portrait(p, x0, y0, w, h) {
     '.dddddWWWWWddddd..',
     '.DddddddddddddDD..',
     'DDddddddddddddDD..',
-  ], { w: '#f4ecf2', s: '#c4b0c8', p: '#f3aebf', b: '#9cd0ff', B: '#5a9af0', K: '#1a1020', n: '#e8668a', k: '#ff9db3', d: '#6aa2ee', D: '#3e64c4', W: '#ffffff', R: '#1a1020', H: '#e8405e' });
+  ], { w: '#dcd4e2', s: '#ab9cb6', p: '#dca0b2', b: '#88b6e2', B: '#4e88d6', K: '#1a1020', n: '#d05e80', k: '#e890a6', d: '#5c90d6', D: '#3658aa', W: '#efe9f2', R: '#1a1020', H: '#d03a56' });
 }
 
 function paintWall() {
@@ -545,6 +545,23 @@ function paintWall() {
   for (const cx of PIERS) ribs(p, cx, 9, 52, cx < 320 ? [-1] : [1]);
   // Gothic windows.
   for (const win of WINDOWS) paintWindow(p, win);
+  // Damp streaks under the window sills.
+  const rd = seeded(61);
+  for (const win of WINDOWS) for (let x = win.x - 6; x < win.x + win.w + 6; x++) {
+    const len = 6 + rd() * 34;
+    for (let y = win.y + win.h + 5; y < win.y + win.h + 5 + len; y++) if (bayer(x, y) < 0.55 * (1 - (y - win.y - win.h - 5) / len)) p.shade(x, y, 0.8);
+  }
+  // The stone gets darker toward the top corners and the vault (3 dithered steps). The hung pieces
+  // below (clock, banners, shield, portrait) are painted after it so they stay clean.
+  const D = p.D;
+  for (let y = 0; y < 250; y++) for (let x = 0; x < VIEW_W; x++) {
+    const i = (y * VIEW_W + x) * 4;
+    if (D[i + 3] < 250) continue;
+    const side = Math.abs(x + 0.5 - 320) / 320;
+    const v = clamp01(1 - y / 230) * (0.12 + 0.88 * side * side) + clamp01(1 - y / 22) * 0.45;
+    const lvl = Math.min(3, Math.floor(v * 3 + bayer(x, y) * 0.999));
+    if (lvl > 0) p.shade(x, y, 1 - lvl * 0.16);
+  }
   paintClockFace(p);
   banner(p, PILLARS[0], 28, 86, 'hourglass');
   banner(p, PILLARS[1], 28, 86, 'hourglass');
@@ -560,27 +577,12 @@ function paintWall() {
   ivy(p, 14, 0, 70, 21);
   ivy(p, 626, 0, 54, 23);
   ivy(p, 520, 4, 36, 24);
-  // Damp streaks under the window sills, moss low on the wainscot.
-  const rd = seeded(61);
-  for (const win of WINDOWS) for (let x = win.x - 6; x < win.x + win.w + 6; x++) {
-    const len = 6 + rd() * 34;
-    for (let y = win.y + win.h + 5; y < win.y + win.h + 5 + len; y++) if (bayer(x, y) < 0.55 * (1 - (y - win.y - win.h - 5) / len)) p.shade(x, y, 0.8);
-  }
+  // Moss low on the wainscot.
   for (let x = 0; x < VIEW_W; x++) {
     const m = Math.sin(x * 0.05) + Math.sin(x * 0.13 + 1) * 0.6 + Math.sin(x * 0.011 + 3) * 1.2;
     if (m < 0.8 || (x > PIERS[0] - 8 && x < PIERS[1] + 8)) continue;
     const h = Math.round((m - 0.8) * 9);
     for (let y = 315 - h; y < 316; y++) if (bayer(x, y) < 0.35 + (y - (315 - h)) / (h + 1) * 0.4 && p.alpha(x, y)) p.set(x, y, IVY[2], 150);
-  }
-  // Darker toward the top corners and the vault.
-  const D = p.D;
-  for (let y = 0; y < 250; y++) for (let x = 0; x < VIEW_W; x++) {
-    const i = (y * VIEW_W + x) * 4;
-    if (D[i + 3] < 250) continue;
-    const side = Math.abs(x + 0.5 - 320) / 320;
-    let v = clamp01(1 - y / 230) * (0.12 + 0.88 * side * side) + clamp01(1 - y / 22) * 0.45;
-    const lvl = Math.min(3, Math.floor(v * 3 + bayer(x, y) * 0.999));
-    if (lvl > 0) p.shade(x, y, 1 - lvl * 0.16);
   }
   return p.done();
 }

@@ -35,7 +35,9 @@ const PAL = {
   // plate
   P: '#f0ecf8', L: '#b6b0cc', K: '#6e6888',
   // glow
-  E: '#ff4040', F: '#ffd8a8', H: '#ff9a35'
+  E: '#ff4040', F: '#ffd8a8', H: '#ff9a35',
+  // the gargoyle's sleeping coals
+  e: '#a01a26'
 };
 const RGB = {};
 for (const [k, v] of Object.entries(PAL)) { const n = parseInt(v.slice(1), 16); RGB[k] = [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
@@ -514,9 +516,12 @@ export function drawChest(g, x, y, open = false, t = 0, { emissive = false } = {
 }
 
 // ---- gargoyle ----------------------------------------------------------------------------------
-// A horned demon's head seen from the front (18 x 15), on a stone corbel whose arm runs back to the
-// wall behind it (the side opposite 'face'). (x, y) is the middle of the head. The left half is
-// drawn; the right half is its mirror, a shade darker (the light comes from the upper left).
+// A horned demon's head seen from the front (18 x 18) on a moulded console, set at the lower left corner
+// of the hidden room's roof (its right edge laps 3 px over the roof's face, so it reads as carved into
+// the corner). (x, y) is the middle of the head. The left half is drawn; the right half is its mirror, a
+// shade darker (the light comes from the upper left). Coals sleep in its eye sockets ('e', 'E'): almost
+// black under the hall's ambient light, they glint red whenever castleLights lights them (now and then,
+// the hint that it is more than decor), and they burn when it is struck.
 const GARG_HALF = [
   'k........',
   'kxk......',
@@ -524,33 +529,21 @@ const GARG_HALF = [
   '.kuxk....',
   '.ktuxkkkk',
   '..ktuxxxx',
-  'kk.kuxxxx',
+  'kk.kuxxxu',
   'kxkkkkuxx',
   '.kxtnnkkx',
-  '..ktZZnux',
+  '..kteEnux',
   '..ktqnnux',
   '..kqtuuxn',
   '.kkqkknnk',
   'kxkBkZZZZ',
-  '.kqBZZZZZ',
+  '.kqBZZmmm',
   '..kqkBZZZ',
   '...kqtkkk',
   '....kkk..'
 ];
 const DARKER = { x: 'u', u: 't', t: 'q', q: 'p', p: 'n' };
 const GARGOYLE = GARG_HALF.map(r => r + [...r].reverse().map(c => DARKER[c] || c).join(''));
-// The bracket: a stone beam from the wall behind the head (drawn here with the wall on the left, for a
-// head looking right) and a moulded console under the chin.
-const GARG_ARM = [
-  'kkk.............',
-  'xuukkkkkkkkkkkkk',
-  'utuxuuuuuuuuuutk',
-  'tqtttttttqtttttk',
-  'tqqqqqqqqpqqqqpk',
-  'qpkkkkkkkkkkkkkk',
-  'pnk.............',
-  'kkk.............'
-];
 const GARG_CONSOLE = [
   'kkkkkkkkkkkk',
   'kxuuuuuuuutk',
@@ -559,14 +552,14 @@ const GARG_CONSOLE = [
   '...kppppk...',
   '....kkkk....'
 ];
+// Where its eyes are, from the middle of the head: castleLights aims the glint there.
+export const GARGOYLE_EYES = { dx: 0, dy: 0 };
 export function drawGargoyle(g, x, y, face = -1, { glow = 0, t = 0, emissive = false } = {}) {
   const flip = face < 0;
-  const head = bake('gargoyle', GARGOYLE), arm = bake('gargArm', GARG_ARM, flip), con = bake('gargCon', GARG_CONSOLE);
+  const head = bake('gargoyle', GARGOYLE), con = bake('gargCon', GARG_CONSOLE);
   const shake = glow > 0.85 ? (Math.floor(t * 30) % 2 ? 1 : 0) : 0;
   const hx = Math.round(x) - 9 + shake, hy = Math.round(y) - 9;
   if (!emissive) {
-    // the beam runs back into the wall behind the head; the console holds the chin
-    blit(g, arm, flip ? hx + 9 : hx - 7, hy + 2);
     blit(g, head, hx, hy);
     blit(g, con, hx + 3, hy + 16);
   }
@@ -582,7 +575,7 @@ export function drawGargoyle(g, x, y, face = -1, { glow = 0, t = 0, emissive = f
       g.globalAlpha = a;
       for (let i = 6; i <= 11; i++) if (Math.floor(t * 8 + i) % 3) dot(g, hx + i, hy + 14, glow > 0.7 ? '#ff6a3a' : '#a0242c');
     }
-    // dust shaken loose, falling from under the console and the beam
+    // dust shaken loose, falling from under the console and from the roof's edge behind the head
     const n = emissive ? 0 : Math.round(glow * 8);
     const a = g.globalAlpha;
     for (let i = 0; i < n; i++) {
