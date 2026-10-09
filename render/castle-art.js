@@ -262,8 +262,8 @@ function armorSprite(weapon, level, flip) {
   }
   return bake(key, grid.map(r => r.join('')), flip);
 }
-export function drawArmor(g, x, y, face = 1, { weapon = 'axe', hp = 1, max = 1, t = 0, hurt = 0 } = {}) {
-  const d = 1 - clamp(max > 0 ? hp / max : 1, 0, 1);
+export function drawArmor(g, x, y, face = 1, { weapon = 'axe', hp, max = 36, t = 0, hurt = 0 } = {}) {
+  const d = 1 - clamp(max > 0 && hp != null ? hp / max : 1, 0, 1);
   const level = d > 0.72 ? 3 : d > 0.45 ? 2 : d > 0.18 ? 1 : 0;
   const flip = face < 0;
   const b = armorSprite(weapon === 'spear' ? 'spear' : 'axe', level, flip);
@@ -343,12 +343,12 @@ function wallBase(w, h) {
   wallCache.set(key, out);
   return out;
 }
-export function drawCracked(g, x0, y0, x1, y1, hp = 1, max = 1) {
+export function drawCracked(g, x0, y0, x1, y1, hp, max = 60) {
   x0 = Math.round(x0); y0 = Math.round(y0);
   const w = Math.round(x1) - x0, h = Math.round(y1) - y0;
   if (w < 2 || h < 2) return;
   const base = wallBase(w, h);
-  const d = 1 - clamp(max > 0 ? hp / max : 1, 0, 1);
+  const d = 1 - clamp(max > 0 && hp != null ? hp / max : 1, 0, 1);
   g.drawImage(base.c, x0, y0);
   // Fallen-out stones: the dark alcove behind, with the lit lower lip of the hole.
   const nh = d > 0.85 ? 4 : d > 0.7 ? 2 : d > 0.55 ? 1 : 0;
@@ -509,24 +509,37 @@ const GARG_HALF = [
 ];
 const DARKER = { x: 'u', u: 't', t: 'q', q: 'p', p: 'n' };
 const GARGOYLE = GARG_HALF.map(r => r + [...r].reverse().map(c => DARKER[c] || c).join(''));
-// the corbel: a moulded stone under the chin and an arm back to the wall (drawn on the right here)
-const CORBEL = [
-  '..kkkkkkkkkkkkkkkkkkkkkkkk',
-  '.kxxxuuuuuuuuuuuuuuuuuuutk',
-  '.kuttttttttttttttttttttqpk',
-  '..kkkkkkkkkkkkkkkkkkkkkkkk',
-  '...kuttttttttttqpk........',
-  '....kqqqqqqqqqqpk.........',
-  '.....kppppppppnk..........',
-  '......kkkkkkkkk...........'
+// The bracket: a stone beam from the wall behind the head (drawn here with the wall on the left, for a
+// head looking right) and a moulded console under the chin.
+const GARG_ARM = [
+  'kkk.............',
+  'xuukkkkkkkkkkkkk',
+  'utuxuuuuuuuuuutk',
+  'tqtttttttqtttttk',
+  'tqqqqqqqqpqqqqpk',
+  'qpkkkkkkkkkkkkkk',
+  'pnk.............',
+  'kkk.............'
+];
+const GARG_CONSOLE = [
+  'kkkkkkkkkkkk',
+  'kxuuuuuuuutk',
+  '.kqtttttttk.',
+  '..kqqqqqpk..',
+  '...kppppk...',
+  '....kkkk....'
 ];
 export function drawGargoyle(g, x, y, face = -1, { glow = 0, t = 0, emissive = false } = {}) {
   const flip = face < 0;
-  const head = bake('gargoyle', GARGOYLE), corbel = bake('corbel', CORBEL, flip);
+  const head = bake('gargoyle', GARGOYLE), arm = bake('gargArm', GARG_ARM, flip), con = bake('gargCon', GARG_CONSOLE);
   const shake = glow > 0.85 ? (Math.floor(t * 30) % 2 ? 1 : 0) : 0;
   const hx = Math.round(x) - 9 + shake, hy = Math.round(y) - 9;
-  // the corbel sits under the chin with its arm reaching back to the wall
-  if (!emissive) { blit(g, corbel, flip ? hx - 1 : hx + 19 - corbel.w, hy + 13); blit(g, head, hx, hy); }
+  if (!emissive) {
+    // the beam runs back into the wall behind the head; the console holds the chin
+    blit(g, arm, flip ? hx + 9 : hx - 7, hy + 2);
+    blit(g, head, hx, hy);
+    blit(g, con, hx + 3, hy + 16);
+  }
   if (glow > 0.03) {
     const flick = 0.85 + Math.sin(t * 17) * 0.15;
     const hot = glow * flick > 0.55;
@@ -539,12 +552,12 @@ export function drawGargoyle(g, x, y, face = -1, { glow = 0, t = 0, emissive = f
       g.globalAlpha = a;
       for (let i = 6; i <= 11; i++) if (Math.floor(t * 8 + i) % 3) dot(g, hx + i, hy + 14, glow > 0.7 ? '#ff6a3a' : '#a0242c');
     }
-    // dust shaken loose, falling from under the corbel
+    // dust shaken loose, falling from under the console and the beam
     const n = emissive ? 0 : Math.round(glow * 8);
     const a = g.globalAlpha;
     for (let i = 0; i < n; i++) {
       const ph = (t * 0.9 + hash(i * 37)) % 1;
-      const dx = hx + 2 + Math.floor(hash(i * 11 + 1) * 15);
+      const dx = hx + 1 + Math.floor(hash(i * 11 + 1) * 17) + (i % 3 === 0 ? (flip ? 9 : -6) : 0);
       g.globalAlpha = a * (1 - ph) * 0.85;
       dot(g, dx + Math.round(Math.sin(ph * 5 + i) * 1), hy + 21 + Math.floor(ph * 26), i % 3 ? '#8a7f95' : '#aaa0b8');
     }

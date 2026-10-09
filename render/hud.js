@@ -6,6 +6,7 @@ import { FIGHTERS } from '../sim/fighters.js';
 import { TOUCH_BUTTONS } from '../engine/input.js';
 import { WEAPON_INFO } from '../sim/weapons.js';
 import { SPECIALS } from '../sim/moves.js';
+import { MAPS } from '../sim/map.js';
 
 const X = v => Math.round(v * S);
 const DEATH_TAG = {
@@ -143,6 +144,9 @@ export class HUD {
       const k = (countdown - 0.7) % 1;
       const scale = n > 0 ? 6 : 5;
       drawText(g, label, VIEW_W / 2, VIEW_H / 2 - 30, { color: n > 0 ? '#f2c35b' : '#ff8f6a', outline: '#1a1020', shadow: '#402b43', scale, align: 'center', alpha: n > 0 ? clamp(k * 3, 0, 1) : 1 });
+      // Where the fight is.
+      const arena = MAPS[state.map] || MAPS.depot;
+      drawText(g, `${arena.name} · ${arena.subtitle}`, VIEW_W / 2, VIEW_H / 2 + 22, { color: '#cbb6d8', outline: '#1a1020', align: 'center' });
     }
     if (touch) this.drawTouch(g, state.actors.find(a => a.id === localId)?.type);
   }
