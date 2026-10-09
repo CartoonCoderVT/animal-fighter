@@ -133,7 +133,7 @@ export class DarkNoxFX {
       this.rings.push({ who, t: 0, life: 0.5, r: 30, shrink: true, color: P.mid });
     } else if (e.fx === 'darkNoxPop') {
       s.popT = 0;
-      this.flashes.push({ who, t: 0, life: 0.14 });
+      this.flashes.push({ who, t: 0, life: 0.1 });
       this.rings.push({ who, t: 0, life: 0.5, r: 78, color: P.hot, thick: 2 });
       // Spikes of blood stabbing out all round him and drawing back.
       for (let i = 0; i < 9; i++) this.parts.push({ k: 'spike', who, a: (i / 9) * Math.PI * 2 + (Math.random() - 0.5) * 0.4, len: 20 + Math.random() * 22, t: 0, life: 0.3 + Math.random() * 0.08 });
@@ -146,7 +146,8 @@ export class DarkNoxFX {
         this.parts.push({ k: 'drop', x: s.cx, y: s.cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp * 0.8 - 50, g: 260, t: 0, life: 0.5 + Math.random() * 0.4, floor: s.fy });
       }
     } else {
-      // Turning back: the blood unwinds out of him, a few bats scatter and dark smoke lifts off.
+      // Turning back: the blood unwinds out of him, a few bats scatter, and what is left of the
+      // dark runs off him into a pool at his feet that soaks away.
       s.fadeT = 0;
       this.seqs.push({ k: 'fade', who, t: 0, life: FADE * 0.5, acc: 0 });
       this.rings.push({ who, t: 0, life: 0.4, r: 34, color: P.mid });
@@ -154,7 +155,7 @@ export class DarkNoxFX {
         const a = -Math.PI / 2 + (Math.random() - 0.5) * 2.6, sp = 40 + Math.random() * 50;
         this.parts.push({ k: 'bat', x: s.cx, y: s.cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, t: 0, life: 0.6 + Math.random() * 0.3, seed: Math.random() * 9, small: true });
       }
-      for (let i = 0; i < 10; i++) this.parts.push({ k: 'smoke', x: s.cx + (Math.random() - 0.5) * 14, y: s.cy + (Math.random() - 0.5) * 16, vx: (Math.random() - 0.5) * 10, vy: -12 - Math.random() * 14, t: 0, life: 0.7 + Math.random() * 0.4, r: 2 + Math.random() * 2 });
+      this.parts.push({ k: 'pool', x: s.fx, y: s.fy, vx: 0, vy: 0, t: 0, life: 1.1 });
     }
   }
 
@@ -179,7 +180,7 @@ export class DarkNoxFX {
     this.seqs = this.seqs.filter(q => q.t < q.life);
     for (const p of this.parts) {
       p.t += dt;
-      if (p.k === 'bat' || p.k === 'drop' || p.k === 'smoke' || p.k === 'ember' || p.k === 'drip') {
+      if (p.k === 'bat' || p.k === 'drop' || p.k === 'ember' || p.k === 'drip') {
         if (p.k === 'drip' && p.t < p.hang) continue;
         if (p.k === 'bat') { p.vx *= Math.pow(0.35, dt); p.vy = p.vy * Math.pow(0.35, dt) - 20 * dt; }
         if (p.k === 'ember') p.vx = Math.sin((p.t + p.seed) * 7) * 8;
@@ -399,7 +400,7 @@ export class DarkNoxFX {
     for (const fl of this.flashes) {
       const s = this.at.get(fl.who);
       if (!s) continue;
-      const u = fl.t / fl.life, r = 22 + ease(u) * 40, cx = Math.round(s.cx + ox), cy = Math.round(s.cy + oy), dens = 1.6 - u * 1.2;
+      const u = fl.t / fl.life, r = 20 + ease(u) * 26, cx = Math.round(s.cx + ox), cy = Math.round(s.cy + oy), dens = 1.6 - u * 1.5;
       for (let y = -r; y <= r; y++) {
         const half = Math.sqrt(Math.max(0, r * r - y * y)), yy = cy + Math.round(y * 0.85);
         for (let x = -Math.round(half); x <= Math.round(half); x++) {
@@ -485,10 +486,16 @@ export class DarkNoxFX {
           if (!pass) dot(P.black, x - 1, y - 1, wd + 2);
           else dot(d > L - 2 ? P.core : wd > 2 ? P.deep : wd > 1 ? P.mid : P.hot, x, y, wd);
         }
-      } else if (p.k === 'smoke') {
-        const r = Math.round(p.r + u * 3), cx = Math.round(p.x), cy = Math.round(p.y), lim = 0.55 * (1 - u);
-        g.fillStyle = u < 0.4 ? P.mist : P.black;
-        for (let y = -r; y <= r; y++) for (let x = -r; x <= r; x++) if (x * x + y * y <= r * r && bayer(cx + x, cy + y) < lim) g.fillRect(cx + x + ox, cy + y + oy, 1, 1);
+      } else if (p.k === 'pool') {
+        // Spreads out from under him, then soaks into the floor from the edges in.
+        const w = Math.round(4 + 14 * ease(Math.min(1, u * 3))), lim = u < 0.45 ? 1 : 1 - (u - 0.45) / 0.55;
+        for (let i = -w; i <= w; i++) {
+          const e = 1 - Math.abs(i) / (w + 1);
+          if (e < 1 - lim) continue;
+          const x = Math.round(p.x + i);
+          dot(Math.abs(i) < w * 0.5 && u < 0.6 ? P.mid : P.deep, x, Math.round(p.y) - 1);
+          if (e > 0.5 && (x & 1)) dot(P.mist, x, Math.round(p.y));
+        }
       }
     }
   }
