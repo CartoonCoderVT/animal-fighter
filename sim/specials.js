@@ -8,7 +8,7 @@ import { FIGHTERS } from './fighters.js';
 import { damage, startMove, landPlunge, markOf, drama } from './combat.js';
 import { MOVES } from './moves.js';
 import { knockdown, pushActor, ragdollOf, breakJoint } from './ragdoll.js';
-import { damageProp } from './props.js';
+import { damageProp, dropWeapon } from './props.js';
 import { breakLamp } from './hazards.js';
 import { rnd, clamp } from '../engine/const.js';
 import { HALF_H } from '../render/rig.js';
@@ -114,8 +114,9 @@ function becomeDark(g, a) {
   a.formT = DARK.time;
   a.blood = DARK.max;
   a.abilityCd = 0.6;
-  // The scythe leaves his hand and flies on its own (sim/nox.js).
+  // The scythe leaves his hand and flies on its own (sim/nox.js); anything else in it is dropped.
   freeScythe(g, a);
+  if (a.weapon) dropWeapon(g, a);
   const x = a.x, y = a.y, R = 96;
   for (const b of enemiesNear(g, a, b => !b.knocked && Math.abs(b.x - x) < R && Math.abs(b.y - y) < 60)) {
     const s = Math.sign(b.x - x) || a.face, f = 1 - Math.abs(b.x - x) / R;

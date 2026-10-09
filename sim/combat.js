@@ -477,7 +477,8 @@ function execute(g, a, mv) {
   const dealt = damage(g, b, mv.dmg[0], { x: b.x, y: b.y }, a.id, mv.kind, { part: 'body', kb: { x: 0, y: 3 }, force: true });
   if (!dealt) return;
   a.hp = Math.min(a.maxHp, a.hp + dealt * 0.4);
-  b.knock = Math.max(b.knock || 0, 0.9);
+  // It keeps them down a moment longer, once: executions cannot pin someone down forever.
+  if (!(b.executedAt > (b.knockedAt ?? -9))) { b.knock = Math.max(b.knock || 0, 0.9); b.executedAt = g.time; }
   g.fx('bloodGeyser', { x: b.x, y: b.y });
   g.fx('drainStream', { x: b.x, y: b.y - 4, tx: a.x + a.face * 3, ty: a.y - 6 });
   g.text(b.x, b.y - 30, 'EXECUÇÃO!', '#ff4a64');
@@ -525,11 +526,22 @@ function ricochet(g, a, b) {
 }
 
 // A blow caught in the parry window: no damage, the attacker reels and the defender counters.
-function parried(g, a, o, point) {
+// familiar: the blow came from a familiar (DARK NOX's scythe, one of the King's court): it is batted
+// away (the callback sends it off) and its master, somewhere else, is left alone.
+function parried(g, a, o, point, familiar = null) {
   // Parried while reeling: the combo is broken, and they are free (and untouchable for an instant).
   const burst = a.hitstun > 0;
   if (burst) { a.hitstun = 0; a.hitstunMax = 0; a.hitHeavy = false; a.stun = 0; a.iframes = Math.max(a.iframes || 0, BURST.safe); a.stunN = 0; }
   a.parry = 0; a.parryLag = 0; a.counter = 0.9;
+  if (familiar) {
+    familiar();
+    a.face = point.x >= a.x ? 1 : -1;
+    g.fx('parry', { x: point.x, y: point.y });
+    g.text(a.x, a.y - 34, burst ? 'QUEBROU O COMBO!' : 'REBATEU!', burst ? '#ffe070' : '#7ce8ff');
+    drama(g, 0.2, a);
+    g.sound('ricochet', a.x);
+    return;
+  }
   a.face = o.x >= a.x ? 1 : -1;
   if (o.act) endAct(g, o);
   o.attack = 0; o.hits = null; o.attackCd = 0.6;
@@ -789,7 +801,7 @@ export function damage(g, a, amount, point, ownerId, kind = 'punch', opts = {}) 
     return 0;
   }
   if (a.parry > 0 && owner && owner !== a && owner.team !== a.team && !DOT.has(cat) && !opts.environment && !['explosion', 'grind'].includes(cat) && kind !== 'fall' && kind !== 'crush') {
-    parried(g, a, owner, point);
+    parried(g, a, owner, point, opts.familiar);
     return 0;
   }
   if (owner && ownerId !== a.id && owner.team === a.team) return 0;

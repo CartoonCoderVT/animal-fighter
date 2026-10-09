@@ -113,7 +113,7 @@ function courtHit(g, a, f, spec, cx, cy, dir, only = null) {
     if (b.iframes > 0 && b.dodge > 0 && !b.perfect) { perfectDodge(g, b); continue; }
     const side = spec.ring ? Math.sign(b.x - cx) || dir : dir, kb = spec.kb || [0.5, -1];
     const kind = f.k === 'mage' ? 'magic' : f.k === 'shield' ? 'bash' : 'blade';
-    const dealt = damage(g, b, spec.dmg, { x: b.x - side * 4, y: b.y }, a.id, kind, { kb: { x: side * kb[0], y: kb[1] }, knock: !!spec.knock, launch: !!(spec.launch || spec.spike), dir: rnd(-0.8, 0.8), solo: true });
+    const dealt = damage(g, b, spec.dmg, { x: b.x - side * 4, y: b.y }, a.id, kind, { kb: { x: side * kb[0], y: kb[1] }, knock: !!spec.knock, launch: !!(spec.launch || spec.spike), dir: rnd(-0.8, 0.8), solo: true, familiar: () => { f.hit = spec.hits.length; } });
     if (!dealt) continue;
     struck++;
     a.lastPrey = b.id; a.lastPreyT = g.time;

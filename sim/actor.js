@@ -276,7 +276,7 @@ export function stepActor(g, a, dt) {
     if (a.jumpHeld && !input.jump) { if (vy < -2.5) vy *= 0.48; a.jumpHeld = false; }
     if (vy > 0) a.jumpHeld = false;
     // A bat hovers through his air string instead of dropping out from under it.
-    if (a.type === 4 && a.attack > 0 && NOX_AIR.includes(a.attackKind)) vy = Math.min(vy, 0.35);
+    if (a.type === 4 && a.attack > 0 && (NOX_AIR.includes(a.attackKind) || a.attackKind === 'dAirClaw' || a.attackKind === 'dAirVortex')) vy = Math.min(vy, 0.35);
     // Lola hangs in the air while she lays her ring of knives.
     if (a.type === 2 && a.attack > 0 && a.attackKind === 'lAirRing') vy = Math.min(vy, -0.3);
     // Nox glides, scarf streaming, while jump is held on the way down.

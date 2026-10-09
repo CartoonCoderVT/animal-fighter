@@ -17,7 +17,8 @@ import { clamp, rnd } from '../engine/const.js';
 // Platforms that are gone for now (the castle's loose stone) hold nothing.
 function floorUnder(g, x, y) {
   let best = null;
-  for (const s of MAP.solids) if (s.kind !== 'wall' && x >= s.x0 && x <= s.x1 && s.y0 >= y - 2 && (!best || s.y0 < best.y)) best = { y: s.y0, x0: s.x0, x1: s.x1, ow: -1 };
+  // (Nothing pools at the bottom of the pit: it is lost down there.)
+  for (const s of MAP.solids) if (s.kind !== 'wall' && s.kind !== 'pit' && x >= s.x0 && x <= s.x1 && s.y0 >= y - 2 && (!best || s.y0 < best.y)) best = { y: s.y0, x0: s.x0, x1: s.x1, ow: -1 };
   MAP.oneway.forEach((p, i) => { if (!g.hz?.off?.[i] && x >= p.x0 && x <= p.x1 && p.y >= y - 2 && (!best || p.y < best.y)) best = { y: p.y, x0: p.x0, x1: p.x1, ow: i }; });
   return best;
 }
@@ -162,7 +163,7 @@ function famHit(g, a, s, cx, cy, dir, ring, combo) {
     // Which way it throws them: on along the cut, away from him for the wide swings, toward him
     // for the hook and the tight circle.
     const away = Math.sign(b.x - a.x) || a.face, side = ring && !s.pull ? away : s.k === 'hook' || s.pull ? -away : dir;
-    const dealt = damage(g, b, amount, { x: b.x - side * 4, y: b.y + (s.k === 'reap' ? 6 : 0) }, a.id, 'scythe', { kb: { x: side * kb[0], y: kb[1] }, knock: !!s.knock, launch: !!s.spike, dir: rnd(-0.9, 0.9), solo: true });
+    const dealt = damage(g, b, amount, { x: b.x - side * 4, y: b.y + (s.k === 'reap' ? 6 : 0) }, a.id, 'scythe', { kb: { x: side * kb[0], y: kb[1] }, knock: !!s.knock, launch: !!s.spike, dir: rnd(-0.9, 0.9), solo: true, familiar: () => { f.st = 'back'; f.t = 0; f.cd = FAM.cd; } });
     if (!dealt) continue;
     struck++;
     if (b.dead) continue;

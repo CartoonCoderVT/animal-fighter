@@ -121,7 +121,7 @@ export function think(g, a, dt) {
   }
 
   // Unarmed with a blade on the floor nearby and nobody in its face: go and grab it.
-  if (a.type !== 0 && !a.weapon && !a.holding && !a.act && a.ground && Math.abs(dx) > 60) {
+  if (a.type !== 0 && !(a.type === 4 && a.form === 'dark') && !a.weapon && !a.holding && !a.act && a.ground && Math.abs(dx) > 60) {
     const loot = g.props.filter(p => !p.held && MELEE.includes(p.kind) && Math.abs(p.y - a.y) < 34 && Math.abs(p.x - a.x) < 240).sort((p, q) => Math.abs(p.x - a.x) - Math.abs(q.x - a.x))[0];
     if (loot && (!mine || (loot.x > mine.x0 - 6 && loot.x < mine.x1 + 6))) {
       moveTo = loot.x;
