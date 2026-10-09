@@ -173,6 +173,15 @@ export const FRAMES = {
   lDvA: { head: [0, -1], body: [0, -1], armF: [0, -3, 170], armB: [-1, -3, 160], footF: [1, -2], footB: [-1, -1] },
   lDvX: { head: [2, 2, 33.75], body: [1, 1], armF: [2, 3, -10], armB: [1, 3, 5], footF: [-1, -2, 22.5], footB: [-2, -2, 33.75], front: 'armF' },
   lDash: { head: [2, 0], body: [1, 0], armF: [4, -1, -90], armB: [-2, -1, 70], footF: [-2, 0, 30], footB: [-3, -1, 40] },
+  // Laying knives in the air. The wall: both fans cocked back over the shoulders, then flung open
+  // ahead of her (one hand high, one low, like a fan opening) and held there.
+  lFanA: { head: [-1, 1, -11.25], body: [-1, 1], armF: [-1, -1, 140], armB: [-2, -1, 125], footF: [3, 0], footB: [-3, 0] },
+  lFanX: { head: [2, 0, 11.25], body: [2, 0], armF: [4, -2, -125], armB: [3, 0, -60], footF: [4, 0], footB: [-4, -1, 22.5] },
+  lFanI: { head: [2, 1, 11.25], body: [1, 1], armF: [4, -1, -112], armB: [2, 1, -72], footF: [4, 0], footB: [-3, 0] },
+  // The rain: up on her toes, both arms flung high and wide as the knives go up, chin up to watch
+  // them stop; then the arms held up there.
+  lRainX: { head: [1, -2, -22.5], body: [0, -1], armF: [3, -4, -160], armB: [-2, -4, 160], footF: [1, -1], footB: [-2, -1] },
+  lRainI: { head: [1, -1, -22.5], body: [0, -1], armF: [3, -3, -148], armB: [-2, -3, 148], footF: [2, 0], footB: [-2, 0] },
   // ZA WARUDO. The pocket watch held up to her face and clicked; then arms flung open, chin up.
   wWatch: { head: [0, 0, -11.25], body: [0, 0], armF: [1, -3, -165], armB: [-1, 0, 30], footF: [2, 0], footB: [-2, 0] },
   wPose: { head: [0, -1, -22.5], body: [0, -1], armF: [4, -3, -130], armB: [-4, -3, 130], footF: [3, 0], footB: [-3, 0] },
@@ -410,7 +419,9 @@ const KEYS = {
   lLow: [[0, 'lLoA', 'Angry'], [0.3, 'lLoX', 'Angry'], [0.42, 'lLoI', 'Open'], [0.8, 'crouch', '']],
   lSkip: [[0, 'lSkA', 'Angry'], [0.18, 'lCaX', 'Open'], [0.44, 'lCaI', 'Angry'], [0.58, 'lCbX', 'Angry'], [0.68, 'lCbI', 'Open'], [0.86, 'lStance1', '']],
   lAirCut: [[0, 'nAcA', 'Angry'], [0.2, 'nAcX', 'Angry'], [0.3, 'nAcI', 'Angry'], [0.46, 'nAcA2', 'Angry'], [0.56, 'nAcX2', 'Angry'], [0.64, 'nAcI2', 'Angry'], [0.84, 'nAcR', '']],
-  lAirDive: [[0, 'lDvA', 'Angry'], [0.22, 'lDvX', 'Open']]
+  lAirDive: [[0, 'lDvA', 'Angry'], [0.22, 'lDvX', 'Open']],
+  lFan: [[0, 'lSkA', 'Angry'], [0.12, 'lFanA', 'Angry'], [0.3, 'lFanX', 'Open'], [0.5, 'lFanI', 'Angry'], [0.85, 'lStance1', '']],
+  lRain: [[0, 'lLoA', 'Angry'], [0.26, 'lRsX', 'Open'], [0.38, 'lRsI', 'Open'], [0.44, 'lRainX', 'Open'], [0.66, 'lRainI', 'Angry'], [0.88, 'lStance1', '']]
 };
 export const keyFor = (kind, p) => { const k = KEYS[kind]; if (!k) return null; let r = k[0]; for (const e of k) if (p >= e[0]) r = e; return r; };
 
@@ -592,6 +603,13 @@ export function frameFor(a, time = 0) {
     if (p < 0.12) return pick('lCaA', 'Angry');
     if (p > 0.86) return pick('lStance1', 'Angry');
     return pick(['lDnA', 'lDnB', 'lDnC', 'lDnD'][Math.floor((time + seed) * 30) % 4], Math.floor((time + seed) * 15) % 2 ? 'Open' : 'Angry');
+  }
+  // The ring: a quick wheel round the rival laying knives, then arms flung open, fans out.
+  if (a.attack > 0 && kind === 'lAirRing') {
+    const p = 1 - a.attack / MOVES.lAirRing.dur;
+    if (p < 0.1) return pick('nVxA', 'Angry');
+    if (p > 0.58) return pick(p > 0.85 ? 'lAppear' : 'wPose', p > 0.85 ? 'Angry' : 'Open');
+    return { frame: { ...FRAMES.jSpin, spin: Math.floor((time + seed) * 20) * (a.face || 1) }, expr: 'Angry', name: 'jSpin' };
   }
   if (a.attack > 0 && (kind === 'jAirSpin' || kind === 'lAirSpin')) {
     const p = 1 - a.attack / MOVES[kind].dur;

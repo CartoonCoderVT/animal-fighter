@@ -16,7 +16,7 @@ export const FIGHTERS = [
     id: 'rabbit', name: 'Lola', species: 'A COELHA', role: 'FACAS / TEMPO', word: 'TIC-TAC.', color: '#6aa8f0',
     desc: 'Coelha de laço azul com um relógio de bolso. Corta com facas e some antes de você piscar.',
     ability: 'ZA WARUDO', icon: '◷', stats: [4, 5, 5], hp: 120, speed: 5.1, weight: 0.9, cooldown: 20,
-    detail: 'J: facas, dança de lâminas, some e reaparece atrás. Lado+J: salta no tempo até o rival. S+J: corte baixo. K (carrega devagar): para o tempo.'
+    detail: 'J: facas, dança de lâminas, some e reaparece atrás. Lado+J: salta no tempo. No combo: S+J chuva de facas, toque de lado+J muralha (no ar, anel). K: para o tempo.'
   },
   {
     id: 'ocelot', name: 'Juma', species: 'A JAGUATIRICA', role: 'FÚRIA / FERA', word: 'GRRR.', color: '#e6ba67',

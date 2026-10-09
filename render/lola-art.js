@@ -21,6 +21,8 @@ const ease = k => 1 - (1 - k) * (1 - k);
 const clamp01 = v => Math.max(0, Math.min(1, v));
 export const STEEL = { spine: '#3c4566', mid: '#c4d2ea', edge: '#ffffff', tip: '#ffffff', guard: '#ffcf40', guardDark: '#c08a20', grip: '#2b2a5c', pommel: '#dfe8f6' };
 const BLUE = { pale: '#d8ecff', light: '#9cd0ff', mid: '#5a9af0', deep: '#2a4ab8' };
+// A knife she laid that has not flown yet (on its way out of her hand, or hanging).
+const hangs = b => !!b.set && (b.k < 1 || b.hold > 0);
 
 // ---- knives ------------------------------------------------------------------------------
 // A throwing knife laid along ang from its pommel at (x, y): a pommel ring, the navy grip, a gold
@@ -61,7 +63,7 @@ function handOf(frame, slot, fx, fy, face, scale, ch) {
   return { x: p.x, y: p.y, ang: Math.atan2(Math.cos(r), -Math.sin(r) * face) };
 }
 
-const KNIFE_MOVES = new Set(['lCutA', 'lCutB', 'lDance', 'lBehind', 'lRise', 'lLow', 'lSkip', 'lAirCut', 'lAirSpin', 'lAirDive', 'dashAtk']);
+const KNIFE_MOVES = new Set(['lCutA', 'lCutB', 'lDance', 'lBehind', 'lRise', 'lLow', 'lSkip', 'lAirCut', 'lAirSpin', 'lAirDive', 'lFan', 'lRain', 'lAirRing', 'dashAtk']);
 // What a hand holds this frame: 'fan' (three knives between the fingers), 'one', 'watch' or nothing.
 function holdOf(a, slot, frameName) {
   if (a.weapon || a.holding || a.act === 'carry') return null;
@@ -72,6 +74,9 @@ function holdOf(a, slot, frameName) {
     if (thrown && (a.wPoseT ?? 0) < 0.1) return null;
     return 'fan';
   }
+  // Laying knives: fans drawn in both hands, then empty hands the instant they are thrown.
+  if (frameName === 'lFanX' || frameName === 'lRainX') return null;
+  if (frameName === 'lFanA') return 'fan';
   if (a.attack > 0 && KNIFE_MOVES.has(a.attackKind)) return 'one';
   if (frameName === 'lStance1' || frameName === 'lStance2' || frameName === 'lHero' || frameName === 'lHero2') return slot === 'armF' ? 'fan' : 'one';
   return 'one';
@@ -120,6 +125,7 @@ export class LolaFX {
   }
   reset() {
     this.ghosts = []; this.rings = []; this.trails = []; this.stuck = []; this.sparks = []; this.flashes = new Map();
+    this.pips = []; this.laid = new Map();
     this.resumeAt = -9; this.worldAt = -9; this.worldOwner = null;
   }
 
@@ -152,6 +158,11 @@ export class LolaFX {
         this.spark(x, y - 6, 5, ['#ffffff', BLUE.light], 1.4, 0.25);
         break;
       case 'knifeFan': this.spark(x, y, 4, ['#ffffff', STEEL.edge, BLUE.light], 2.2, 0.18, e.a, 0.8); break;
+      case 'knifeSet':
+        // Knives leaving her hands to be laid in the air: a flick of steel and a tick of the clock.
+        this.spark(x, y, 6, ['#ffffff', STEEL.edge, BLUE.light, BLUE.pale], 2.4, 0.2, e.k === 'rain' ? -Math.PI / 2 : null, e.k === 'rain' ? 1.4 : 6.3);
+        this.rings.push({ x, y: y - 2, t: 0, life: 0.18, out: true });
+        break;
       case 'knifeHit': this.spark(x, y, 5, ['#ffffff', STEEL.edge, '#ffe2a0'], 2.2, 0.22, (e.a ?? 0) + Math.PI, 1.6); break;
       case 'knifeStick':
         this.stuck.push({ x, y, a: e.a ?? 0, life: 4, max: 4 });
@@ -161,6 +172,24 @@ export class LolaFX {
       case 'worldStart': this.worldAt = this.time; this.worldOwner = e.who; break;
       case 'worldEnd': this.resumeAt = this.time; this.resumeX = x; this.resumeY = y - 8; break;
     }
+  }
+
+  // Her laid knives, followed from frame to frame (live or snapshot): a little lock of light as
+  // each one stops dead in its spot, a burst as it flies.
+  watch(state) {
+    const seen = new Set();
+    for (const b of state.bullets || []) {
+      if (b.kind !== 'knife' || !b.set) continue;
+      seen.add(b.id);
+      const phase = b.k < 1 ? 0 : b.hold > 0 ? 1 : 2, was = this.laid.get(b.id) ?? (phase === 2 ? 2 : 0);
+      if (phase !== was) {
+        const x = X(b.x), y = X(b.y), a = b.ang ?? Math.atan2(b.vy, b.vx);
+        if (phase >= 1 && was < 1) this.pips.push({ x, y, a, t: 0, life: 0.16, kind: 'lock' });
+        if (phase === 2) { this.pips.push({ x, y, a, t: 0, life: 0.12, kind: 'go' }); this.spark(x, y, 2, ['#ffffff', BLUE.pale], 1.6, 0.14, a + Math.PI, 1); }
+      }
+      this.laid.set(b.id, phase);
+    }
+    for (const id of this.laid.keys()) if (!seen.has(id)) this.laid.delete(id);
   }
 
   ghost(who, x, y) {
@@ -173,10 +202,11 @@ export class LolaFX {
 
   update(dt) {
     this.time += dt;
-    for (const list of [this.ghosts, this.rings, this.trails]) for (const e of list) e.t += dt;
+    for (const list of [this.ghosts, this.rings, this.trails, this.pips]) for (const e of list) e.t += dt;
     this.ghosts = this.ghosts.filter(e => e.t < e.life);
     this.rings = this.rings.filter(e => e.t < e.life);
     this.trails = this.trails.filter(e => e.t < e.life);
+    this.pips = this.pips.filter(e => e.t < e.life);
     for (const s of this.stuck) s.life -= dt;
     this.stuck = this.stuck.filter(s => s.life > 0);
     for (const p of this.sparks) { p.life -= dt; p.x += p.vx; p.y += p.vy; p.vx *= 0.9; p.vy = p.vy * 0.9 + 0.04; }
@@ -192,11 +222,14 @@ export class LolaFX {
       const c = Math.cos(s.a), sn = Math.sin(s.a);
       drawKnife(g, s.x + ox - c * 5, s.y + oy - sn * 5, s.a, { len: 4 });
     }
-    for (const b of state.bullets || []) {
-      if (b.kind !== 'knife') continue;
-      const ang = Math.atan2(b.vy, b.vx), x = X(b.x) + ox, y = X(b.y) + oy, c = Math.cos(ang), sn = Math.sin(ang);
-      drawKnife(g, x - c * 7, y - sn * 7, ang, { len: 7 });
-    }
+    for (const b of state.bullets || []) if (b.kind === 'knife') this.drawBulletKnife(g, b, ox, oy);
+  }
+
+  // A knife bullet, point at its position: flying along its velocity, or hanging where she laid it
+  // along the line it will fly.
+  drawBulletKnife(g, b, ox, oy) {
+    const ang = hangs(b) ? b.ang : Math.atan2(b.vy, b.vx), x = X(b.x) + ox, y = X(b.y) + oy, c = Math.cos(ang), sn = Math.sin(ang);
+    drawKnife(g, x - c * 7, y - sn * 7, ang, { len: 7 });
   }
 
   // Bright things over the lighting: afterimages, clock rings, trails, sparks, streaks of flying knives.
@@ -210,13 +243,66 @@ export class LolaFX {
       g.fillRect(Math.round(p.x + ox), Math.round(p.y + oy), 1, 1);
     }
     g.globalAlpha = 1;
+    this.drawPips(g, ox, oy);
     for (const b of state.bullets || []) {
       if (b.kind !== 'knife') continue;
+      if (hangs(b)) { this.drawLaidGlow(g, b, ox, oy); continue; }
       const x = X(b.x) + ox, y = X(b.y) + oy, sp = Math.hypot(b.vx, b.vy) || 1, ux = b.vx / sp, uy = b.vy / sp;
       for (let i = 8; i < 18; i++) { g.globalAlpha = 0.5 * (1 - (i - 8) / 10); g.fillStyle = i < 11 ? '#ffffff' : BLUE.light; g.fillRect(Math.round(x - ux * i), Math.round(y - uy * i), 1, 1); }
       g.globalAlpha = 1;
       g.fillStyle = '#ffffff'; g.fillRect(Math.round(x), Math.round(y), 1, 1);
     }
+  }
+
+  // A laid knife in its pocket of stopped time. On its way out of her hand, a white streak behind
+  // it. Hanging, a cold pulse at the point; as it is about to fly, the line it will fly along is
+  // drawn out ahead of it (the warning of a bullet hell), then a glint runs up the blade.
+  drawLaidGlow(g, b, ox, oy) {
+    const x = X(b.x) + ox, y = X(b.y) + oy;
+    if (b.k < 1) {
+      const px = X(b.px ?? b.x) + ox, py = X(b.py ?? b.y) + oy, d = Math.hypot(x - px, y - py);
+      if (d < 1) return;
+      const ux = (x - px) / d, uy = (y - py) / d;
+      for (let i = 1; i < d + 4; i++) { g.globalAlpha = 0.7 * (1 - i / (d + 4)); g.fillStyle = i < 3 ? '#ffffff' : BLUE.light; g.fillRect(Math.round(x - ux * i), Math.round(y - uy * i), 1, 1); }
+      g.globalAlpha = 1;
+      return;
+    }
+    const c = Math.cos(b.ang), sn = Math.sin(b.ang), left = b.hold;
+    if (left < 0.26) {
+      const k = 1 - left / 0.26, L = Math.round(4 + ease(k) * 26);
+      for (let i = 2; i < L; i += 2) {
+        g.globalAlpha = 0.6 * k * (1 - i / (L + 6));
+        g.fillStyle = (i + Math.floor(this.time * 30)) % 4 < 2 ? '#ffffff' : BLUE.light;
+        g.fillRect(Math.round(x + c * i), Math.round(y + sn * i), 1, 1);
+      }
+    }
+    const pulse = 0.5 + 0.5 * Math.sin(this.time * 14 + (b.id || 0));
+    g.globalAlpha = 0.35 + pulse * 0.4; g.fillStyle = BLUE.pale; g.fillRect(Math.round(x), Math.round(y), 1, 1);
+    g.globalAlpha = 0.25 * pulse; g.fillStyle = BLUE.light; g.fillRect(Math.round(x - c * 3 - sn), Math.round(y - sn * 3 + c), 1, 1); g.fillRect(Math.round(x - c * 3 + sn), Math.round(y - sn * 3 - c), 1, 1);
+    if (left < 0.07) {
+      const i = 2 + (1 - left / 0.07) * 5;
+      g.globalAlpha = 1; g.fillStyle = '#ffffff';
+      g.fillRect(Math.round(x - c * (7 - i)), Math.round(y - sn * (7 - i)), 1, 1);
+    }
+    g.globalAlpha = 1;
+  }
+
+  // The lock of light as a laid knife stops (a tiny diamond closing on it), and the burst as it flies.
+  drawPips(g, ox, oy) {
+    for (const p of this.pips) {
+      const k = p.t / p.life, x = p.x + ox, y = p.y + oy;
+      if (p.kind === 'lock') {
+        const R = Math.round(5 - ease(k) * 4);
+        g.globalAlpha = 0.5 + k * 0.5; g.fillStyle = k < 0.5 ? '#ffffff' : BLUE.light;
+        for (const [dx, dy] of [[R, 0], [-R, 0], [0, R], [0, -R]]) g.fillRect(Math.round(x + dx), Math.round(y + dy), 1, 1);
+      } else {
+        const c = Math.cos(p.a), sn = Math.sin(p.a), R = 1 + ease(k) * 4;
+        g.globalAlpha = 1 - k; g.fillStyle = '#ffffff';
+        for (const s of [-1, 1]) g.fillRect(Math.round(x - c * 2 + -sn * R * s), Math.round(y - sn * 2 + c * R * s), 1, 1);
+        g.fillRect(Math.round(x - c * (2 + R)), Math.round(y - sn * (2 + R)), 1, 1);
+      }
+    }
+    g.globalAlpha = 1;
   }
 
   // The dotted line of a skip, from where she was to where she is, eaten from the start.
@@ -354,6 +440,9 @@ export class LolaFX {
     // Lola and everything of hers, in color.
     if (phase !== 'intro' || t > 0) {
       this.drawHanging(sg, state, ox, oy);
+      // Her knives in the air (laid ones still hanging, thrown ones caught mid-flight) stay in color.
+      for (const b of state.bullets || []) if (b.kind === 'knife') { this.drawBulletKnife(sg, b, ox, oy); if (hangs(b)) this.drawLaidGlow(sg, b, ox, oy); }
+      this.drawPips(sg, ox, oy);
       if (owner) {
         const s = owner.info.sprite, face = owner.a.face || 1;
         const rim = tintOf(s, phase === 'stop' || phase === 'outro' ? BLUE.light : '#ffe8a0');

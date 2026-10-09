@@ -75,7 +75,7 @@ export class HelpScene extends Overlay {
         'Extintor congela e empurra; congelado, um golpe forte estilhaça. Rolar apaga o fogo e cancela dano de queda.',
         'A prensa desce a cada 9 segundos (ou com o botão vermelho). O fosso no meio tritura. O cabo elétrico eletrifica a poça.',
         'Atire na corrente da carga para derrubá-la. Botijão atingido vira foguete. Lâmpadas quebram com tiro.',
-        'Lola corta com facas e salta no tempo: some e reaparece atrás, na frente ou acima do rival. O K dela carrega devagar (acertos aceleram) e para o tempo de verdade: ZA WARUDO.'
+        'Lola corta com facas e salta no tempo, deixando facas paradas no ar que disparam depois. No combo: S+J chuva de facas; um toque de lado+J muralha de facas (no ar, anel). O K para o tempo: ZA WARUDO.'
       ];
       let yy = y;
       for (const t of tips) yy += paragraph(g, '· ' + t, x, yy, 428, '#d8cde8') + 6;

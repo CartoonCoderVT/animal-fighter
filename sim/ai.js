@@ -197,6 +197,26 @@ export function think(g, a, dt) {
       if (!(a.skipCd > 0) && Math.abs(dx) > 50 && Math.abs(dx) < 160 && Math.random() < 0.04) { input.attack = !a.lastInput.attack; input.right = dx > 0; input.left = dx < 0; }
       else if (Math.abs(dx) < 30 && a.comboTimer <= 0 && Math.random() < 0.02) { input.attack = !a.lastInput.attack; input.down = true; }
     }
+    // Inside her strings Lola lays knives now and then: the rain (S+J), the wall (a fresh tap of a
+    // direction + J, and J again skips her back in) and, in the air, the ring. One roll of the dice
+    // per blow; a tap needs the direction let go for a frame first.
+    if (a.type === 2 && !a.act && !a.weapon && !target.knocked) {
+      const lp = (ai.lola ||= {});
+      if (!lp.plan && a.comboTimer > 0 && a.attack <= 0.1 && !(a.setCd > 0) && a.attackSeq !== lp.seq) {
+        lp.seq = a.attackSeq;
+        const r = Math.random();
+        if (a.ground && (a.attackKind === 'lCutB' || a.attackKind === 'lDance')) lp.plan = r < 0.3 ? 'rain' : r < 0.55 ? 'wall' : null;
+        else if (!a.ground && (a.attackKind === 'lAirCut' || a.attackKind === 'lAirSpin')) lp.plan = r < 0.35 ? 'ring' : null;
+        lp.let = false;
+      }
+      if (lp.plan && (a.comboTimer <= 0 || a.setCd > 0 || (lp.plan === 'ring') === a.ground)) lp.plan = null;
+      if (lp.plan === 'rain') { input.down = true; input.attack = true; input.left = false; input.right = false; }
+      else if (lp.plan) {
+        if (!lp.let || a.attackCd > 0) { input.left = false; input.right = false; input.attack = false; lp.let = true; }
+        else { const dir = Math.sign(dx) || a.face; input.right = dir > 0; input.left = dir < 0; input.attack = true; }
+      }
+      if (a.attackKind === 'lFan' && a.comboTimer > 0 && Math.hypot(dx, dy) < 160) input.attack = true;
+    }
     // Close the gap with a roll that turns into a dashing strike.
     if (a.ground && !a.act && !a.weapon && a.dodgeCd <= 0 && Math.abs(dx) > 44 && Math.abs(dx) < 95 && Math.abs(dy) < 20 && Math.random() < 0.03 && safeRoll(g, a, Math.sign(dx))) {
       input.dodge = true; input.right = dx > 0; input.left = dx < 0;

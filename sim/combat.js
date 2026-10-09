@@ -5,11 +5,11 @@ import { S, rnd, clamp } from '../engine/const.js';
 import { knockdown, pushActor, buildRagdoll, ragdollOf, breakJoint, gib, makeLimb, releaseHeld, pinLimb, addStump } from './ragdoll.js';
 import { extendedAttack, dropWeapon, damageProp } from './props.js';
 import { hazardBulletHit } from './hazards.js';
-import { MOVES, HEAVY, AIR, NOX_AIR, JUMA_AIR, BEAST_AIR, LOLA_AIR, NATURAL, comboOf } from './moves.js';
+import { MOVES, HEAVY, AIR, NOX_AIR, JUMA_AIR, BEAST_AIR, LOLA_AIR, NATURAL, SET, comboOf } from './moves.js';
 import { MAP } from './map.js';
 import { startSpecial, startStomp, throwCarried, startChase, endAct, startPlunge, startSwarm, startBite, startCharge } from './specials.js';
 import { isMelee, WEAPON_INFO, weaponSlot } from './weapons.js';
-import { skipSpot, skipTo, footing, knifeKnock, knifeKnocked } from './timestop.js';
+import { skipSpot, skipTo, footing, knifeKnock, knifeKnocked, setKnives, skipKnives, stepSetKnife } from './timestop.js';
 
 export const KIND = {
   punch: 'blunt', board: 'blunt', impact: 'blunt', fall: 'blunt', crush: 'blunt', power: 'blunt', pipe: 'blunt',
@@ -77,22 +77,29 @@ export function attack(g, a) {
   const prey = a.chase && g.time < a.chase.until ? g.actor(a.chase.id) : null;
   if (prey && !prey.dead && !prey.knocked && !prey.ground) { a.chase = null; startChase(g, a, prey); return; }
   let id;
-  const list = comboOf(a), chaining = a.comboTimer > 0 && (list.includes(a.attackKind) || ['shadowCut', 'scytheDash', 'batStrike', 'jBolt', 'lSkip'].includes(a.attackKind));
+  const list = comboOf(a), chaining = a.comboTimer > 0 && (list.includes(a.attackKind) || ['shadowCut', 'scytheDash', 'batStrike', 'jBolt', 'lSkip', 'lFan', 'lRain'].includes(a.attackKind));
   const nox = a.type === 4, side = a.input.left || a.input.right, tapped = g.time - (a.dirTap ?? -9) < 0.2;
   const juma = a.type === 3, beast = juma && a.form === 'beast', lola = a.type === 2;
   if (a.dashStrike) id = 'dashAtk';
   else if (!a.ground && !a.climbing) {
     const air = nox ? NOX_AIR : beast ? BEAST_AIR : juma ? JUMA_AIR : lola ? LOLA_AIR : AIR, prev = air.indexOf(a.attackKind);
-    id = air[a.comboTimer > 0 && prev >= 0 ? (prev + 1) % air.length : 0];
+    // Lola, a fresh tap of a direction in her air string: the ring of knives; then the dive.
+    if (lola && a.comboTimer > 0 && (a.attackKind === 'lAirCut' || a.attackKind === 'lAirSpin') && side && tapped && !(a.setCd > 0)) { a.setCd = SET.cd; id = 'lAirRing'; }
+    else if (lola && a.comboTimer > 0 && a.attackKind === 'lAirRing') id = 'lAirDive';
+    else id = air[a.comboTimer > 0 && prev >= 0 ? (prev + 1) % air.length : 0];
   } else if (a.input.down) {
     // Juma: small, S+J bites (out of a string it rakes low); the beast shakes the whole floor.
     if (beast) id = 'bQuake';
     else if (juma && !chaining && !(a.biteCd > 0)) { startBite(g, a); return; }
+    // Lola out of her string: the rain of knives (now and then; else the low cut).
+    else if (lola && chaining && !(a.setCd > 0)) { a.setCd = SET.cd; id = 'lRain'; }
     else id = nox && chaining ? 'scytheSweep' : nox && downedNear(g, a) ? 'execute' : HEAVY[a.type];
   }
   else if (nox && !chaining && side) { a.face = a.input.right ? 1 : -1; id = 'shadowCut'; }
   else if (nox && chaining && side && tapped && a.attackKind !== 'scytheDash') { a.face = a.input.right ? 1 : -1; id = 'scytheDash'; }
-  // Lola skips through time to a rival a long way off (on a short cooldown, else the string).
+  // Lola skips through time to a rival a long way off (on a short cooldown, else the string). Inside
+  // her string a fresh tap of a direction is the wall of knives instead.
+  else if (lola && chaining && side && tapped && !(a.setCd > 0)) { a.setCd = SET.cd; id = 'lFan'; }
   else if (lola && !chaining && side && !(a.skipCd > 0)) { a.face = a.input.right ? 1 : -1; a.skipCd = 1.1; id = 'lSkip'; }
   else if (juma && !chaining && side && !(beast && a.chargeCd > 0)) {
     a.face = a.input.right ? 1 : -1;
@@ -101,8 +108,9 @@ export function attack(g, a) {
   }
   else {
     // The shadow cut opens the string at the reap; the phantom reap picks it up at the guillotine;
-    // Juma's pounce goes on into the storm of claws, Lola's skip into the dance of knives.
-    a.combo = chaining ? (a.attackKind === 'shadowCut' || a.attackKind === 'batStrike' ? 1 : a.attackKind === 'scytheDash' ? 3 : a.attackKind === 'jBolt' || a.attackKind === 'lSkip' ? 2 : (a.combo + 1) % list.length) : 0;
+    // Juma's pounce goes on into the storm of claws, Lola's skip and wall of knives into the dance of
+    // knives, her rain of knives into the stab in the back.
+    a.combo = chaining ? (a.attackKind === 'shadowCut' || a.attackKind === 'batStrike' ? 1 : a.attackKind === 'scytheDash' || a.attackKind === 'lRain' ? 3 : a.attackKind === 'jBolt' || a.attackKind === 'lSkip' || a.attackKind === 'lFan' ? 2 : (a.combo + 1) % list.length) : 0;
     id = list[a.combo];
   }
   // Nox's strings never drop to distance: a rival knocked out of reach of the next blow is chased
@@ -123,6 +131,7 @@ export function attack(g, a) {
 // she is working on (or the nearest one in reach), behind them, in front of them or over their
 // head. With nobody there the skip forward still carries her a stretch.
 function warpMove(g, a, mv) {
+  if (mv.warp === 'away') { awaySkip(g, a, mv); return; }
   const tall = mv.warp === 'above' ? 150 : 60;
   // The skip forward goes where she points: the rival she was cutting only counts if it is that way.
   const prey = comboPrey(g, a);
@@ -137,12 +146,30 @@ function warpMove(g, a, mv) {
   }
   const spot = skipSpot(a, b, mv.warp);
   if (!spot) return;
+  const x0 = a.x, y0 = a.y;
   skipTo(g, a, spot.x, spot.y, { face: Math.sign(b.x - spot.x) || a.face, ground: spot.ground });
+  skipKnives(g, a, x0, y0, b);
   if (!b.ground) b.float = Math.max(b.float || 0, 0.35);
   // Over their head she drops with both knives down; in the air beside them she hangs there.
   if (mv.warp === 'above') shove(a, 0, 4);
   else if (!spot.ground) a.float = Math.max(a.float || 0, mv.dur);
   b.stun = Math.max(b.stun || 0, 0.12);
+}
+
+// Out of reach of the rival she is working on: a skip straight back from them (for the wall of
+// knives), onto something to stand on if she was standing, never into a wall or over the shredder.
+function awaySkip(g, a, mv) {
+  const prey = comboPrey(g, a);
+  const b = prey && Math.abs(prey.x - a.x) < mv.reach && Math.abs(prey.y - a.y) < 60 ? prey : null;
+  const dir = b ? Math.sign(a.x - b.x) || -(a.face || 1) : -(a.face || 1);
+  for (const d of [52, 44, 36]) {
+    const x = clamp((b ? b.x : a.x) + dir * d, 18, 942);
+    if (Math.abs(x - a.x) < 8) continue;
+    if (blocked(x, a.y) || (x > MAP.pit.x0 - 8 && x < MAP.pit.x1 + 8 && !footing(x, a.y, 60, 0)) || (a.ground && !footing(x, a.y))) continue;
+    skipTo(g, a, x, a.y, { face: b ? Math.sign(b.x - x) || a.face : a.face, ground: a.ground });
+    if (!a.ground) a.float = Math.max(a.float || 0, mv.dur);
+    return;
+  }
 }
 
 // The rival Nox's string is on: the last one he hit, a moment ago, still standing.
@@ -180,7 +207,7 @@ export function startMove(g, a, id) {
   a.comboTimer = mv.dur + 0.45;
   a.attackSeq = (a.attackSeq || 0) + 1;
   a.hits = mv.hits.map((p, i) => ({ at: mv.dur * (1 - p), i }));
-  a.warpDone = false;
+  a.warpDone = false; a.setDone = false;
   if (a.dashStrike) {
     a.dashStrike = false;
     Body.setVelocity(a.body, { x: a.face * 8.5, y: Math.min(a.body.velocity.y, 0) });
@@ -201,10 +228,13 @@ export function startMove(g, a, id) {
 
 // Called every step: strikes land on their animation frame.
 export function tickAttack(g, a) {
-  if (!a.hits?.length) return;
+  if (!a.hits) return;
   const mv = MOVES[a.attackKind];
   if (!mv || a.attack <= 0) { a.hits = null; return; }
+  if (!a.hits.length && !mv.warp && !mv.set) return;
   if (mv.warp && !a.warpDone && a.attack <= mv.dur * (1 - mv.warpAt)) { a.warpDone = true; warpMove(g, a, mv); }
+  // Lola lays her knives in the air (sim/timestop.js).
+  if (mv.set && !a.setDone && a.attack <= mv.dur * (1 - mv.setAt)) { a.setDone = true; setKnives(g, a, mv); }
   while (a.hits?.length && a.attack <= a.hits[0].at) strike(g, a, mv, a.hits.shift().i);
 }
 
@@ -505,6 +535,8 @@ export function shoot(g, a) {
 export function stepBullets(g, dt) {
   const statics = g.staticBodies;
   for (const b of [...g.bullets]) {
+    // Lola's laid knives hang where she put them until they fly (sim/timestop.js).
+    if (b.set && (b.k < 1 || b.hold > 0) && stepSetKnife(g, b, dt)) continue;
     b.life -= dt;
     if (b.life <= 0) {
       g.fx('decal', { x: b.x, y: b.y, k: 'hole', s: 1, layer: 'wall' });
@@ -558,7 +590,7 @@ export function removeBullet(g, b) {
 // knives aimed at a rival the next one knocks them down. A few stay stuck in them.
 function knifeHit(g, b, a, point, angle) {
   const knock = knifeKnock(g, b, a), s = Math.sign(b.vx) || 1;
-  const dealt = damage(g, a, b.damage, point, b.owner, 'knife', { kb: knock ? { x: s * 5, y: -4.5 } : { x: b.vx * 0.08, y: b.vy * 0.05 - 0.4 }, dir: angle, knock });
+  const dealt = damage(g, a, b.damage, point, b.owner, 'knife', { kb: knock ? { x: s * 5, y: -4.5 } : { x: b.vx * 0.08, y: b.vy * 0.05 - 0.4 }, dir: angle, knock, solo: true });
   if (!dealt) return;
   knifeKnocked(g, b, a, knock);
   if (a.dead) return;
@@ -757,7 +789,8 @@ export function damage(g, a, amount, point, ownerId, kind = 'punch', opts = {}) 
     const heavy = knock || amount >= 14;
     g.shake = Math.max(g.shake, Math.min(heavy ? 9 : 6, amount / (heavy ? 4 : 7)));
     // A fighter plunging through the air (stomps, the beast's leap and meteor) keeps falling.
-    hitlag(a, owner && owner !== a && Math.abs(owner.x - a.x) < 70 && !['stomp', 'leap', 'meteor'].includes(owner.act) ? owner : null, (heavy ? clamp(amount * 0.005, 0.07, 0.13) : clamp(amount * 0.003, 0.03, 0.06)) * (opts.lag || 1));
+    // A thrown knife freezes only whoever it hits (solo), not the thrower.
+    hitlag(a, owner && owner !== a && !opts.solo && Math.abs(owner.x - a.x) < 70 && !['stomp', 'leap', 'meteor'].includes(owner.act) ? owner : null, (heavy ? clamp(amount * 0.005, 0.07, 0.13) : clamp(amount * 0.003, 0.03, 0.06)) * (opts.lag || 1));
     const dir = Math.atan2(ky, kx || (owner ? a.x - owner.x : 1));
     g.fx('hit', { x: point.x, y: point.y, p: Math.min(3, amount / 8), a: dir, cut: cat === 'cut' ? 1 : 0, blood: kind === 'blood' || kind === 'hemo' ? 1 : 0 });
     if (heavy && owner && owner !== a) {

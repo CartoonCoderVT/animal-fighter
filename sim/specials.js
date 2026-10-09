@@ -11,7 +11,7 @@ import { breakLamp } from './hazards.js';
 import { rnd, clamp } from '../engine/const.js';
 import { HALF_H } from '../render/rig.js';
 import { MAP } from './map.js';
-import { startWorld, skipSpot, skipTo } from './timestop.js';
+import { startWorld, skipSpot, skipTo, skipKnives } from './timestop.js';
 
 const LOCK = { lock: true };
 
@@ -237,7 +237,9 @@ export function stepSpecial(g, a, input, pressed, dt) {
       endAct(g, a);
       if (!b || b.dead || b.knocked) return null;
       const spot = skipSpot(a, b, 'front') || { x: b.x - (Math.sign(b.x - a.x) || a.face) * 18, y: b.y - 8, ground: false };
+      const x0 = a.x, y0 = a.y;
       skipTo(g, a, spot.x, spot.y, { face: Math.sign(b.x - spot.x) || a.face, ground: spot.ground, quiet: true, ghost: false });
+      skipKnives(g, a, x0, y0, b);
       if (!b.ground) { Body.setVelocity(b.body, { x: 0, y: -1 }); b.float = Math.max(b.float || 0, 0.6); }
       startMove(g, a, then);
       return LOCK;

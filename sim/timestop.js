@@ -11,16 +11,17 @@
 // she stood, she snaps the watch shut: time moves again and every knife flies at once.
 // While it runs Game.step only advances Lola and her knives (stepTimeStop) and leaves everything
 // else, velocities included, exactly as it was; the game clock itself does not move.
-import { Body } from './physics.js';
+import { Body, Query } from './physics.js';
 import { MAP } from './map.js';
 import { clamp } from '../engine/const.js';
 import { HALF_H } from '../render/rig.js';
-import { WORLD, WORLD_T } from './moves.js';
+import { WORLD, WORLD_T, SET } from './moves.js';
 
 export { WORLD, WORLD_T };
 
 const RAD = Math.PI / 180;
 const ease = k => 1 - (1 - k) * (1 - k);
+const wrap = v => Math.atan2(Math.sin(v), Math.cos(v));
 // Standing on a floor is not inside it: a little give at the feet and the head.
 const inside = (x, y) => x < 14 || x > 946 || MAP.solids.some(s => s.kind !== 'pit' && x + 7 > s.x0 && x - 7 < s.x1 && y + HALF_H - 2 > s.y0 && y - HALF_H + 2 < s.y1);
 const overPit = x => x > MAP.pit.x0 - 6 && x < MAP.pit.x1 + 6;
@@ -72,6 +73,108 @@ export function skipTo(g, a, x, y, { face = null, ground = false, quiet = false,
   a.skips = (a.skips || 0) + 1;
   g.fx('timeSkip', { x: x0, y: y0, x2: x, y2: y, face: a.face, who: a.id, ghost: ghost ? 1 : 0 });
   if (!quiet) g.sound('skip', x);
+}
+
+// ---- knives laid in the air: her bullet hell ----------------------------------------------
+// Inside her strings she throws knives that stop dead where she wants them, each one held in a
+// pocket of stopped time: they hang there, turn toward their rival at the last instant and fly.
+// They are bullets (kind 'knife', set) that wait: k is how far along the throw from her hand to
+// their spot they are, hold how long they still hang. Nothing touches them until they fly.
+const hanging = (g, a) => g.bullets.filter(b => b.set && b.owner === a.id && (b.k < 1 || b.hold > 0)).length;
+
+// Never laid inside anything it would stick in the moment it flies (walls, the conveyor, the press).
+const clear = (g, x, y) => !solidAt(x, y) && !Query.point([...g.staticBodies, ...(g.hz?.bulletBodies || [])], { x, y }).length;
+
+function layKnife(g, a, sx, sy, x, y, ang, { hold, speed = 8.5, turn = 0.3, tgt = null, dmg = SET.dmg, k = 0, loud = false }) {
+  if (!clear(g, x, y)) return false;
+  const e = ease(k);
+  const bx = sx + (x - sx) * e, by = sy + (y - sy) * e;
+  g.bullets.push({
+    id: g.nextId++, owner: a.id, team: a.team, x: bx, y: by, px: bx, py: by, vx: 0, vy: 0, damage: dmg, life: SET.life, color: '#e8f4ff', kind: 'knife', bounces: 9,
+    set: true, sx, sy, tx: x, ty: y, k, hold, ang, ang0: ang, speed, turn, tgt, loud
+  });
+  return true;
+}
+
+// The rival a pattern is laid around: the one her string is on, else the nearest one ahead.
+function setPrey(g, a) {
+  const b = a.lastPrey != null && g.time - (a.lastPreyT ?? -9) < 1.6 ? g.actor(a.lastPrey) : null;
+  if (b && !b.dead && !b.knocked && b.team !== a.team && Math.abs(b.x - a.x) < 160 && Math.abs(b.y - a.y) < 110) return b;
+  return g.enemies(a).filter(o => !o.dead && !o.knocked && (o.x - a.x) * (a.face || 1) > -10 && Math.abs(o.x - a.x) < 140 && Math.abs(o.y - a.y) < 90)
+    .sort((p, q) => Math.hypot(p.x - a.x, p.y - a.y) - Math.hypot(q.x - a.x, q.y - a.y))[0] || null;
+}
+
+// The pattern of a move (mv.set), laid out of her hands:
+//  wall: five knives in a bow between her and the rival, fired all at once;
+//  rain: a crown of six high over the rival (above the names over their heads), pointing down at
+//        them, falling one after another;
+//  ring: eight all round the rival, pointing in, closing on them in a spiral.
+export function setKnives(g, a, mv) {
+  const b = setPrey(g, a), face = a.face || 1, tgt = b ? b.id : null;
+  const hx = a.x + face * 6, hy = a.y - 2;
+  let room = SET.max - hanging(g, a), n = 0;
+  const lay = (x, y, ang, o) => { if (room > 0 && layKnife(g, a, hx, hy, x, y, ang, { tgt, ...o })) { room--; n++; } };
+  const at = (x, y) => (b ? Math.atan2(b.y - 2 - y, b.x - x) : face > 0 ? 0 : Math.PI);
+  if (mv.set === 'wall') {
+    for (let i = 0; i < 5; i++) {
+      const j = i - 2, x = hx + face * (30 - Math.abs(j) * 3), y = hy - 6 + j * 8;
+      lay(x, y, at(x, y), { hold: 0.14 + Math.abs(j) * 0.015, speed: 9, turn: 0.2, loud: j === 0 });
+    }
+  } else if (mv.set === 'rain') {
+    const cx = b ? b.x : a.x + face * 36, cy = (b ? b.y : a.y) - 2;
+    for (let i = 0; i < 6; i++) {
+      const j = i - 2.5, x = cx + j * 12, y = cy - 64 + Math.abs(j) * 4, order = face > 0 ? i : 5 - i;
+      lay(x, y, Math.atan2(cy - y, cx - x), { hold: 0.22 + order * 0.06, speed: 9.5, turn: 0.5, loud: true });
+    }
+  } else if (mv.set === 'ring') {
+    const cx = b ? b.x : a.x + face * 30, cy = (b ? b.y : a.y) - 2;
+    for (let i = 0; i < 8; i++) {
+      const an = -Math.PI / 2 + i * (Math.PI / 4) * face, x = cx + Math.cos(an) * 32, y = cy + Math.sin(an) * 28;
+      lay(x, y, Math.atan2(cy - y, cx - x), { hold: 0.2 + i * 0.035, speed: 7.5, turn: 0.3, loud: i % 2 === 0 });
+    }
+  }
+  if (!n) return;
+  // A rival already reeling is held there for the pattern to land.
+  if (b && mv.pin && b.hitstun > 0 && !b.knocked) { b.hitstun = Math.max(b.hitstun, mv.pin); b.hitstunMax = Math.max(b.hitstunMax || 0, b.hitstun); }
+  if (b && mv.set === 'ring' && !b.ground) b.float = Math.max(b.float || 0, 0.5);
+  g.fx('knifeSet', { x: hx, y: hy, who: a.id, n, k: mv.set });
+  g.sound('knife', hx);
+}
+
+// Where she vanished in a combo skip she leaves two knives behind, aimed at the rival; they fly a
+// moment after she is gone.
+export function skipKnives(g, a, x0, y0, b) {
+  if (!b || b.dead || hanging(g, a) >= SET.max) return;
+  for (const [dy, hold] of [[-5, 0.18], [2, 0.24]]) {
+    const y = y0 + dy, ang = Math.atan2(b.y - 2 - y, b.x - x0);
+    layKnife(g, a, x0, y, x0, y, ang, { hold, speed: 9, turn: 0.35, tgt: b.id, dmg: SET.skip, k: 1, loud: dy < 0 });
+  }
+}
+
+// One step of a knife she laid: out of her hand to its spot, hanging there, turning toward its
+// rival at the last instant (never far off the line it was laid on), then off. Returns true while
+// it still hangs.
+export function stepSetKnife(g, b, dt) {
+  // px, py: where it was a step ago (the renderer streaks the throw from there).
+  b.px = b.x; b.py = b.y;
+  if (b.k < 1) {
+    b.k = Math.min(1, b.k + dt / SET.fly);
+    const e = ease(b.k);
+    b.x = b.sx + (b.tx - b.sx) * e; b.y = b.sy + (b.ty - b.sy) * e;
+    return true;
+  }
+  b.hold -= dt;
+  const t = b.tgt != null ? g.actor(b.tgt) : null;
+  if (b.hold < SET.aim && t && !t.dead && !t.knocked) {
+    const want = b.ang0 + clamp(wrap(Math.atan2(t.y - 2 - b.y, t.x - b.x) - b.ang0), -b.turn, b.turn);
+    b.ang += wrap(want - b.ang) * Math.min(1, dt * 20);
+  }
+  if (b.hold > 0) return true;
+  b.hold = 0;
+  b.vx = Math.cos(b.ang) * b.speed; b.vy = Math.sin(b.ang) * b.speed;
+  b.px = b.x; b.py = b.y;
+  if (b.loud) g.sound('tick', b.x);
+  return false;
 }
 
 // ---- ZA WARUDO --------------------------------------------------------------------------

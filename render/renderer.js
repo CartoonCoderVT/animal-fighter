@@ -363,7 +363,7 @@ export class Renderer {
     const FAST = ['pounce', 'kickoff', 'slam', 'chase', 'stomp', 'requiem', 'charge', 'leap', 'meteor', 'bite'];
     for (const f of figures) {
       const a = f.a, list = this.trails.get(a.id) || [];
-      const fast = FAST.includes(a.act) || a.dodge > 0 || a.perfectT > 0 || (a.attack > 0 && ['dashAtk', 'spike', 'shadowCut', 'nAirScythe', 'nAirVortex', 'scytheGuillotine', 'scytheSpin', 'scytheReap', 'jBolt', 'jRake', 'jPounceUp', 'jFlurry', 'jAirSpin', 'jAirDive', 'bHammer', 'bUpper', 'bAirSmash', 'lDance', 'lBehind', 'lRise', 'lSkip', 'lAirSpin', 'lAirDive'].includes(a.attackKind));
+      const fast = FAST.includes(a.act) || a.dodge > 0 || a.perfectT > 0 || (a.attack > 0 && ['dashAtk', 'spike', 'shadowCut', 'nAirScythe', 'nAirVortex', 'scytheGuillotine', 'scytheSpin', 'scytheReap', 'jBolt', 'jRake', 'jPounceUp', 'jFlurry', 'jAirSpin', 'jAirDive', 'bHammer', 'bUpper', 'bAirSmash', 'lDance', 'lBehind', 'lRise', 'lSkip', 'lAirSpin', 'lAirDive', 'lRain', 'lAirRing'].includes(a.attackKind));
       f.trail = list;
       if (fast && dt > 0 && (list.stepT = (list.stepT || 0) + dt) > 0.05) {
         list.stepT = 0;
@@ -458,6 +458,7 @@ export class Renderer {
       this.fx.update(dt * (state.drama ? 0.35 : 1) * Math.min(1, state.timeScale ?? 1));
     }
     this.lola.update(dt * (state.drama && !state.timeStop ? 0.35 : 1));
+    this.lola.watch(state);
 
     const [ox, oy] = this.shakeOffset(dt, settings);
     const rich = settings.particles !== false && !this.autoLow;
@@ -936,7 +937,8 @@ export class Renderer {
     for (const f of state.fires || []) add({ x: X(f.x), y: X(f.y) - 8, r: 64, color: '#ff9a45', i: 0.85 + Math.sin(t * 31 + f.x) * 0.15, occlude: true });
     for (const a of state.actors) if (!a.dead && a.burning > 0) add({ x: X(a.x), y: X(a.y) - 6, r: 50, color: '#ff9a45', i: 0.8 });
     for (const p of state.props) if (p.rocket || p.burning > 0) add({ x: X(p.x), y: X(p.y), r: 54, color: '#ffae5a', i: 0.8 });
-    for (const b of state.bullets || []) add({ x: X(b.x), y: X(b.y), r: b.word ? 22 : 14, color: b.word ? b.color : '#ffe2a0', i: 0.6, noRim: !!b.word });
+    // Lola's knives give a small cold light; other shots a warm one.
+    for (const b of state.bullets || []) add(b.kind === 'knife' ? { x: X(b.x), y: X(b.y), r: 10, color: '#cfe4ff', i: 0.45, noRim: true } : { x: X(b.x), y: X(b.y), r: b.word ? 22 : 14, color: b.word ? b.color : '#ffe2a0', i: 0.6, noRim: !!b.word });
     if (hz) {
       const end = hz.cable[hz.cable.length - 1];
       if (Math.random() < 0.6) add({ x: X(end[0]), y: X(end[1]), r: 30, color: '#8af0ff', i: 0.5 + Math.random() * 0.4 });

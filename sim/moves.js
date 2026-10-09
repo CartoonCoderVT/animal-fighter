@@ -35,6 +35,19 @@ export const MOVES = {
   lAirCut: { dur: 0.22, hits: [0.3, 0.64], range: 28, band: 26, dmg: [4, 4], kind: 'knife', kb: [[0.4, -0.5], [0.5, -0.5]], cd: 0.08 },
   lAirSpin: { dur: 0.38, hits: [0.2, 0.36, 0.52, 0.68, 0.84], range: 30, band: 30, dmg: [2, 2, 2, 2, 3], kind: 'knife', kb: [[0, 0], [0, 0], [0, 0], [0, 0], [0.6, -1]], cd: 0.1, around: true, pull: true },
   lAirDive: { dur: 0.36, hits: [0.52], range: 30, band: 38, dmg: [9], kind: 'knife', kb: [[1.2, 9]], cd: 0.25, spike: true, bounce: true, around: true, warp: 'above', warpAt: 0.22, reach: 120 },
+  // Her bullet hell, out of her strings: knives laid in the air in a pattern (sim/timestop.js, SET).
+  // They hang where she put them, turn toward the rival at the last instant and fly. set: the
+  // pattern; setAt: when in the move the knives leave her hands; pin: hitstun a rival already
+  // reeling is held in for the pattern to land.
+  // A fresh tap of a direction + J: she skips back out of reach and lays a wall of knives between
+  // them; J again skips her back in at the dance of knives.
+  lFan: { dur: 0.4, hits: [], range: 0, band: 0, dmg: [], kind: 'knife', kb: [], cd: 0.12, warp: 'away', warpAt: 0.12, reach: 90, set: 'wall', setAt: 0.32, pin: 0.34 },
+  // S+J: a rising flick that pops the rival up and flings a fan of knives high over them; they rain
+  // down one after another while the string goes on from behind them.
+  lRain: { dur: 0.36, hits: [0.38], range: 30, band: 28, dmg: [5], kind: 'knife', kb: [[0.4, -4.5]], cd: 0.14, hold: 0.5, step: 1.5, set: 'rain', setAt: 0.42 },
+  // In the air, a fresh tap of a direction + J: she wheels round the rival laying a ring of knives
+  // that closes in on them in a spiral; J again is the dive.
+  lAirRing: { dur: 0.4, hits: [0.24], range: 30, band: 30, dmg: [3], kind: 'knife', kb: [[0, -0.5]], cd: 0.1, around: true, hold: 0.42, set: 'ring', setAt: 0.5, pin: 0.4 },
   // Juma, small: quick and frantic. Swipe, swipe, a storm of claws, the rake that lunges in and
   // folds the rival over, and the rising pounce that launches.
   jSwipe: { dur: 0.17, hits: [0.4], range: 28, band: 24, dmg: [5], kind: 'claw', kb: [[0.8, 0]], cd: 0.07, step: 2.6 },
@@ -128,5 +141,10 @@ export const SPECIALS = [
 // over the frozen frame; wave: the color drains out from her; stop: the stopped world; outro: the
 // watch snaps shut. hang: how long a thrown knife flies before it stops in the air.
 export const WORLD = { intro: 1.15, wave: 0.45, stop: 2.4, outro: 0.55, hang: 0.13, speed: 9, dmg: 1.2, range: 430 };
+// Knives she lays in the air in her strings. fly: how long one takes from her hand to its spot;
+// aim: how long before it flies it turns toward its rival; dmg: per knife (skip: the two she
+// leaves where she vanished in a combo skip); max: knives of hers hanging at once; cd: between
+// two of the branches that lay them.
+export const SET = { fly: 0.11, aim: 0.12, dmg: 1.5, skip: 1.2, max: 30, cd: 1.3, life: 1 };
 export const WORLD_T = WORLD.intro + WORLD.wave + WORLD.stop + WORLD.outro;
 export const worldPhase = t => (t < WORLD.intro ? 'intro' : t < WORLD.intro + WORLD.wave ? 'wave' : t < WORLD.intro + WORLD.wave + WORLD.stop ? 'stop' : 'outro');

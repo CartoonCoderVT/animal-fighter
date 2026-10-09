@@ -11,7 +11,7 @@ import { stepSpecial, startSwarm, tickForm } from './specials.js';
 import { HALF_H, FOOT } from '../render/rig.js';
 
 export { HALF_H };
-const TIMERS = ['batCd', 'biteCd', 'chargeCd', 'skipCd', 'hitstun', 'attack', 'attackCd', 'abilityCd', 'float', 'bufA', 'bufP', 'parry', 'parryCd', 'parryLag', 'counter', 'perfectT', 'hurt', 'invincible', 'iframes', 'dodgeCd', 'dodge', 'jumpGrace', 'jumpBuffer', 'stun', 'getup', 'comboTimer', 'shock', 'skid', 'landT', 'climbCd'];
+const TIMERS = ['batCd', 'biteCd', 'chargeCd', 'skipCd', 'setCd', 'hitstun', 'attack', 'attackCd', 'abilityCd', 'float', 'bufA', 'bufP', 'parry', 'parryCd', 'parryLag', 'counter', 'perfectT', 'hurt', 'invincible', 'iframes', 'dodgeCd', 'dodge', 'jumpGrace', 'jumpBuffer', 'stun', 'getup', 'comboTimer', 'shock', 'skid', 'landT', 'climbCd'];
 
 export function groundInfo(g, a) {
   const b = a.body, x = b.position.x, feet = b.position.y + HALF_H;
@@ -116,6 +116,8 @@ export function stepActor(g, a, dt) {
 
   const queued = a.queued || {};
   const input = a.bot ? think(g, a, dt) : { ...a.input };
+  // The moves read the held directions off a.input (S+J, side+J): a bot's are what it thinks.
+  if (a.bot) a.input = input;
   if (!a.bot) for (const k of Object.keys(queued)) input[k] = true;
   a.queued = {};
   const pressed = k => input[k] && (!a.lastInput[k] || queued[k]);
@@ -270,6 +272,8 @@ export function stepActor(g, a, dt) {
     if (vy > 0) a.jumpHeld = false;
     // A bat hovers through his air string instead of dropping out from under it.
     if (a.type === 4 && a.attack > 0 && NOX_AIR.includes(a.attackKind)) vy = Math.min(vy, 0.35);
+    // Lola hangs in the air while she lays her ring of knives.
+    if (a.type === 2 && a.attack > 0 && a.attackKind === 'lAirRing') vy = Math.min(vy, -0.3);
     // Nox glides, scarf streaming, while jump is held on the way down.
     if (a.type === 4 && vy > 1.2 && input.jump && control >= 1) { vy = Math.min(vy, 1.7); a.gliding = true; }
   }

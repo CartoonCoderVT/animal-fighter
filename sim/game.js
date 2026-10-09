@@ -58,7 +58,7 @@ export class Game {
       weapon: null, ammo: 0, holding: null, lastInput: EMPTY_INPUT(), input: EMPTY_INPUT(), queued: {},
       respawn: 0, lastHit: null, lastHitTime: -9, jumpGrace: 0, jumpBuffer: 0, airJumps: 0, drop: {}, knocked: false, knock: 0, getup: 0,
       aim: 0, burning: 0, stats: { damage: 0, kills: 0, limbs: 0 }, powerSeq: 0, act: null, actT: 0, gliding: false,
-      form: null, formT: 0, biteCd: 0, chargeCd: 0, skipCd: 0, carry: null, wPose: null
+      form: null, formT: 0, biteCd: 0, chargeCd: 0, skipCd: 0, setCd: 0, carry: null, wPose: null
     };
     body.plugin.actor = a;
     this.actors.push(a);
@@ -179,7 +179,7 @@ export class Game {
       ai: null, attackCd: 0, holding: null, abilityCd, knocked: false, knock: 0, getup: 0, dodge: 0, dodgeKind: null, climbing: false, drop: {},
       act: null, actT: 0, hits: null, gliding: false, holdingLimb: null, holdJoint: null, ghostClear: true, hitlag: 0, lagPos: null,
       parry: 0, parryLag: 0, counter: 0, perfectT: 0, chase: null, float: 0, airDodged: false, hitstun: 0, hitstunMax: 0, stunN: 0, bloodMark: 0, beamAir: false, bounced: false, bounceArm: 0, turnT: 0, batCd: 0, swarm: null,
-      form: null, formT: 0, biteCd: 0, chargeCd: 0, skipCd: 0, carry: null, wPose: null
+      form: null, formT: 0, biteCd: 0, chargeCd: 0, skipCd: 0, setCd: 0, carry: null, wPose: null
     });
     this.fx('spawn', { x: a.x, y: a.y, color: FIGHTERS[a.type].color });
   }
@@ -307,7 +307,9 @@ export class Game {
         wPose: a.wPose || null, wPoseT: r2(a.wPoseT || 0), skips: a.skips || 0
       })),
       props: this.props.map(p => ({ id: p.id, kind: p.kind, w: p.w, h: p.h, x: r(p.x), y: r(p.y), angle: r(p.angle * 100) / 100, hp: p.hp, armed: !!p.armed, fuse: p.fuse, burning: r(p.burning || 0), weapon: p.weapon, rocket: p.rocket > 0, chain: !!p.chain })),
-      bullets: this.bullets.map(b => ({ id: b.id, x: r(b.x), y: r(b.y), px: r(b.px), py: r(b.py), word: b.word, color: b.color, vx: r(b.vx), vy: r(b.vy), kind: b.kind })),
+      // Lola's laid knives also send where they point, how far out of her hand they are (k) and how
+      // long they still hang.
+      bullets: this.bullets.map(b => ({ id: b.id, x: r(b.x), y: r(b.y), px: r(b.px), py: r(b.py), word: b.word, color: b.color, vx: r(b.vx), vy: r(b.vy), kind: b.kind, ...(b.set ? { set: 1, ang: r2(b.ang), k: r2(b.k), hold: r2(b.hold) } : null) })),
       timeStop: this.timeStop && { owner: this.timeStop.owner, t: r2(this.timeStop.t), x: r(this.timeStop.x), y: r(this.timeStop.y), targets: this.timeStop.targets },
       knives: this.knives.map(k => ({ id: k.id, x: r(k.x), y: r(k.y), ang: r2(k.ang), k: r2(k.k), ring: !!k.ring })),
       limbs: this.limbs.map(l => ({ id: l.id, type: l.type, form: l.form || null, part: l.part, x: r(l.x), y: r(l.y), angle: r(l.angle * 100) / 100, face: l.face, actor: l.actor, attached: l.attached, wounds: l.wounds, char: r(l.char || 0), frozen: l.frozen, bleed: r(l.bleed), embedded: l.embedded || null, shock: (l.shock || 0) > 0, life: r(l.life), cut: l.cut || null })),
