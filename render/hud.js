@@ -11,7 +11,7 @@ const X = v => Math.round(v * S);
 const DEATH_TAG = {
   shatter: 'GELO', grind: 'FOSSO', crush: 'PRENSA', explosion: 'BUM', fire: 'FOGO', shock: 'CHOQUE', fall: 'QUEDA', decap: 'CABEÇA', bleed: 'SANGUE',
   impact: 'ARREMESSO', bullet: 'TIRO', pellet: 'TIRO', thrown: 'LÂMINA', claw: 'GARRAS', whip: 'RABADA', kick: 'COICE', paw: 'PATADA',
-  fang: 'MORDIDA', bite: 'MORDIDA', roar: 'RUGIDO', sonic: 'GRITO', blood: 'HEMOMANCIA', hemo: 'PERFURANTE', scythe: 'FOICE', stomp: 'PISÃO', slam: 'PISÃO DO CÉU',
+  fang: 'MORDIDA', bite: 'MORDIDA', roar: 'RUGIDO', sonic: 'GRITO', blood: 'HEMOMANCIA', hemo: 'PERFURANTE', scythe: 'FOICE', stomp: 'PISÃO', slam: 'ESMAGADO', knife: 'FACAS',
   blade: 'FACA', katana: 'KATANA', spear: 'LANÇA', pipe: 'CANO', axe: 'MACHADO', hammer: 'MARRETA'
 };
 
@@ -100,7 +100,8 @@ export class HUD {
       bar(g, cx + 29, 21, 58, 3, a.hp / a.maxHp, a.hp < a.maxHp * 0.3 ? '#ee6b6b' : '#8fd694');
       // As the beast, Juma's bar is the time she has left in that form.
       const beast = a.form === 'beast', cd = beast ? clamp((a.formT || 0) / SPECIALS[3].form, 0, 1) : clamp(1 - a.abilityCd / f.cooldown, 0, 1);
-      bar(g, cx + 29, 27, 58, 1, cd, beast ? '#ff8a3a' : cd >= 1 ? '#f2c35b' : '#8a7aa8');
+      if (a.type === 2) this.watchMeter(g, cx + 29, 27, cd, time);
+      else bar(g, cx + 29, 27, 58, 1, cd, beast ? '#ff8a3a' : cd >= 1 ? '#f2c35b' : '#8a7aa8');
       if (mode !== 'sandbox' && mode !== 'attract') {
         for (let k = 0; k < killsToWin; k++) {
           g.fillStyle = k < a.kills ? f.color : '#2a2036';
@@ -143,6 +144,26 @@ export class HUD {
       drawText(g, label, VIEW_W / 2, VIEW_H / 2 - 30, { color: n > 0 ? '#f2c35b' : '#ff8f6a', outline: '#1a1020', shadow: '#402b43', scale, align: 'center', alpha: n > 0 ? clamp(k * 3, 0, 1) : 1 });
     }
     if (touch) this.drawTouch(g, state.actors.find(a => a.id === localId)?.type);
+  }
+
+  // Lola's super charges slowly: twelve ticks of a clock fill one by one, and once they are all lit
+  // they glint in gold and a little watch beside them swings.
+  watchMeter(g, x, y, k, time) {
+    const full = k >= 1, lit = Math.floor(k * 12);
+    for (let i = 0; i < 12; i++) {
+      const on = i < lit, glint = full && Math.floor(time * 10) % 12 === i;
+      g.fillStyle = '#0b0812'; g.fillRect(x + i * 5 - 1, y - 1, 5, 3);
+      g.fillStyle = glint ? '#ffffff' : full ? '#ffd23a' : on ? '#6aa8f0' : '#2a2036';
+      g.fillRect(x + i * 5, y, 3, 1);
+    }
+    // The tick being wound fills in as it charges.
+    if (!full) { g.fillStyle = '#9cd0ff'; g.fillRect(x + lit * 5, y, Math.round((k * 12 - lit) * 3), 1); }
+    if (full) {
+      const sw = Math.round(Math.sin(time * 5) * 1.4), wx = x - 4 + sw, wy = y - 3;
+      g.fillStyle = '#0b0812'; g.fillRect(wx - 1, wy - 1, 5, 5);
+      g.fillStyle = '#ffd23a'; g.fillRect(wx, wy, 3, 3);
+      g.fillStyle = '#fff8e8'; g.fillRect(wx + 1, wy + 1, 1, 1);
+    }
   }
 
   drawTouch(g, type) {

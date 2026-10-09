@@ -12,7 +12,9 @@ const FAR = { 1: '2', 2: '3', 4: '5', 6: '7', 9: '8', x: 'y' };
 const PALETTES = {
   cat: { o: '#3b1b1e', 1: '#ffb763', 2: '#f08a3c', 3: '#c25e2c', 4: '#fff3dc', 5: '#f0cc9c', 6: '#ffb3c4', 7: '#e8728e', 8: '#a8482a', e: '#1e1420', w: '#ffffff', r: '#ff9c9c' },
   rat: { o: '#2b2238', 1: '#cec7dc', 2: '#a89fbc', 3: '#7b7192', 4: '#efe7f0', 5: '#d4c8d8', 6: '#ffb8ca', 7: '#ee7a9a', e: '#1e1420', w: '#ffffff', r: '#ffa0b6' },
-  rabbit: { o: '#5a2638', 1: '#ffffff', 2: '#fde3ea', 3: '#eab2c4', 4: '#ffffff', 5: '#f6d0dc', 6: '#ffa6bc', 7: '#e8708e', e: '#2a1420', w: '#ffffff', r: '#ff9cb2' },
+  // Lola: silver-white fur, a navy maid dress (8 dark, 9 mid, x light, y its far side), a white apron
+  // (4/5), pink ears, a gold watch (g), eyes of deep blue with a blue iris.
+  rabbit: { o: '#231a3e', 1: '#ffffff', 2: '#eeeaf8', 3: '#b9b2d8', 4: '#ffffff', 5: '#cfcdea', 6: '#ffb0c8', 7: '#e8729a', 8: '#232c78', 9: '#3d52b8', x: '#6c8cf0', y: '#34479e', e: '#241a4e', w: '#ffffff', r: '#ff9cb8', g: '#ffd23a' },
   ocelot: { o: '#3a2010', 1: '#ffd36c', 2: '#eca83e', 3: '#bf7a26', 4: '#fff2cf', 5: '#f0d39a', 6: '#e0a070', 7: '#d0605e', 8: '#5a2e18', 9: '#8a5028', e: '#1e1420', w: '#ffffff', r: '#ffa08a' },
   // Juma's beast form: deeper fur, near-black rosettes, ivory fangs and claws, burning eyes.
   ocelotBeast: { o: '#220c04', 1: '#f2a848', 2: '#c86c20', 3: '#8a4214', 4: '#f6e2b8', 5: '#d6ad78', 6: '#e09070', 7: '#b8343a', 8: '#2e1408', 9: '#62300f', e: '#140806', w: '#ffffff', r: '#ff7a5a', f: '#fff6e0', g: '#ffd23a', m: '#4a0a10' },

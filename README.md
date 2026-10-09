@@ -15,6 +15,8 @@ Briga de animais em pixel art com física, ragdolls e partidas online direto no 
 A/D mover · W/Espaço pular · S agachar · J ataque · K especial · Shift parry/esquiva · E pegar · L revoada (Nox) · Esc pausa.
 Também funciona com controle e toque.
 
+**Lola** luta com facas e salta no tempo dentro dos combos (some e reaparece atrás, na frente ou acima do rival). O K dela carrega devagar e para o tempo de verdade: **ZA WARUDO**.
+
 ## Créditos
 
 Física: [Matter.js](https://brm.io/matter-js/) (MIT) · Rede: [PeerJS](https://peerjs.com/) (MIT). Licenças em `vendor/`.

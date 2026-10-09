@@ -1,7 +1,7 @@
 // Specials (K) and the moves everyone shares: aerial stomp and carrying a downed fighter.
 // A running special lives in a.act; stepSpecial runs it each step and may lock movement.
 import { Body, Composite } from './physics.js';
-import { SPECIALS, NOX_AIR, JUMA_AIR } from './moves.js';
+import { SPECIALS, NOX_AIR, JUMA_AIR, LOLA_AIR } from './moves.js';
 import { FIGHTERS } from './fighters.js';
 import { damage, startMove, landPlunge, markOf, drama } from './combat.js';
 import { MOVES } from './moves.js';
@@ -11,6 +11,7 @@ import { breakLamp } from './hazards.js';
 import { rnd, clamp } from '../engine/const.js';
 import { HALF_H } from '../render/rig.js';
 import { MAP } from './map.js';
+import { startWorld, skipSpot, skipTo } from './timestop.js';
 
 const LOCK = { lock: true };
 
@@ -33,6 +34,8 @@ export function endAct(g, a) {
 
 export function startSpecial(g, a) {
   if (a.type === 3) { jumaSpecial(g, a); return; }
+  // Lola's ZA WARUDO (sim/timestop.js); nothing happens while time is already stopped.
+  if (a.type === 2) { if (startWorld(g, a)) { a.powerSeq = (a.powerSeq || 0) + 1; a.abilityCd = SPECIALS[2].cd; } return; }
   const sp = SPECIALS[a.type];
   const v = a.body.velocity;
   a.powerSeq = (a.powerSeq || 0) + 1;
@@ -53,16 +56,6 @@ export function startSpecial(g, a) {
     g.text(a.x, a.y - 30, 'BOLA DE HAMSTER!', '#cec7dc');
     g.fx('ring', { x: a.x, y: a.y + 4, size: 30, color: '#d8f0ff' });
     g.sound('pickup', a.x);
-  } else if (sp.id === 'sky') {
-    setAct(a, 'sky', 0.75);
-    a.slamHit = {};
-    a.skyFrom = a.body.position.y + HALF_H;
-    Body.setVelocity(a.body, { x: v.x * 0.4, y: -13.5 });
-    a.ground = false;
-    g.fx('dust', { x: a.x, y: a.y + 16, n: 8 });
-    g.fx('ring', { x: a.x, y: a.y + 16, size: 26, color: '#ffd6e4' });
-    g.text(a.x, a.y - 30, 'PISÃO DO CÉU!', '#ffa6bc');
-    g.sound('jump', a.x);
   } else if (sp.id === 'beam') {
     // Close to a rival carrying three blood marks, K is the requiem instead of the beam.
     const prey = g.enemies(a).find(b => !b.dead && !b.knocked && markOf(g, b) >= 3 && Math.abs(b.x - a.x) < 80 && Math.abs(b.y - a.y) < 50);
@@ -79,12 +72,25 @@ export function startSpecial(g, a) {
 // then: the move to throw on arrival (small Juma pouncing after a rival her string knocked away).
 export function startChase(g, a, prey, then = null) {
   if (a.type === 4) { startSwarm(g, a, { prey, then: then || NOX_AIR[0] }); return; }
+  if (a.type === 2) { startBlink(g, a, prey, then || LOLA_AIR[0]); return; }
   setAct(a, 'chase', 0.42);
   a.chaseId = prey.id;
   a.chaseThen = then;
   a.ground = false;
   g.fx('dash', { x: a.x, y: a.y, face: prey.x >= a.x ? 1 : -1 });
   g.sound('jump', a.x);
+}
+
+// Lola after a launcher, or after a rival her string knocked out of reach: she is gone for a few
+// frames (time stopped for her alone) and steps out of it beside them, already cutting.
+const BLINK_T = 0.07;
+export function startBlink(g, a, prey, then) {
+  setAct(a, 'blink', BLINK_T);
+  a.blinkTo = prey.id;
+  a.blinkThen = then;
+  a.attack = 0; a.hits = null;
+  g.fx('skipOut', { x: a.x, y: a.y, face: a.face, who: a.id });
+  g.sound('skip', a.x);
 }
 
 // Weapon ground pound: hold the strike pose and fall fast; the blow lands on touchdown.
@@ -225,6 +231,19 @@ export function stepSpecial(g, a, input, pressed, dt) {
     case 'kickoff':
       if (a.actT > 0.3 || (a.ground && a.actT > 0.1)) endAct(g, a);
       return null;
+    case 'blink': {
+      if (a.actT < a.actMax) return { lock: true, vx: 0, vy: 0 };
+      const b = g.actor(a.blinkTo), then = a.blinkThen;
+      endAct(g, a);
+      if (!b || b.dead || b.knocked) return null;
+      const spot = skipSpot(a, b, 'front') || { x: b.x - (Math.sign(b.x - a.x) || a.face) * 18, y: b.y - 8, ground: false };
+      skipTo(g, a, spot.x, spot.y, { face: Math.sign(b.x - spot.x) || a.face, ground: spot.ground, quiet: true, ghost: false });
+      if (!b.ground) { Body.setVelocity(b.body, { x: 0, y: -1 }); b.float = Math.max(b.float || 0, 0.6); }
+      startMove(g, a, then);
+      return LOCK;
+    }
+    // Stopped time runs from Game.step (sim/timestop.js); this only holds her if it ever gets here.
+    case 'world': return LOCK;
     case 'ball': {
       const dir = (input.right ? 1 : 0) - (input.left ? 1 : 0);
       if (dir) { a.ballV = clamp(a.ballV + dir * 0.6, -9.5, 9.5); a.face = Math.sign(a.ballV) || a.face; }
@@ -248,26 +267,6 @@ export function stepSpecial(g, a, input, pressed, dt) {
       for (const p of g.props) if (!p.held && !p.fixed && !p.body.isStatic && Math.hypot(p.x - a.x, p.y - a.y) < 24) Body.setVelocity(p.body, { x: p.body.velocity.x + a.ballV * 0.3, y: p.body.velocity.y - 1 });
       if (a.actT > a.actMax) { endAct(g, a); g.fx('poof', { x: a.x, y: a.y }); return null; }
       return { lock: true, vx: a.ballV, vy };
-    }
-    case 'sky': {
-      const steer = ((input.right ? 1 : 0) - (input.left ? 1 : 0)) * 2.5;
-      if (v.y >= -1 || a.actT > a.actMax || pressed('power') || pressed('attack')) {
-        setAct(a, 'slam', 2);
-        return { lock: true, vx: v.x * 0.3, vy: 19 };
-      }
-      return { lock: true, vx: v.x + (steer - v.x) * 0.1, vy: v.y };
-    }
-    case 'slam': {
-      // Come back down to the floor she jumped from, through any catwalk on the way.
-      MAP.oneway.forEach((p, i) => { if (p.y < (a.skyFrom ?? 0) - 4) a.drop[i] = 0.1; });
-      for (const b of enemiesNear(g, a, b => !a.slamHit[b.id] && Math.abs(b.x - a.x) < 14 && b.y - a.y > 8 && b.y - a.y < 40)) {
-        a.slamHit[b.id] = true;
-        damage(g, b, 12, { x: b.x, y: b.y - 12 }, a.id, 'slam', { kb: { x: 0, y: 3 }, part: 'head', knock: true });
-      }
-      if (a.ground) { shockwave(g, a); endAct(g, a); return null; }
-      if (a.actT > a.actMax) endAct(g, a);
-      const steer = ((input.right ? 1 : 0) - (input.left ? 1 : 0)) * 1.5;
-      return { lock: true, vx: steer, vy: Math.max(v.y, 18) };
     }
     case 'bite': {
       const grab = biteTarget(g, a);
@@ -425,7 +424,7 @@ function seize(g, a, { actor, limb }) {
   g.sound('squish', a.x);
 }
 
-// Lola lands, or the beast: everything near the impact is knocked away.
+// The beast lands: everything near the impact is knocked away.
 function shockwave(g, a, R = 120, beast = false) {
   const x = a.x, y = a.y + 16;
   for (const b of g.enemies(a)) {

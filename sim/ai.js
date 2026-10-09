@@ -11,7 +11,8 @@ const RANGED = a => a.weapon === 'pistol' || a.weapon === 'shotgun';
 const SPECIAL_RANGE = [
   (dx, dy) => Math.abs(dx) > 30 && Math.abs(dx) < 150 && Math.abs(dy) < 40,
   (dx, dy) => Math.abs(dx) < 220 && Math.abs(dy) < 24,
-  (dx, dy) => Math.abs(dx) < 90 && Math.abs(dy) < 60,
+  // Lola stops time whenever a rival is in reach of her knives (it charges slowly anyway).
+  (dx, dy) => Math.abs(dx) < 280 && Math.abs(dy) < 150,
   // Juma: small, she turns into the beast when the fight is close; the beast leaps at rivals a little away.
   (dx, dy, a) => (a.form === 'beast' ? Math.abs(dx) > 50 && Math.abs(dx) < 220 && Math.abs(dy) < 90 : Math.abs(dx) < 140 && Math.abs(dy) < 60),
   // The blood beam: level along the floor, or down and ahead (about 30 degrees) from the air.
@@ -190,6 +191,11 @@ export function think(g, a, dt) {
         else if ((crowd >= 2 || Math.abs(dx) < 40) && a.comboTimer <= 0 && Math.random() < 0.03) { input.attack = !a.lastInput.attack; input.down = true; }
       } else if (Math.abs(dx) > 30 && Math.abs(dx) < 66 && Math.random() < 0.05) { input.attack = !a.lastInput.attack; input.right = dx > 0; input.left = dx < 0; }
       else if (Math.abs(dx) < 28 && !(a.biteCd > 0) && a.comboTimer <= 0 && Math.random() < 0.03) { input.attack = !a.lastInput.attack; input.down = true; }
+    }
+    // Lola skips through time to a rival a few steps off, and cuts low up close now and then.
+    if (a.type === 2 && a.ground && !a.act && !a.weapon && Math.abs(dy) < 30 && !target.knocked) {
+      if (!(a.skipCd > 0) && Math.abs(dx) > 50 && Math.abs(dx) < 160 && Math.random() < 0.04) { input.attack = !a.lastInput.attack; input.right = dx > 0; input.left = dx < 0; }
+      else if (Math.abs(dx) < 30 && a.comboTimer <= 0 && Math.random() < 0.02) { input.attack = !a.lastInput.attack; input.down = true; }
     }
     // Close the gap with a roll that turns into a dashing strike.
     if (a.ground && !a.act && !a.weapon && a.dodgeCd <= 0 && Math.abs(dx) > 44 && Math.abs(dx) < 95 && Math.abs(dy) < 20 && Math.random() < 0.03 && safeRoll(g, a, Math.sign(dx))) {

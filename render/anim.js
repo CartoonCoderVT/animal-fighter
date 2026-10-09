@@ -2,7 +2,7 @@
 // (clockwise) relative to the rest pose, plus tail and whole-figure spin. The frame is picked
 // from observable actor state only, so the host simulation (hit location, ragdoll start pose)
 // and every remote renderer agree without sending poses over the network.
-import { MOVES } from '../sim/moves.js';
+import { MOVES, WORLD } from '../sim/moves.js';
 
 const crouch = { head: [0, 3], body: [0, 1], armF: [0, 2], armB: [0, 2], footF: [1, 0], footB: [-1, 0] };
 
@@ -137,12 +137,57 @@ export const FRAMES = {
   whip2: { armF: [1, 0, -20], head: [1, 0], tail: [[1, 0], [3, -2], [8, -3], [13, -3], [17, -2]] },
   sweep0: { ...crouch, tail: [[1, 0], [-3, 1], [-7, 1], [-10, 0]] },
   sweep1: { ...crouch, armF: [1, 2, -50], tail: [[1, 1], [4, 4], [9, 5], [14, 5], [19, 4], [22, 3]] },
-  // Lola
-  kick0: { ...crouch, footF: [-1, -1] },
-  kick1: { head: [-2, 0], body: [-1, -1], armF: [-1, -1, 40], armB: [-2, -1, 40], footF: [5, -3, -90], footB: [4, -2, -90] },
-  kick2: { head: [-2, 1], body: [-1, -1], armF: [-1, -1, 60], armB: [-2, -1, 60], footF: [6, -4, -90], footB: [5, -3, -90] },
-  sky: { head: [0, -2], body: [0, -1], armF: [0, -2, -170], armB: [0, -2, 170], footF: [0, 1], footB: [-1, 1] },
-  slam: { head: [0, 1], armF: [0, -2, -150], armB: [0, -2, 150], footF: [1, 0], footB: [-1, 0] },
+  // Lola, the maid of the clock. Knives in both hands (drawn by render/lola-art.js along the arms).
+  // Her guard: low and light on her feet, the front hand up with a fan of knives between the
+  // fingers, the back hand low with one more. Two breaths.
+  lStance1: { head: [1, 1, 11.25], body: [0, 1], armF: [2, -1, -125], armB: [-1, 0, 35], footF: [3, 0], footB: [-3, 0] },
+  lStance2: { head: [1, 2, 11.25], body: [0, 2], armF: [2, 0, -125], armB: [-1, 1, 35], footF: [3, 0], footB: [-3, 0] },
+  // The cuts: the knife cocked back over the shoulder (A), the snap (X), the impact pose (I).
+  lCaA: { head: [-1, 1], body: [-1, 1], armF: [-2, -2, 150], armB: [1, 0, -40], footF: [3, 0], footB: [-2, 0] },
+  lCaX: { head: [2, 0, 11.25], body: [2, 0], armF: [3, -1, -95], armB: [-1, 0, 40], footF: [3, 0], footB: [-3, -1, 22.5] },
+  lCaI: { head: [3, 1, 11.25], body: [2, 1], armF: [4, 2, -35], armB: [-2, 0, 55], footF: [4, 0], footB: [-3, 0] },
+  lCbA: { head: [-1, 1], body: [-1, 1], armB: [-1, -2, 145], armF: [2, 0, 25], footF: [3, 0], footB: [-2, 0] },
+  lCbX: { head: [2, 0, 11.25], body: [2, 0], armB: [4, -1, -100], armF: [-1, 0, 40], footF: [3, 0], footB: [-3, -1, 22.5], front: 'armB' },
+  lCbI: { head: [3, 1, 11.25], body: [2, 1], armB: [5, 2, -35], armF: [-1, 0, 55], footF: [4, 0], footB: [-3, 0], front: 'armB' },
+  // The dance of knives: four crossing slashes cycled faster than the eye.
+  lDnA: { head: [2, 1, 11.25], body: [1, 1], armF: [4, -1, -110], armB: [2, 1, -30], footF: [3, 0], footB: [-3, 0] },
+  lDnB: { head: [3, 1, 22.5], body: [2, 1], armB: [5, 0, -70], armF: [0, -1, -160], footF: [3, 0], footB: [-3, 0], front: 'armB' },
+  lDnC: { head: [2, 0], body: [1, 0], armF: [4, 1, -50], armB: [1, -1, -150], footF: [3, 0], footB: [-3, 0] },
+  lDnD: { head: [3, 2, 22.5], body: [2, 1], armB: [5, -1, -120], armF: [1, 1, -10], footF: [3, 0], footB: [-3, 0], front: 'armB' },
+  // Behind you: coiled to vanish, then out of nowhere at their back with both knives driving in.
+  lBhA: { head: [-1, 3, 11.25], body: [-1, 2], armF: [-2, 0, 120], armB: [-3, 0, 110], footF: [3, 0], footB: [-3, 0] },
+  lBhX: { head: [3, 1, 22.5], body: [3, 1], armF: [5, 0, -90], armB: [4, -1, -95], footF: [5, 0], footB: [-4, -1, 33.75] },
+  lBhI: { head: [4, 2, 22.5], body: [3, 1], armF: [6, 1, -80], armB: [5, 0, -85], footF: [5, 0], footB: [-4, 0, 22.5] },
+  lBhF: { head: [2, 1, 11.25], body: [2, 1], armF: [3, 1, -40], armB: [2, 0, -60], footF: [4, 0], footB: [-3, 0] },
+  // The rising spiral: sunk all the way down, then up through the rival behind both knives.
+  lRsA: { head: [0, 4, 11.25], body: [0, 3], armF: [1, 2, 40], armB: [0, 2, 20], footF: [3, 0], footB: [-3, 0] },
+  lRsX: { head: [2, -3, -22.5], body: [1, -2], armF: [3, -5, -170], armB: [1, -3, -150], footF: [1, -2], footB: [-1, -1, 22.5] },
+  lRsI: { head: [2, -2, -11.25], body: [1, -2], armF: [2, -5, 180], armB: [-1, -3, 160], footF: [0, -2], footB: [-1, -2] },
+  // Down low through the ankles.
+  lLoA: { head: [-1, 4], body: [-1, 2], armF: [-1, 2, 120], armB: [0, 2, 0], footF: [3, 0], footB: [-3, 0] },
+  lLoX: { head: [3, 4, 11.25], body: [2, 2], armF: [4, 4, -70], armB: [1, 3, -50], footF: [4, 0], footB: [-4, 0, 22.5] },
+  lLoI: { head: [3, 4, 22.5], body: [2, 2], armF: [5, 4, -40], armB: [2, 3, -20], footF: [4, 0], footB: [-4, 0] },
+  // About to skip: a light step, both knives drawn in.
+  lSkA: { head: [-1, 1], body: [-1, 1], armF: [-1, 0, 60], armB: [-1, 0, 50], footF: [2, 0], footB: [-2, 0] },
+  // Over their head: gathered up, then upside down onto them, both knives first.
+  lDvA: { head: [0, -1], body: [0, -1], armF: [0, -3, 170], armB: [-1, -3, 160], footF: [1, -2], footB: [-1, -1] },
+  lDvX: { head: [2, 2, 33.75], body: [1, 1], armF: [2, 3, -10], armB: [1, 3, 5], footF: [-1, -2, 22.5], footB: [-2, -2, 33.75], front: 'armF' },
+  lDash: { head: [2, 0], body: [1, 0], armF: [4, -1, -90], armB: [-2, -1, 70], footF: [-2, 0, 30], footB: [-3, -1, 40] },
+  // ZA WARUDO. The pocket watch held up to her face and clicked; then arms flung open, chin up.
+  wWatch: { head: [0, 0, -11.25], body: [0, 0], armF: [1, -3, -165], armB: [-1, 0, 30], footF: [2, 0], footB: [-2, 0] },
+  wPose: { head: [0, -1, -22.5], body: [0, -1], armF: [4, -3, -130], armB: [-4, -3, 130], footF: [3, 0], footB: [-3, 0] },
+  wPose2: { head: [0, -2, -22.5], body: [0, -1], armF: [4, -4, -135], armB: [-4, -4, 135], footF: [3, 0], footB: [-3, 0] },
+  // In the stopped world: stepping out of nowhere in mid-air with fans of knives ready, the throws
+  // from either hand, running circles round a rival, and back home with the knives lowered.
+  lAppear: { head: [1, 1, 11.25], body: [0, 1], armF: [1, -1, -150], armB: [0, -1, 150], footF: [1, -2], footB: [-1, -1] },
+  lThrowF: { head: [2, 0, 11.25], body: [1, 0], armF: [4, -1, -95], armB: [-2, -1, 80], footF: [1, -2], footB: [-2, -1, 22.5] },
+  lThrowB: { head: [2, 0, 11.25], body: [1, 0], armB: [4, -1, -95], armF: [-2, -1, 80], footF: [1, -2], footB: [-2, -1, 22.5], front: 'armB' },
+  lRingDash: { head: [2, 1, 22.5], body: [1, 0], armF: [4, 0, -80], armB: [-3, -1, 60], footF: [-2, -1, 40], footB: [-3, -1, 50] },
+  wHome: { head: [0, 1, 11.25], body: [0, 1], armF: [1, 1, -20], armB: [-1, 1, 20], footF: [2, 0], footB: [-2, 0] },
+  wSnap: { head: [-1, 0, -11.25], body: [0, 0], armF: [1, -2, -150], armB: [-1, 0, 20], footF: [2, 0], footB: [-2, 0] },
+  // Her hero pose on the select screen: knives fanned in both hands, crossed in front of her.
+  lHero: { head: [1, 0, 11.25], body: [0, 0], armF: [3, -2, -135], armB: [-2, -1, 150], footF: [3, 0], footB: [-3, 0] },
+  lHero2: { head: [1, 1, 11.25], body: [0, 1], armF: [3, -1, -135], armB: [-2, 0, 150], footF: [3, 0], footB: [-3, 0] },
   // Juma
   paw0: { armF: [-1, -2, 160], body: [-1, 0], head: [-1, 0] },
   paw1: { armF: [3, 0, -80], body: [1, 0], head: [2, 0], footF: [1, 0] },
@@ -241,16 +286,6 @@ export const FRAMES = {
   // Out of breath at the end of the form: slouched, heaving.
   bTired1: { head: [1, 3, 22.5], body: [0, 2], armF: [1, 2, 0], armB: [0, 2, 5], footF: [3, 0], footB: [-3, 0], tailDeg: 20 },
   bTired2: { head: [1, 4, 33.75], body: [0, 3], armF: [1, 3, 5], armB: [0, 3, 10], footF: [3, 0], footB: [-3, 0], tailDeg: 24 },
-  // Lola's quick kicks and the rocket kick that launches
-  kickA0: { footF: [-1, -1], body: [-1, 0], head: [-1, 0] },
-  kickA1: { footF: [4, -3, -90], head: [-1, 0], armF: [-1, -1, 40], armB: [-1, -1, 40] },
-  kickA2: { footF: [3, -2, -60], head: [-1, 0] },
-  kickB0: { footB: [-1, -1], body: [-1, 0] },
-  kickB1: { footB: [5, -4, -100], head: [-1, 0], armF: [0, -1, 50], front: 'footB' },
-  kickB2: { footB: [3, -2, -60], front: 'footB' },
-  hopkick0: { ...crouch, footF: [0, 0] },
-  hopkick1: { footF: [3, -9, -170], body: [0, -2], head: [-1, -1], armF: [-1, 0, 60], armB: [-1, 0, 60] },
-  hopkick2: { footF: [2, -6, -140], body: [0, -1], head: [0, -1] },
   // Marola's tail swinging up from under the rival
   tailUp0: { ...crouch, tail: [[1, 0], [-4, 1], [-8, 0], [-10, -2]] },
   tailUp1: { head: [-1, -1], body: [0, -1], armF: [-1, -1, 60], tail: [[1, 0], [4, -2], [8, -6], [10, -11], [9, -16], [7, -19]] },
@@ -266,8 +301,6 @@ export const FRAMES = {
   // Air string: a swipe, a forward somersault, then a meteor smash down
   airA0: { armF: [-1, -2, 150], footF: [1, -2], footB: [-1, -1], tailDeg: -10 },
   airA1: { armF: [2, 0, -60], footF: [1, -2], footB: [-1, -1], body: [1, 0], head: [1, 0], tailDeg: 10 },
-  airKick0: { footF: [0, -2, 30], footB: [-1, -1], body: [-1, 0], head: [-1, 0] },
-  airKick1: { footF: [5, -3, -90], footB: [-1, -2], head: [-1, 0], armF: [-1, -1, 60] },
   airWhip0: { footF: [1, -2], footB: [-1, -1], tail: [[1, 0], [-1, -3], [-2, -7], [0, -11], [3, -13]] },
   airWhip1: { footF: [1, -2], footB: [-1, -1], head: [1, 0], tail: [[1, 0], [3, -1], [8, -1], [13, 0], [17, 1]] },
   airB0: { footF: [1, -2], footB: [-1, -2], armF: [0, -1, -120] },
@@ -275,11 +308,8 @@ export const FRAMES = {
   airB2: { footF: [3, -2, -90], spin: 2 },
   spike0: { armF: [0, -3, 180], armB: [0, -3, 180], head: [0, -1], footF: [1, -2], footB: [-1, -1], tailDeg: -20 },
   spike1: { armF: [3, 2, -20], armB: [3, 2, -30], head: [2, 1], body: [1, 0], footF: [0, -1], front: 'armF', tailDeg: 20 },
-  axe0: { footF: [2, -9, -175], body: [0, -1], head: [-1, 0], armF: [-1, 0, 60] },
-  axe1: { footF: [4, -1, -40], head: [1, 1], body: [1, 0] },
   // Dash strikes out of a dodge
   dashAtk: { armF: [3, 0, -90], armB: [2, -1, -100], head: [2, 0], body: [1, 0], footF: [-2, 0, 30], footB: [-3, -1, 40], tailDeg: 20 },
-  dashKick: { footF: [5, -3, -90], footB: [4, -2, -80], body: [-1, -1], head: [-2, 0], armF: [-1, -1, 60] },
   dashWhip: { body: [1, 0], head: [2, 0], footB: [-2, 0], tail: [[1, 0], [4, -2], [9, -3], [14, -2], [19, -1]] },
   // Defence and movement
   parry: { armF: [1, -2, -150], armB: [1, -2, -140], head: [-1, 1], body: [-1, 0], footF: [1, 0], footB: [-1, 0] },
@@ -330,10 +360,6 @@ const STRIKES = {
   whipB: [['whip0', 'whip1', 'whip2'], 'Angry'],
   tailUp: [['tailUp0', 'tailUp1', 'tailUp2'], 'Angry'],
   sweep: [['sweep0', 'sweep1', 'sweep1'], 'Angry'],
-  kickA: [['kickA0', 'kickA1', 'kickA2'], 'Angry'],
-  kickB: [['kickB0', 'kickB1', 'kickB2'], 'Angry'],
-  hopkick: [['hopkick0', 'hopkick1', 'hopkick2'], 'Angry'],
-  kick: [['kick0', 'kick1', 'kick2'], 'Angry'],
   airA: [['airA0', 'airA1', 'airA1'], 'Angry'],
   airB: [['airB0', 'airB1', 'airB2'], 'Angry'],
   spike: [['spike0', 'spike0', 'spike1'], 'Angry'],
@@ -375,15 +401,23 @@ const KEYS = {
   bHammer: [[0, 'bHmA1', 'Angry'], [0.2, 'bHmA2', 'Angry'], [0.4, 'bHmX', 'Open'], [0.48, 'bHmI', 'Open'], [0.68, 'bHmF', 'Angry'], [0.88, 'bSlR', '']],
   bUpper: [[0, 'bUpA1', 'Angry'], [0.2, 'bUpA2', 'Angry'], [0.38, 'bUpX', 'Open'], [0.45, 'bUpI', 'Open'], [0.7, 'bUpF', 'Angry'], [0.9, 'bSlR', '']],
   bQuake: [[0, 'bQkA', 'Angry'], [0.28, 'bSlA2', 'Open'], [0.42, 'bSlX', 'Open'], [0.5, 'bQkI', 'Open'], [0.8, 'bSlF', 'Angry'], [0.92, 'bSlR', '']],
-  bAirSmash: [[0, 'bAsA', 'Angry'], [0.28, 'bSlA2', 'Open'], [0.42, 'bAsI', 'Open']]
+  bAirSmash: [[0, 'bAsA', 'Angry'], [0.28, 'bSlA2', 'Open'], [0.42, 'bAsI', 'Open']],
+  // Lola: the cuts snap almost at once; the skips show her coiled to vanish, then already striking.
+  lCutA: [[0, 'lCaA', 'Angry'], [0.28, 'lCaX', 'Angry'], [0.4, 'lCaI', 'Angry'], [0.75, 'lStance1', '']],
+  lCutB: [[0, 'lCbA', 'Angry'], [0.28, 'lCbX', 'Angry'], [0.4, 'lCbI', 'Angry'], [0.75, 'lStance1', '']],
+  lBehind: [[0, 'lBhA', 'Angry'], [0.26, 'lBhX', 'Open'], [0.5, 'lBhI', 'Open'], [0.7, 'lBhF', 'Angry'], [0.88, 'lStance1', '']],
+  lRise: [[0, 'lRsA', 'Angry'], [0.3, 'lRsX', 'Open'], [0.42, 'lRsI', 'Open'], [0.8, 'lStance1', '']],
+  lLow: [[0, 'lLoA', 'Angry'], [0.3, 'lLoX', 'Angry'], [0.42, 'lLoI', 'Open'], [0.8, 'crouch', '']],
+  lSkip: [[0, 'lSkA', 'Angry'], [0.18, 'lCaX', 'Open'], [0.44, 'lCaI', 'Angry'], [0.58, 'lCbX', 'Angry'], [0.68, 'lCbI', 'Open'], [0.86, 'lStance1', '']],
+  lAirCut: [[0, 'nAcA', 'Angry'], [0.2, 'nAcX', 'Angry'], [0.3, 'nAcI', 'Angry'], [0.46, 'nAcA2', 'Angry'], [0.56, 'nAcX2', 'Angry'], [0.64, 'nAcI2', 'Angry'], [0.84, 'nAcR', '']],
+  lAirDive: [[0, 'lDvA', 'Angry'], [0.22, 'lDvX', 'Open']]
 };
 export const keyFor = (kind, p) => { const k = KEYS[kind]; if (!k) return null; let r = k[0]; for (const e of k) if (p >= e[0]) r = e; return r; };
 
 // The shared air and dash moves look different per fighter: kicks, tail, fangs.
 const BY_TYPE = {
-  airA: { 1: [['airWhip0', 'airWhip1', 'airWhip1'], 'Angry'], 2: [['airKick0', 'airKick1', 'airKick1'], 'Angry'] },
-  spike: { 2: [['axe0', 'axe0', 'axe1'], 'Angry'] },
-  dashAtk: { 1: [['dashWhip', 'dashWhip', 'dashWhip'], 'Angry'], 2: [['dashKick', 'dashKick', 'dashKick'], 'Angry'] }
+  airA: { 1: [['airWhip0', 'airWhip1', 'airWhip1'], 'Angry'] },
+  dashAtk: { 1: [['dashWhip', 'dashWhip', 'dashWhip'], 'Angry'], 2: [['lDash', 'lDash', 'lDash'], 'Angry'] }
 };
 const WEAPON_TIME = { blade: 0.3, pipe: 0.3, bash: 0.3, throw: 0.25 };
 
@@ -445,6 +479,24 @@ function weaponFrame(mv, p, seed, time) {
 }
 
 
+// ZA WARUDO, pose by pose: the watch clicked, the shout with arms flung open, then in the stopped
+// world whatever she did last (the sim keeps it in wPose, wPoseT seconds ago), and the watch again.
+function worldFrame(a, pick) {
+  const t = a.actT ?? 0;
+  if (t < WORLD.intro) return t < 0.32 ? pick('wWatch', t < 0.16 ? 'Angry' : 'Blink') : pick(Math.floor(t * 8) % 2 ? 'wPose2' : 'wPose', 'Open');
+  if (t < WORLD.intro + WORLD.wave) return pick('wPose', 'Open');
+  const pt = a.wPoseT ?? 0;
+  switch (a.wPose) {
+    case 'throw': return pick(pt < 0.12 ? 'lThrowF' : 'lAppear', 'Angry');
+    case 'throwB': return pick(pt < 0.12 ? 'lThrowB' : 'lAppear', 'Angry');
+    case 'dash': return pick('lRingDash', 'Angry');
+    case 'home': return pick('wHome', 'Blink');
+    case 'snap': return pick(pt < 0.28 ? 'wSnap' : 'wHome', pt < 0.28 ? 'Blink' : '');
+    case 'appear': return pick('lAppear', 'Angry');
+  }
+  return pick('lAppear', 'Angry');
+}
+
 const aimArm = (a, recoil) => {
   const aim = a.aim ?? 0;
   let rel = (a.face || 1) > 0 ? aim : Math.PI - aim;
@@ -464,8 +516,9 @@ export function frameFor(a, time = 0) {
   if (act === 'pounce') return pick('pounce', 'Angry');
   if (act === 'ride') return pick(t12 % 2 ? 'ride1' : 'ride2', 'Angry');
   if (act === 'kickoff') return pick('kickoff', 'Angry');
-  if (act === 'sky') return pick('sky', 'Angry');
-  if (act === 'slam') return pick('slam', 'Angry');
+  // Lola between two places: the skip pose (the renderer hides her).
+  if (act === 'blink') return pick('lSkA', 'Angry');
+  if (act === 'world') return worldFrame(a, pick);
   if (act === 'bite') return pick('bite', 'Open');
   if (act === 'shake') return pick(Math.floor(time * 10) % 2 ? 'shake1' : 'shake2', 'Open');
   if (act === 'toss') return pick('toss', 'Angry');
@@ -534,8 +587,14 @@ export function frameFor(a, time = 0) {
     if (p > 0.86) return pick('jSwR', 'Angry');
     return pick(['jFlA', 'jFlB', 'jFlC', 'jFlD'][Math.floor((time + seed) * 30) % 4], Math.floor((time + seed) * 15) % 2 ? 'Open' : 'Angry');
   }
-  if (a.attack > 0 && kind === 'jAirSpin') {
-    const p = 1 - a.attack / MOVES.jAirSpin.dur;
+  if (a.attack > 0 && kind === 'lDance') {
+    const p = 1 - a.attack / MOVES.lDance.dur;
+    if (p < 0.12) return pick('lCaA', 'Angry');
+    if (p > 0.86) return pick('lStance1', 'Angry');
+    return pick(['lDnA', 'lDnB', 'lDnC', 'lDnD'][Math.floor((time + seed) * 30) % 4], Math.floor((time + seed) * 15) % 2 ? 'Open' : 'Angry');
+  }
+  if (a.attack > 0 && (kind === 'jAirSpin' || kind === 'lAirSpin')) {
+    const p = 1 - a.attack / MOVES[kind].dur;
     if (p < 0.12) return pick('nVxA', 'Angry');
     if (p > 0.88) return pick('vortex', 'Angry');
     return { frame: { ...FRAMES.jSpin, spin: Math.floor((time + seed) * 20) * (a.face || 1) }, expr: 'Angry', name: 'jSpin' };
@@ -571,6 +630,7 @@ export function frameFor(a, time = 0) {
     const breath = Math.floor((time + seed) * 1.6) % 2;
     // Nox never stands neutral: low, claws up, leaning toward the fight.
     base = a.type === 4 ? pick(breath ? 'nStance2' : 'nStance1', blink ? 'Blink' : 'Angry')
+      : a.type === 2 ? pick(breath ? 'lStance2' : 'lStance1')
       : a.type === 3 ? (a.form === 'beast' ? pick(breath ? 'bStance2' : 'bStance1', blink ? 'Blink' : 'Angry') : pick(breath ? 'jStance2' : 'jStance1'))
       : pick(breath ? 'idle2' : 'idle');
     base = { ...base, frame: { ...base.frame, tailDeg: Math.round(Math.sin((time + seed) * 1.7) * 2) * 3 } };

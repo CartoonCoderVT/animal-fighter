@@ -10,6 +10,7 @@ import { installHazards, tickHazards, hazardSnapshot } from './hazards.js';
 import { stepRagdolls, settleLimits, knockdown, ragdollOf } from './ragdoll.js';
 import { HALF_H, BODY_W } from '../render/rig.js';
 import { MELEE, isMelee } from './weapons.js';
+import { stepTimeStop } from './timestop.js';
 
 export { EMPTY_INPUT, FIGHTERS };
 
@@ -31,6 +32,8 @@ export class Game {
     this.time = 0; this.seq = 0; this.nextId = 100;
     this.winner = null; this.winPending = null; this.paused = false;
     this.shake = 0; this.hitstop = 0; this.flash = 0; this.slowmo = 0; this.drama = 0; this.slowAcc = 0; this.timeScale = 1; this.scaleAcc = 0; this.grab = null;
+    // Lola's ZA WARUDO: while set, only she and her knives move (sim/timestop.js).
+    this.timeStop = null; this.knives = [];
     this.spawns = MAP.spawns;
     players.forEach((p, i) => this.addActor({ ...p, id: p.id ?? i, x: p.x ?? this.spawns[i % 4][0], y: p.y ?? this.spawns[i % 4][1] }));
     if (!players.length) this.addActor({ id: 0, type: 0, x: this.spawns[0][0], y: this.spawns[0][1], name: 'Você', bot: false });
@@ -53,7 +56,7 @@ export class Game {
       weapon: null, ammo: 0, holding: null, lastInput: EMPTY_INPUT(), input: EMPTY_INPUT(), queued: {},
       respawn: 0, lastHit: null, lastHitTime: -9, jumpGrace: 0, jumpBuffer: 0, airJumps: 0, drop: {}, knocked: false, knock: 0, getup: 0,
       aim: 0, burning: 0, stats: { damage: 0, kills: 0, limbs: 0 }, powerSeq: 0, act: null, actT: 0, gliding: false,
-      form: null, formT: 0, biteCd: 0, chargeCd: 0, carry: null
+      form: null, formT: 0, biteCd: 0, chargeCd: 0, skipCd: 0, carry: null, wPose: null
     };
     body.plugin.actor = a;
     this.actors.push(a);
@@ -172,7 +175,7 @@ export class Game {
       ai: null, attackCd: 0, holding: null, abilityCd: 1, knocked: false, knock: 0, getup: 0, dodge: 0, dodgeKind: null, climbing: false, drop: {},
       act: null, actT: 0, hits: null, gliding: false, holdingLimb: null, holdJoint: null, ghostClear: true, hitlag: 0, lagPos: null,
       parry: 0, parryLag: 0, counter: 0, perfectT: 0, chase: null, float: 0, airDodged: false, hitstun: 0, hitstunMax: 0, stunN: 0, bloodMark: 0, beamAir: false, bounced: false, bounceArm: 0, turnT: 0, batCd: 0, swarm: null,
-      form: null, formT: 0, biteCd: 0, chargeCd: 0, carry: null
+      form: null, formT: 0, biteCd: 0, chargeCd: 0, skipCd: 0, carry: null, wPose: null
     });
     this.fx('spawn', { x: a.x, y: a.y, color: FIGHTERS[a.type].color });
   }
@@ -182,6 +185,8 @@ export class Game {
     dt = 1 / 60;
     this.shake = Math.max(0, this.shake - dt * 25);
     this.flash = Math.max(0, this.flash - dt * 4);
+    // Stopped time: the clock, the physics and everyone else hold still; Lola goes on.
+    if (this.timeStop) { this.seq++; if (stepTimeStop(this, dt)) return; }
     if (this.slowmo > 0) {
       this.slowmo -= dt;
       if (this.slowmo <= 0 && this.winPending !== null) {
@@ -294,10 +299,13 @@ export class Game {
         wounds: a.wounds, severed: a.severed, broken: a.broken, stumps: a.stumps, embedded: a.embedded, bleed: r(a.bleed), char: r(a.char),
         freeze: r(a.freeze), frozen: r(a.frozen), shock: r(a.shock), weapon: a.weapon, ammo: a.ammo, holding: a.holding,
         burning: r(a.burning || 0), holdingLimb: a.holdingLimb || null, respawn: r(a.respawn), skid: r(a.skid || 0), landImpact: r(a.landT > 0 ? a.landImpact : 0),
-        powerSeq: a.powerSeq, recoil: r(a.recoil || 0), stats: a.stats, form: a.form || null, formT: r(a.formT || 0)
+        powerSeq: a.powerSeq, recoil: r(a.recoil || 0), stats: a.stats, form: a.form || null, formT: r(a.formT || 0),
+        wPose: a.wPose || null, wPoseT: r2(a.wPoseT || 0)
       })),
       props: this.props.map(p => ({ id: p.id, kind: p.kind, w: p.w, h: p.h, x: r(p.x), y: r(p.y), angle: r(p.angle * 100) / 100, hp: p.hp, armed: !!p.armed, fuse: p.fuse, burning: r(p.burning || 0), weapon: p.weapon, rocket: p.rocket > 0, chain: !!p.chain })),
       bullets: this.bullets.map(b => ({ id: b.id, x: r(b.x), y: r(b.y), px: r(b.px), py: r(b.py), word: b.word, color: b.color, vx: r(b.vx), vy: r(b.vy), kind: b.kind })),
+      timeStop: this.timeStop && { owner: this.timeStop.owner, t: r2(this.timeStop.t), x: r(this.timeStop.x), y: r(this.timeStop.y), targets: this.timeStop.targets },
+      knives: this.knives.map(k => ({ id: k.id, x: r(k.x), y: r(k.y), ang: r2(k.ang), k: r2(k.k), ring: !!k.ring })),
       limbs: this.limbs.map(l => ({ id: l.id, type: l.type, form: l.form || null, part: l.part, x: r(l.x), y: r(l.y), angle: r(l.angle * 100) / 100, face: l.face, actor: l.actor, attached: l.attached, wounds: l.wounds, char: r(l.char || 0), frozen: l.frozen, bleed: r(l.bleed), embedded: l.embedded || null, shock: (l.shock || 0) > 0, life: r(l.life), cut: l.cut || null })),
       effects: this.effects.map(e => ({ ...e })),
       fires: this.fires.map(f => ({ id: f.id, x: f.x, y: f.y, life: r(f.life) })),

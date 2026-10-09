@@ -11,7 +11,7 @@ import { stepSpecial, startSwarm, tickForm } from './specials.js';
 import { HALF_H, FOOT } from '../render/rig.js';
 
 export { HALF_H };
-const TIMERS = ['batCd', 'biteCd', 'chargeCd', 'hitstun', 'attack', 'attackCd', 'abilityCd', 'float', 'bufA', 'bufP', 'parry', 'parryCd', 'parryLag', 'counter', 'perfectT', 'hurt', 'invincible', 'iframes', 'dodgeCd', 'dodge', 'jumpGrace', 'jumpBuffer', 'stun', 'getup', 'comboTimer', 'shock', 'skid', 'landT', 'climbCd'];
+const TIMERS = ['batCd', 'biteCd', 'chargeCd', 'skipCd', 'hitstun', 'attack', 'attackCd', 'abilityCd', 'float', 'bufA', 'bufP', 'parry', 'parryCd', 'parryLag', 'counter', 'perfectT', 'hurt', 'invincible', 'iframes', 'dodgeCd', 'dodge', 'jumpGrace', 'jumpBuffer', 'stun', 'getup', 'comboTimer', 'shock', 'skid', 'landT', 'climbCd'];
 
 export function groundInfo(g, a) {
   const b = a.body, x = b.position.x, feet = b.position.y + HALF_H;
@@ -322,7 +322,7 @@ export function stepActor(g, a, dt) {
   a.lastPreVy = vy;
 }
 
-const GHOST_ACTS = ['chase', 'ride', 'pounce', 'kickoff', 'plunge', 'requiem', 'swarm', 'charge', 'leap', 'meteor'];
+const GHOST_ACTS = ['chase', 'ride', 'pounce', 'kickoff', 'plunge', 'requiem', 'swarm', 'charge', 'leap', 'meteor', 'blink', 'world'];
 function updateMask(g, a, vy) {
   const b = a.body;
   let mask = MASK.actor;

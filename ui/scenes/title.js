@@ -50,6 +50,7 @@ function stepAttract(shell, dt) {
 export function drawAttract(shell, g, dt, dim = 0.35) {
   const a = shell.attract || shell.ensureAttract();
   shell.renderer.render(a, { settings: { ...shell.settings, shake: false }, dt });
+  shell.renderer.drawOverlay(g, a);
   if (dim > 0) { g.fillStyle = `rgba(8,5,16,${dim})`; g.fillRect(0, 0, VIEW_W, VIEW_H); }
 }
 

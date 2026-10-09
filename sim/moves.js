@@ -16,11 +16,25 @@ export const MOVES = {
   whipB: { dur: 0.28, hits: [0.45], range: 46, band: 22, dmg: [7], kind: 'whip', kb: [[2, 0]], cd: 0.22 },
   tailUp: { dur: 0.36, hits: [0.45], range: 42, band: 26, dmg: [9], kind: 'whip', kb: [[1.2, -10]], cd: 0.3, launch: true },
   sweep: { dur: 0.42, hits: [0.45], range: 50, band: 22, dmg: [9], kind: 'whip', kb: [[2.5, -3.5]], cd: 0.48, knock: true, low: true },
-  // Lola
-  kickA: { dur: 0.22, hits: [0.4], range: 30, band: 24, dmg: [6], kind: 'kick', kb: [[1.2, 0]], cd: 0.14, step: 2 },
-  kickB: { dur: 0.22, hits: [0.4], range: 30, band: 24, dmg: [6], kind: 'kick', kb: [[1.4, 0]], cd: 0.14, step: 2 },
-  hopkick: { dur: 0.36, hits: [0.4], range: 30, band: 28, dmg: [10], kind: 'kick', kb: [[1.2, -10.5]], cd: 0.3, launch: true },
-  kick: { dur: 0.38, hits: [0.3, 0.62], range: 34, band: 24, dmg: [6, 9], kind: 'kick', kb: [[1, 0], [9, -3.5]], cd: 0.5 },
+  // Lola, the maid of the clock: a frantic knife fighter who skips through time. Two quick cuts, a
+  // dance of knives that holds the rival, then she skips behind them and stabs them in the back,
+  // and the rising spiral that launches. warp: where she reappears around the rival ('behind',
+  // 'front' or 'above') at warpAt of the move; reach: how far away she finds that rival.
+  lCutA: { dur: 0.2, hits: [0.4], range: 28, band: 24, dmg: [5], kind: 'knife', kb: [[0.9, 0]], cd: 0.07, step: 2.4 },
+  lCutB: { dur: 0.2, hits: [0.4], range: 28, band: 24, dmg: [5], kind: 'knife', kb: [[1, 0]], cd: 0.07, step: 2.4 },
+  lDance: { dur: 0.46, hits: [0.18, 0.3, 0.42, 0.54, 0.66, 0.8], range: 30, band: 26, dmg: [2, 2, 2, 2, 2, 3], kind: 'knife', kb: [[0.3, 0], [0.3, 0], [0.3, 0], [0.3, 0], [0.3, 0], [1, -0.5]], cd: 0.12, hold: 0.36, step: 1.2, flurry: true },
+  lBehind: { dur: 0.34, hits: [0.56], range: 30, band: 26, dmg: [8], kind: 'knife', kb: [[1.6, -1]], cd: 0.12, hold: 0.46, crumple: true, warp: 'behind', warpAt: 0.26, reach: 90 },
+  lRise: { dur: 0.36, hits: [0.42], range: 30, band: 30, dmg: [9], kind: 'knife', kb: [[1, -10.5]], cd: 0.2, launch: true, step: 2 },
+  // S+J: down low, both knives through the ankles; the rival goes down.
+  lLow: { dur: 0.32, hits: [0.42], range: 34, band: 22, dmg: [8], kind: 'knife', kb: [[2.2, -3]], cd: 0.34, knock: true, low: true, step: 2.5 },
+  // Side+J: the skip. She is in front of a rival a long way off and cuts twice; the string goes on
+  // from the dance of knives.
+  lSkip: { dur: 0.36, hits: [0.48, 0.7], range: 30, band: 24, dmg: [5, 6], kind: 'knife', kb: [[0.4, -0.5], [1.2, -1]], cd: 0.24, hold: 0.42, warp: 'front', warpAt: 0.18, reach: 170 },
+  // Her air string: crossing cuts, a wheel of knives that pulls the rival in, then she skips over
+  // their head and drives both knives down, slamming them into the floor to bounce.
+  lAirCut: { dur: 0.22, hits: [0.3, 0.64], range: 28, band: 26, dmg: [4, 4], kind: 'knife', kb: [[0.4, -0.5], [0.5, -0.5]], cd: 0.08 },
+  lAirSpin: { dur: 0.38, hits: [0.2, 0.36, 0.52, 0.68, 0.84], range: 30, band: 30, dmg: [2, 2, 2, 2, 3], kind: 'knife', kb: [[0, 0], [0, 0], [0, 0], [0, 0], [0.6, -1]], cd: 0.1, around: true, pull: true },
+  lAirDive: { dur: 0.36, hits: [0.52], range: 30, band: 38, dmg: [9], kind: 'knife', kb: [[1.2, 9]], cd: 0.25, spike: true, bounce: true, around: true, warp: 'above', warpAt: 0.22, reach: 120 },
   // Juma, small: quick and frantic. Swipe, swipe, a storm of claws, the rake that lunges in and
   // folds the rival over, and the rising pounce that launches.
   jSwipe: { dur: 0.17, hits: [0.4], range: 28, band: 24, dmg: [5], kind: 'claw', kb: [[0.8, 0]], cd: 0.07, step: 2.6 },
@@ -83,27 +97,36 @@ export const MOVES = {
 };
 Object.assign(MOVES, WEAPON_MOVES);
 
-export const COMBOS = [['scratchA', 'scratchB', 'upper'], ['whipA', 'whipB', 'tailUp'], ['kickA', 'kickB', 'hopkick'], ['jSwipe', 'jSwipe2', 'jFlurry', 'jRake', 'jPounceUp'], ['bloodClaw', 'scytheReap', 'scytheSpin', 'scytheGuillotine', 'bloodSpikes']];
+export const COMBOS = [['scratchA', 'scratchB', 'upper'], ['whipA', 'whipB', 'tailUp'], ['lCutA', 'lCutB', 'lDance', 'lBehind', 'lRise'], ['jSwipe', 'jSwipe2', 'jFlurry', 'jRake', 'jPounceUp'], ['bloodClaw', 'scytheReap', 'scytheSpin', 'scytheGuillotine', 'bloodSpikes']];
 // S+J on the ground: each fighter's heavy blow.
-export const HEAVY = ['lowclaw', 'sweep', 'kick', 'jLow', 'vampKiss'];
+export const HEAVY = ['lowclaw', 'sweep', 'lLow', 'jLow', 'vampKiss'];
 export const AIR = ['airA', 'airB', 'spike'];
 export const NOX_AIR = ['nAirClaw', 'nAirVortex', 'nAirCross', 'nAirScythe'];
 export const JUMA_AIR = ['jAirClaw', 'jAirSpin', 'jAirDive'];
+export const LOLA_AIR = ['lAirCut', 'lAirSpin', 'lAirDive'];
 export const BEAST_COMBO = ['bSlam', 'bHammer', 'bUpper'];
 export const BEAST_AIR = ['bAirSmash'];
 // The ground string a fighter is on right now (Juma's depends on her form).
 export const comboOf = a => (a.type === 3 && a.form === 'beast' ? BEAST_COMBO : COMBOS[a.type]);
 // Air moves and the dash strike hit with each fighter's natural weapon.
-export const NATURAL = ['claw', 'whip', 'kick', 'claw', 'blood'];
+export const NATURAL = ['claw', 'whip', 'knife', 'claw', 'blood'];
 
 // Specials (K). Durations are upper bounds; most end on contact or landing.
 export const SPECIALS = [
   { id: 'pounce', cd: 6, dur: 0.75, ride: 1.3 },
   { id: 'ball', cd: 8, dur: 2.6 },
-  { id: 'sky', cd: 7, dur: 2.2 },
+  // ZA WARUDO: Lola stops time (sim/timestop.js). Slow to charge; her blows that land speed it up.
+  { id: 'world', cd: 20 },
   // Juma turns into the beast: the shiver, the pop at `pop`, the roar; `form` seconds as the beast.
   { id: 'morph', cd: 9, dur: 1.0, pop: 0.6, form: 11 },
   // Piercing blood: blood condensed into an orb (charge, open to hits), then fired as a beam
   // through the arena; diagonally down from the air. Three blood marks on a rival go supernova.
   { id: 'beam', cd: 6, dur: 0.78, charge: 0.34 }
 ];
+
+// ZA WARUDO's timing, shared by the simulation (sim/timestop.js) and the cutscene. intro: the cut-in
+// over the frozen frame; wave: the color drains out from her; stop: the stopped world; outro: the
+// watch snaps shut. hang: how long a thrown knife flies before it stops in the air.
+export const WORLD = { intro: 1.15, wave: 0.45, stop: 2.4, outro: 0.55, hang: 0.13, speed: 9, dmg: 1.2, range: 430 };
+export const WORLD_T = WORLD.intro + WORLD.wave + WORLD.stop + WORLD.outro;
+export const worldPhase = t => (t < WORLD.intro ? 'intro' : t < WORLD.intro + WORLD.wave ? 'wave' : t < WORLD.intro + WORLD.wave + WORLD.stop ? 'stop' : 'outro');

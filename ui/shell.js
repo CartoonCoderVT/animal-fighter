@@ -186,6 +186,8 @@ export class Shell {
         return { ...a, x: b.x + (a.x - b.x) * t, y: b.y + (a.y - b.y) * t, angle: Number.isFinite(a.angle) && Number.isFinite(b.angle) ? lerpA(b.angle, a.angle) : a.angle };
       });
     }
+    // The cut-in and the stopped world are timed by the time stop's own clock: smooth it too.
+    if (remote.timeStop && prev.timeStop && remote.timeStop.owner === prev.timeStop.owner) out.timeStop = { ...remote.timeStop, t: prev.timeStop.t + (remote.timeStop.t - prev.timeStop.t) * t };
     if (remote.hazards && prev.hazards) {
       out.hazards = { ...remote.hazards, lamps: remote.hazards.lamps.map((l, i) => { const p = prev.hazards.lamps[i]; return p ? { ...l, x: p.x + (l.x - p.x) * t, y: p.y + (l.y - p.y) * t } : l; }) };
     }

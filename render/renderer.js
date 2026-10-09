@@ -17,9 +17,12 @@ import { frameFor } from './anim.js';
 import { Secondary } from './secondary.js';
 import { drawBloodArt, drawMarks } from './blood-art.js';
 import { NoxHero } from './hero.js';
+import { LolaHero } from './lola-hero.js';
 import { MOVES, COMBOS, comboOf } from '../sim/moves.js';
 import { castFor } from './pixel-data.js';
 import { isMelee, WEAPON_INFO } from '../sim/weapons.js';
+import { LolaFX, handKnives, embeddedKnife } from './lola-art.js';
+import { worldPhase } from '../sim/moves.js';
 
 const mk = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
 const X = v => Math.round(v * S);
@@ -29,7 +32,7 @@ const FIG_W = 72, FIG_H = 64, FIG_X = 36, FIG_Y = 50;
 const WEAPON_SCALE = 0.7;
 // Nox's eye in head cells from the head pivot; the hand at the tip of the near arm.
 const EYE = [2, -6], HAND = [0, 3];
-const DEMO_ACT = ['pounce', 'ball', 'sky', 'morph', 'beam'];
+const DEMO_ACT = ['pounce', 'ball', 'world', 'morph', 'beam'];
 // The instant of Juma's transformation: the figure burns white just before and after the pop.
 function morphFlash(a) {
   const t = a.actT ?? 0;
@@ -41,7 +44,7 @@ function morphFlash(a) {
 const morphJitter = (a, time) => (a.act === 'morph' && (a.actT ?? 0) > 0.12 && (a.actT ?? 0) < 0.6 ? (Math.floor(time * 34) % 2 ? 1 : -1) : 0);
 const JUMA_TRAIL = { null: '#ffd27a', beast: '#ff7a2a' };
 // Specials the menu preview carries forward across the pedestal.
-const DEMO_MOVES = ['pounce', 'ball', 'sky', 'bite'];
+const DEMO_MOVES = ['pounce', 'ball', 'bite'];
 
 function vignette() {
   const c = mk(VIEW_W, VIEW_H), g = c.getContext('2d');
@@ -84,6 +87,7 @@ export class Renderer {
     this.world = new World();
     this.light = new Lighting();
     this.fx = new FX();
+    this.lola = new LolaFX(this);
     this.previews = new Map();
     this.secondary = new Secondary();
     this.simTime = null;
@@ -120,6 +124,7 @@ export class Renderer {
 
   resetMatch() {
     this.fx.reset();
+    this.lola.reset();
     this.figCache.clear();
     this.secondary.clear();
     this.trails.clear();
@@ -235,6 +240,18 @@ export class Renderer {
       }
     } else { fx = VIEW_W / 2; fy = VIEW_H / 2; }
     if (on && (state.slowmo || state.drama)) zoomT *= 1.08;
+    // ZA WARUDO: in on Lola for the cut-in, then the stopped world around her and her rivals.
+    const ts = state.timeStop, lola = ts && state.actors.find(a => a.id === ts.owner);
+    if (on && lola) {
+      if (worldPhase(ts.t) === 'intro') { fx = X(lola.x); fy = X(lola.y) - 12; zoomT = 2.1; }
+      else {
+        const pts = [[X(lola.x), X(lola.y)], ...state.actors.filter(a => (ts.targets || []).includes(a.id) && !a.dead).map(a => [X(a.x), X(a.y)])];
+        let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+        for (const [x, y] of pts) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+        zoomT = clamp(Math.min(VIEW_W / (x1 - x0 + 200), VIEW_H / (y1 - y0 + 150)), 1.1, 1.75);
+        fx = (x0 + x1) / 2; fy = (y0 + y1) / 2 - 10;
+      }
+    }
     const k = 1 - Math.exp(-dt * 4.5);
     c.x += (fx - c.x) * k; c.y += (fy - c.y) * k;
     c.zoom += (zoomT - c.zoom) * (1 - Math.exp(-dt * 1.6));
@@ -256,19 +273,19 @@ export class Renderer {
   hype(e, settings) {
     const c = this.cam, p = e.p || 1, x = X(e.x ?? 0), y = X(e.y ?? 0);
     // Nox's big moments shake and punch in too: the burst, the requiem, the bounce, the beam.
-    const PUNCH = { supernova: 0.05, requiemBurst: 0.07, groundBounce: 0.025, bloodBeam: 0.03, morphPop: 0.07, wallSplat: 0.05, quake: p >= 6 ? 0.03 : 0 };
+    const PUNCH = { supernova: 0.05, requiemBurst: 0.07, groundBounce: 0.025, bloodBeam: 0.03, morphPop: 0.07, wallSplat: 0.05, quake: p >= 6 ? 0.03 : 0, worldEnd: 0.08 };
     if (PUNCH[e.fx] && this.visible(x, y, 20)) {
       c.punch = Math.max(c.punch, PUNCH[e.fx]);
-      if ((e.fx === 'requiemBurst' || e.fx === 'morphPop') && settings.shake !== false) {
+      if ((e.fx === 'requiemBurst' || e.fx === 'morphPop' || e.fx === 'worldEnd') && settings.shake !== false) {
         this.lastImpact = this.time;
         this.focusLines.push({ x, y, life: 0.3, max: 0.3, seed: (e.id || 1) * 7, p: 3 });
         this.impact = { x, y, frames: e.fx === 'morphPop' ? 3 : 4, n: 0, seed: e.id || 1, clash: e.fx === 'requiemBurst' };
       }
     }
-    const TRAUMA = { quake: 0.03 * p, morphPop: 0.45, wallSplat: 0.32, roar: 0.12, armor: 0.03, supernova: 0.35, requiemBurst: 0.5, groundBounce: 0.16, bloodBeam: 0.2, bloodSpikes: 0.07, requiemCut: 0.03, shadowX: 0.05, hit: 0.035 + 0.035 * p, impact: e.ko ? 0.4 : 0.12 + 0.06 * p, explosion: 0.5, clang: e.big ? 0.12 : 0.05, clash: 0.18, land: p >= 0.9 ? 0.08 : 0, parry: 0.12 };
+    const TRAUMA = { worldStart: 0.35, worldEnd: 0.6, timeSkip: 0.04, knifeHit: 0.02, quake: 0.03 * p, morphPop: 0.45, wallSplat: 0.32, roar: 0.12, armor: 0.03, supernova: 0.35, requiemBurst: 0.5, groundBounce: 0.16, bloodBeam: 0.2, bloodSpikes: 0.07, requiemCut: 0.03, shadowX: 0.05, hit: 0.035 + 0.035 * p, impact: e.ko ? 0.4 : 0.12 + 0.06 * p, explosion: 0.5, clang: e.big ? 0.12 : 0.05, clash: 0.18, land: p >= 0.9 ? 0.08 : 0, parry: 0.12 };
     const t = TRAUMA[e.fx];
     if (!t) return;
-    const seen = this.visible(x, y, e.fx === 'explosion' ? 60 : 4);
+    const seen = e.fx === 'worldStart' || e.fx === 'worldEnd' || this.visible(x, y, e.fx === 'explosion' ? 60 : 4);
     if (!seen) return;
     this.trauma = Math.min(1, this.trauma + t);
     if (e.fx === 'explosion') this.flashT = Math.max(this.flashT, 0.35);
@@ -326,7 +343,7 @@ export class Renderer {
     const hand = f.info.hand, face = a.face || 1;
     // Juma's smears and glints are amber, the beast's a hot orange; Nox's are blood.
     const juma = a.type === 3, beast = juma && a.form === 'beast';
-    const c = juma ? (beast ? { c1: '#ffb070', c2: '#ff6a2a' } : { c1: '#fff1c8', c2: '#ffd27a' }) : {};
+    const c = juma ? (beast ? { c1: '#ffb070', c2: '#ff6a2a' } : { c1: '#fff1c8', c2: '#ffd27a' }) : a.type === 2 ? { c1: '#eef6ff', c2: '#7fb4ff' } : {};
     if (last && last.name !== name && this.simDt > 0) {
       const dust = (x, dir, n) => this.fx.burst('dust', x, f.hy - 1, n, { a: dir > 0 ? -0.35 : Math.PI + 0.35, spread: 0.7, s: beast ? 2 : 1.5, life: beast ? 0.6 : 0.45, colors: ['#8a7f95', '#6a6078', '#a89cb8'], g: -0.02, drag: 0.9, size: 2 });
       if (/X2?$/.test(name)) {
@@ -346,11 +363,11 @@ export class Renderer {
     const FAST = ['pounce', 'kickoff', 'slam', 'chase', 'stomp', 'requiem', 'charge', 'leap', 'meteor', 'bite'];
     for (const f of figures) {
       const a = f.a, list = this.trails.get(a.id) || [];
-      const fast = FAST.includes(a.act) || a.dodge > 0 || a.perfectT > 0 || (a.attack > 0 && ['dashAtk', 'spike', 'shadowCut', 'nAirScythe', 'nAirVortex', 'scytheGuillotine', 'scytheSpin', 'scytheReap', 'jBolt', 'jRake', 'jPounceUp', 'jFlurry', 'jAirSpin', 'jAirDive', 'bHammer', 'bUpper', 'bAirSmash'].includes(a.attackKind));
+      const fast = FAST.includes(a.act) || a.dodge > 0 || a.perfectT > 0 || (a.attack > 0 && ['dashAtk', 'spike', 'shadowCut', 'nAirScythe', 'nAirVortex', 'scytheGuillotine', 'scytheSpin', 'scytheReap', 'jBolt', 'jRake', 'jPounceUp', 'jFlurry', 'jAirSpin', 'jAirDive', 'bHammer', 'bUpper', 'bAirSmash', 'lDance', 'lBehind', 'lRise', 'lSkip', 'lAirSpin', 'lAirDive'].includes(a.attackKind));
       f.trail = list;
       if (fast && dt > 0 && (list.stepT = (list.stepT || 0) + dt) > 0.05) {
         list.stepT = 0;
-        list.push({ s: f.info.sprite, o: f.info.overlay, x: f.hx, y: f.hy, face: a.face || 1, life: 0.2, tint: a.perfectT > 0 ? '#bfe8ff' : a.type === 4 ? '#e2445c' : a.type === 3 ? JUMA_TRAIL[a.form || null] : null });
+        list.push({ s: f.info.sprite, o: f.info.overlay, x: f.hx, y: f.hy, face: a.face || 1, life: 0.2, tint: a.perfectT > 0 ? '#bfe8ff' : a.type === 4 ? '#e2445c' : a.type === 3 ? JUMA_TRAIL[a.form || null] : a.type === 2 ? '#7fb4ff' : null });
       }
       for (const g of list) g.life -= dt;
       while (list.length && list[0].life <= 0) list.shift();
@@ -431,12 +448,14 @@ export class Renderer {
     this.fx.gore = settings.gore ?? 2;
     this.fx.limit = settings.particles === false ? 300 : 900;
     const events = state.fxQueue ? state.fxQueue.splice(0) : (state.events || []).filter(e => e.type === 'fx' && e.id > this.fx.lastId);
-    for (const e of events) { this.fx.event(e); this.hype(e, settings); if (!state.fxQueue) this.fx.lastId = Math.max(this.fx.lastId, e.id); }
+    for (const e of events) { this.fx.event(e); this.lola.event(e); this.hype(e, settings); if (!state.fxQueue) this.fx.lastId = Math.max(this.fx.lastId, e.id); }
     this.updateCamera(state, dt, settings, localId);
     const hz = state.hazards || null;
     this.spawnAmbientFx(state, hz, dt);
-    // Effects run on game time: they slow down with the dramatic slow motion and the LAB's.
-    this.fx.update(dt * (state.drama ? 0.35 : 1) * Math.min(1, state.timeScale ?? 1));
+    // Effects run on game time: they slow down with the dramatic slow motion and the LAB's, and
+    // hang where they are while Lola holds time still. Hers run on.
+    this.fx.update(state.timeStop ? 0 : dt * (state.drama ? 0.35 : 1) * Math.min(1, state.timeScale ?? 1));
+    this.lola.update(dt * (state.drama && !state.timeStop ? 0.35 : 1));
 
     const [ox, oy] = this.shakeOffset(dt, settings);
     const rich = settings.particles !== false && !this.autoLow;
@@ -453,9 +472,10 @@ export class Renderer {
       for (const k of ['eye', 'hand']) { info[k].x += fx - FIG_X; info[k].y += fy - FIG_Y; }
       fc.alpha = fc.body.g.getImageData(0, 0, FIG_W, FIG_H).data;
       figures.push({ a, hx: fx, hy: fy, cx: fx, cy: fy - 10, info, fc, x: fx - FIG_X + ox, y: fy - FIG_Y + oy });
+      if (a.type === 2 && a.act !== 'blink') this.lola.remember(a, info);
     }
     this.updateTrails(figures, this.simDt);
-    for (const f of figures) if (f.a.type === 4 || f.a.type === 3) this.keyFx(f);
+    for (const f of figures) if (f.a.type >= 2) this.keyFx(f);
 
     // Lights are gathered up front: rims and wall shadows need them.
     const L = this.light;
@@ -487,6 +507,7 @@ export class Renderer {
     this.drawContactShadows(lg, state, ox, oy);
     for (const p of state.props) this.drawProp(lg, p, ox, oy, t);
     this.drawLimbs(lg, state, ox, oy, t);
+    this.lola.drawLit(lg, state, ox, oy);
     this.drawTrails(lg, figures, ox, oy);
     for (const f of figures) {
       if (f.a.invincible > 0.1 && Math.floor(t * 12) % 2) lg.globalAlpha = 0.55;
@@ -552,6 +573,7 @@ export class Renderer {
     }
     sg.drawImage(this.world.fg, Math.round(ox * 1.3), Math.round(oy * 1.3));
     this.fx.drawGlyphs(sg, ox, oy);
+    this.lola.worldPass(sg, state, figures, ox, oy);
     if (debug) this.drawDebug(sg, state, ox, oy);
     this.drawFocusLines(sg, dt);
     if (this.impact) {
@@ -582,19 +604,24 @@ export class Renderer {
     fx += morphJitter(a, time) * scale;
     const f = frameFor(a, time), frame = f.frame;
     const chains = this.secondary.update(a, frame, time, this.simDt);
-    const sprites = figureSprite(a, f, variantOf(a, this.time), chains), flash = morphFlash(a);
+    const sprites = figureSprite(a, f, variantOf(a, this.time), chains), flash = morphFlash(a) || (a.type === 2 && this.lola.flashOf(a.id));
     const s = flash ? tintOf(sprites.s, flash) : sprites.s, overlay = sprites.overlay && flash ? tintOf(sprites.overlay, flash) : sprites.overlay;
     const severed = a.severed || [];
     const ch = castFor(a.type, a.form), eye = ch.eye || EYE;
     const hand = figurePoint(frame, 'armF', HAND[0], HAND[1], fx, fy, face, scale, ch);
-    const behind = a.weapon === 'extinguisher', bats = a.act === 'swarm';
+    // Nox as a swarm of bats, Lola between two places in a skip: nothing to draw.
+    const behind = a.weapon === 'extinguisher', bats = a.act === 'swarm' || a.act === 'blink';
+    const knives = a.type === 2 && !bats && !a.weapon;
     if (behind && !severed.includes('armF')) this.drawWeapon(g, a, frame, hand, face, scale);
+    if (knives) handKnives(g, a, f, fx, fy, face, scale, this.time, 'back');
     if (overlay && !bats) drawFigure(g, overlay, fx, fy, face, scale);
     if (!bats) drawFigure(g, s, fx, fy, face, scale);
+    if (knives) handKnives(g, a, f, fx, fy, face, scale, this.time, 'front');
     if (!behind && a.weapon && !severed.includes('armF')) this.drawWeapon(g, a, frame, hand, face, scale);
     for (const e of a.embedded || []) {
       if (severed.includes(e.part)) continue;
       const p = figurePoint(frame, e.part, 0, e.part === 'head' ? -5 : e.part === 'body' ? -4 : 2, fx, fy, face, scale);
+      if (e.kind === 'knife') { embeddedKnife(g, p.x, p.y, (e.a || 0) * face); continue; }
       const da = (e.a || 0) * face + Math.PI;
       for (let i = 0; i < 5; i++) { g.fillStyle = i < 2 ? '#3e2c2c' : i === 4 ? '#ffffff' : '#c9d3de'; g.fillRect(Math.round(p.x + Math.cos(da) * (i - 1)), Math.round(p.y + Math.sin(da) * (i - 1)), 1, 1); }
     }
@@ -946,6 +973,7 @@ export class Renderer {
       }
     }
     for (const b of state.bullets || []) {
+      if (b.kind === 'knife') continue;
       const x = X(b.x) + ox, y = X(b.y) + oy;
       if (b.word) drawText(eg, b.word, x, y - 5, { color: b.color, outline: '#1a1424', align: 'center' });
       else {
@@ -984,7 +1012,12 @@ export class Renderer {
     }
     this.fx.drawHemo(eg, ox, oy, t);
     this.fx.drawEmissive(eg, ox, oy, t);
+    // In stopped time Lola's effects are drawn in color over the gray world instead (worldPass).
+    if (!state.timeStop) this.lola.drawEmissive(eg, state, ox, oy);
   }
+
+  // Screen-space overlays drawn over the HUD (ZA WARUDO's cut-in, bars and captions).
+  drawOverlay(g, state) { if (state) this.lola.drawOverlay(g, state); }
 
   // How strongly Juma glows: swelling through the transformation, a smoulder as the beast.
   jumaGlow(a, t) {
@@ -1091,10 +1124,11 @@ export class Renderer {
     return this.menuSec.get(key);
   }
 
-  // A fighter's entrance and hero pose on the select screen (t: seconds since picked). Nox has his
-  // own; the others play their moves.
+  // A fighter's entrance and hero pose on the select screen (t: seconds since picked). Nox and Lola
+  // have their own; the others play their moves.
   drawHero(g, type, x, y, t, { density = 2, dt = 1 / 60, key = 'hero' + type } = {}) {
     if (type === 4) { (this.noxHero ||= new NoxHero(this)).draw(g, x, y, t, { density, dt, gore: this.fx.gore }); return; }
+    if (type === 2) { (this.lolaHero ||= new LolaHero(this)).draw(g, x, y, t, { density, dt }); return; }
     this.drawPreview(g, type, x, y, { density, mode: 'demo', key, face: 1, dt });
   }
 
@@ -1140,8 +1174,10 @@ export class Renderer {
     const sprites = figureSprite(a, f, '', chains), flash = morphFlash(a);
     const s = flash ? tintOf(sprites.s, flash) : sprites.s, overlay = sprites.overlay && flash ? tintOf(sprites.overlay, flash) : sprites.overlay;
     x += morphJitter(a, p.t) * density;
+    if (type === 2 && !dim) handKnives(g, a, f, x, y, face, density, p.t, 'back');
     if (overlay) drawFigure(g, overlay, x, y, face, density);
     drawFigure(g, s, x, y, face, density);
+    if (type === 2 && !dim) handKnives(g, a, f, x, y, face, density, p.t, 'front');
     if (f.ball) this.drawBall(g, x, y, density, p.t);
     if (type === 4 && !dim) drawBloodArt(g, a, f.frame, x, y, p.t, { scale: density, gore: this.fx.gore });
     if (dim > 0) {
