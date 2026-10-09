@@ -145,8 +145,9 @@ export function drawCandle(g, x, y, { lit = true, t = 0, hurt = 0, emissive = fa
 
 // ---- wall torch (the hidden room) -----------------------------------------------------------
 // An iron sconce fixed to the wall at (x, y) (the cup's rim), with a bigger flame. Its light is in
-// castleLights (HIDDEN_TORCH).
-export const HIDDEN_TORCH = { x: 626, y: 120 };
+// castleLights (HIDDEN_TORCH). castle-world.js paints this very sconce (with a still flame) in the hidden
+// room at (584, 118..126): keep the two in step, the light has to sit on the painted flame.
+export const HIDDEN_TORCH = { x: 584, y: 120 };
 const SCONCE = [
   'k66665k',
   'k45543k',
@@ -931,6 +932,6 @@ export function castleLights(state = {}, t = 0) {
   }
   // The torch in the hidden room: dim behind the closed door, it spills out as the slab rises.
   const open = hz.door?.open ?? 0;
-  out.push({ x: HIDDEN_TORCH.x, y: HIDDEN_TORCH.y - 4, r: 72, color: '#ffb060', i: (0.35 + open * 0.55) * flick(9.1), occlude: true });
+  out.push({ x: HIDDEN_TORCH.x, y: HIDDEN_TORCH.y - 6, r: 72, color: '#ffb060', i: (0.35 + open * 0.55) * flick(9.1), occlude: true });
   return out;
 }

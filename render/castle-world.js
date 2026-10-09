@@ -17,6 +17,7 @@ const TOWERS = [{ x0: 0, x1: 100, y0: 160, y1: 200, side: -1 }, { x0: 540, x1: 6
 const ROOF = { x0: 540, x1: 640, y0: 78, y1: 100 };
 const ROOM = { x0: 556, x1: 640, y0: 100, y1: 160 };
 const DOOR = { x0: 540, x1: 556 };
+const TORCH = { x: 626, y: 120 }; // = HIDDEN_TORCH in render/castle-art.js, where the room's light is
 const BALCONIES = [{ x0: 104, x1: 224, y: 248, ladder: 124 }, { x0: 416, x1: 536, y: 248, ladder: 516 }];
 const BRIDGES = [{ x0: 230, x1: 292, y: 168 }, { x0: 348, x1: 410, y: 168 }];
 const GALLERY = { x0: 160, x1: 480, y: 90 };
@@ -690,21 +691,22 @@ function paintBack() {
   // The hidden room on the right tower: dark stone, a torch and a cobweb.
   for (let y = ROOM.y0; y < ROOM.y1; y++) for (let x = DOOR.x0; x < ROOM.x1; x++) p.set(x, y, '#0c0914');
   masonry(p, ROOM.x0, ROOM.y0, ROOM.x1, ROOM.y1, 8, 12, 22, { mortar: '#09070f', shadow: '#110d1b', f: ['#191427', '#1c162b', '#1f1930'], hi: '#272040', spec: '#231c38' }, 77);
-  const tx = 584, ty = 118;
+  // The torch sits where render/castle-art.js puts its light (HIDDEN_TORCH, the cup's rim at 626, 120).
+  const tx = TORCH.x, ty = TORCH.y - 2;
   for (let y = ROOM.y0; y < ROOM.y1; y++) for (let x = ROOM.x0; x < ROOM.x1; x++) {
     const d = Math.hypot(x + 0.5 - tx, (y + 0.5 - ty) * 1.2);
-    const k = clamp01(1 - d / 34);
+    const k = clamp01(1 - d / 38);
     const band = Math.floor(k * 4 + bayer(x, y) * 0.999) / 4;
     if (band > 0) p.set(x, y, band > 0.6 ? '#b0603a' : band > 0.3 ? '#7a3c34' : '#4a2632', 70 + band * 90);
   }
   // Torch sconce with a still flame (the lighting adds the glow).
-  p.sprite(tx - 3, ty + 2, ['#.....#', '#######', '.#####.', '..###..', '...#...', '...#...', '..###..'], { '#': IRON[3] });
-  p.sprite(tx - 2, ty - 7, ['..a..', '..a..', '.aba.', '.bcb.', 'abccb', 'bcccb', '.bcb.', '..b..'], { a: FIRE[3], b: FIRE[2], c: FIRE[1] });
-  p.set(tx, ty - 2, FIRE[0]);
-  cobweb(p, 639, ROOM.y0, 14, -1, 1, '#9a94b8', 110);
-  // Chains and shackles on the wall, a skull on the floor.
-  chain(p, 626, ROOM.y0 + 2, 128);
-  p.sprite(623, 128, ['.###.', '#...#', '#...#', '.###.'], { '#': IRON[4] });
+  p.sprite(tx - 3, ty + 2, ['l.....l', '#lllll#', '.#mmm#.', '..#m#..', '...#...', '..#l#..', '..###..'], { '#': IRON[1], l: IRON[5], m: IRON[3] });
+  p.sprite(tx - 2, ty - 6, ['..a..', '..a..', '.aba.', '.bcb.', 'abccb', 'bcccb', '.bcb.', '..b..'], { a: FIRE[3], b: FIRE[2], c: FIRE[1] });
+  p.set(tx, ty - 1, FIRE[0]);
+  cobweb(p, ROOM.x0 + 1, ROOM.y0 + 2, 12, 1, 1, '#9a94b8', 110);
+  // Chains and shackles on the wall over a prisoner's skull.
+  chain(p, 574, ROOM.y0 + 2, 128);
+  p.sprite(571, 128, ['.###.', '#...#', '#...#', '.###.'], { '#': IRON[4] });
   p.sprite(560, 153, ['.###..', '#####.', '#o#o#.', '#####.', '.#.#..'], { '#': BONE[2], o: '#140d16' });
   p.set(567, 158, BONE[1]); p.set(568, 159, BONE[2]); p.set(569, 158, BONE[1]);
   // The doorway (behind the gargoyle's door): a deep jamb.
@@ -829,8 +831,10 @@ function paintSolids() {
   for (const t of TOWERS) {
     playStone(p, t.x0, t.y0, t.x1, t.y1 - 6, 40 + t.side, { ch: 8, wmin: 14, wmax: 26, frieze: true });
     lombard(p, t.x0, t.x1, t.y1 - 6);
+    // The inner end of the block: an edge pixel and one more inward (side points into the room for the
+    // right tower, out of it for the left one, so inward is always + side).
     const ex = t.side < 0 ? t.x1 - 1 : t.x0;
-    for (let y = t.y0 + 1; y < t.y1; y++) { p.set(ex, y, t.side < 0 ? '#191426' : PLAY_TOP[2]); p.set(ex - t.side, y, t.side < 0 ? PLAY.shadow : PLAY.spec); }
+    for (let y = t.y0 + 1; y < t.y1; y++) { p.set(ex, y, t.side < 0 ? '#191426' : PLAY_TOP[2]); p.set(ex + t.side, y, t.side < 0 ? PLAY.shadow : PLAY.spec); }
   }
   playStone(p, ROOF.x0, ROOF.y0, ROOF.x1, ROOF.y1 - 6, 47, { ch: 6, wmin: 12, wmax: 22, frieze: true });
   lombard(p, ROOF.x0, ROOF.x1, ROOF.y1 - 6);
@@ -1140,43 +1144,52 @@ function handMask(angle, len, tail, hw) {
   return out;
 }
 
-function gearPaint(p, cx, cy, r, teeth, rot, cols, spokes = 4) {
-  const R = r + 2;
-  for (let y = Math.floor(cy - R); y <= Math.ceil(cy + R); y++) for (let x = Math.floor(cx - R); x <= Math.ceil(cx + R); x++) {
-    const dx = x + 0.5 - cx, dy = y + 0.5 - cy, d = Math.hypot(dx, dy);
-    const a = Math.atan2(dy, dx) - rot, tooth = (((a / TAU) * teeth % 1) + 1) % 1 < 0.5;
-    const outer = tooth ? r : r - 2;
-    if (d > outer) continue;
-    const lit = (-dx * 0.6 - dy * 0.8) / (d || 1);
-    let col = null;
-    if (d > r - 4.5) col = d > outer - 1 ? (lit > 0.2 ? cols[3] : cols[1]) : lit > 0.3 ? cols[3] : lit < -0.3 ? cols[1] : cols[2];
-    else if (d < 2.5) col = d < 1.2 ? cols[0] : cols[3];
-    else {
-      const sa = ((a % (TAU / spokes)) + TAU / spokes) % (TAU / spokes);
-      const off = Math.min(sa, TAU / spokes - sa) * d;
-      if (off < 1.1) col = lit > 0 ? cols[3] : cols[2];
-      else if (d < 4) col = cols[1];
-    }
-    if (col) p.set(x, y, col);
+// Paints a shape given by inside(x, y) as a lit metal part: a 1px dark outline where it meets the
+// outside, a bright rim on the edges that face the light (upper left), shading across the body by the
+// normal from (cx, cy). cols: [outline, dark, mid, light, highlight].
+function metalPaint(p, x0, y0, x1, y1, cx, cy, inside, cols) {
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+    if (!inside(x, y)) continue;
+    const dx = x + 0.5 - cx, dy = y + 0.5 - cy, d = Math.hypot(dx, dy) || 1, lit = (-dx * 0.6 - dy * 0.8) / d;
+    const oL = !inside(x - 1, y), oU = !inside(x, y - 1), oR = !inside(x + 1, y), oD = !inside(x, y + 1);
+    let col;
+    if ((oL || oU) && !oR && !oD && lit > -0.2) col = cols[4];
+    else if (oL || oU || oR || oD) col = cols[0];
+    else if (!inside(x + 1, y + 1)) col = cols[1];
+    else col = lit > 0.35 ? cols[3] : lit < -0.35 ? cols[1] : cols[2];
+    p.set(x, y, col);
   }
 }
 
-const COG = { r: 52, teeth: 32, inner: 47 };
+// A spur gear: teeth, a rim, spokes and a hub with its axle hole.
+function gearPaint(p, cx, cy, r, teeth, rot, cols, spokes = 4) {
+  const seg = TAU / spokes;
+  const inside = (x, y) => {
+    const dx = x + 0.5 - cx, dy = y + 0.5 - cy, d = Math.hypot(dx, dy);
+    if (d > r + 0.01) return false;
+    const a = Math.atan2(dy, dx) - rot, u = (((a / TAU) * teeth % 1) + 1) % 1;
+    if (d > r - 2 && (u < 0.12 || u > 0.62)) return false;
+    if (d < 1.1) return false;
+    if (d < 3.2 || d > r - 4.6) return true;
+    const sa = (((a % seg) + seg) % seg), off = Math.min(sa, seg - sa) * d;
+    return off < 1.15;
+  };
+  metalPaint(p, Math.floor(cx - r - 1), Math.floor(cy - r - 1), Math.ceil(cx + r + 1), Math.ceil(cy + r + 1), cx, cy, inside, cols);
+}
+
+// The giant cog turning behind the clock's stone roundel: only its toothed ring shows around it.
+const COG = { r: 52, teeth: 32, inner: 46 };
+const COG_COLS = ['#0b0912', '#1a1528', '#272039', '#342c4c', '#51487a'];
 function paintCog(rot) {
   const S = COG.r * 2 + 6, p = new Pix(S, S), c = S / 2;
-  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+  const inside = (x, y) => {
     const dx = x + 0.5 - c, dy = y + 0.5 - c, d = Math.hypot(dx, dy);
-    if (d < COG.inner - 1 || d > COG.r) continue;
-    const a = Math.atan2(dy, dx) - rot, u = (((a / TAU) * COG.teeth % 1) + 1) % 1;
-    const tooth = u > 0.18 && u < 0.62;
-    if (d > COG.inner + 1 && !tooth) continue;
-    const lit = (-dx * 0.6 - dy * 0.8) / d;
-    let col = '#2a2440';
-    if (d > COG.r - 1 || (tooth && (u < 0.24 || u > 0.56))) col = lit > 0.2 ? '#4a4168' : '#151122';
-    else if (lit > 0.45) col = '#3a3256';
-    else if (lit < -0.4) col = '#1c172e';
-    p.set(x, y, col);
-  }
+    if (d < COG.inner || d > COG.r) return false;
+    if (d < COG.r - 3) return true;
+    const u = ((((Math.atan2(dy, dx) - rot) / TAU) * COG.teeth % 1) + 1) % 1;
+    return u > 0.16 && u < 0.6;
+  };
+  metalPaint(p, 0, 0, S - 1, S - 1, c, c, inside, COG_COLS);
   return p.done();
 }
 
