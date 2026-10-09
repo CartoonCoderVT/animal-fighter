@@ -7,6 +7,7 @@
 // so a front part (head, near arm) gets a dark line where it overlaps what is behind it.
 import { PARTS } from './pixel-parts.js';
 import { FROG_PALETTES, FROG_PARTS, FROG_TAILS } from './pixel-frog.js';
+import { AXO_PALETTES, AXO_PARTS, AXO_TAILS, AXO_ANCHORS, AXO_JOINTS } from './pixel-axolotl.js';
 
 const FAR = { 1: '2', 2: '3', 4: '5', 6: '7', 9: '8', x: 'y' };
 
@@ -51,9 +52,20 @@ export const SCARF = {
   strands: [[[0, 0], [-2, 0], [-4, 1], [-6, 2], [-8, 2], [-10, 3]], [[0, 0], [-1, 1], [-3, 2], [-4, 4], [-5, 5]]]
 };
 
-const castOf = id => ({ id, palette: PALETTES[id], parts: PARTS[id], tail: TAILS[id] || null, scarf: id === 'bat' ? SCARF : null });
+// Where each part's pivot sits in the rest pose (character space, x right, y up to 0 at the ground).
+export const ANCHOR = { head: [1, -9], body: [0, -2], armF: [4, -7], armB: [1, -8], footF: [2, -1], footB: [-2, -1], tail: [-4, -5], scarf: [0, -7] };
+// Where each part hinges on the body (ragdoll joints and severed stumps).
+export const JOINT = { head: [1, -9], armF: [4, -7], armB: [1, -8], footF: [2, -2], footB: [-2, -2] };
+const castOf = id => ({
+  id, palette: PALETTES[id] || AXO_PALETTES[id], parts: PARTS[id] || AXO_PARTS[id], tail: TAILS[id] || AXO_TAILS[id] || null, scarf: id === 'bat' ? SCARF : null,
+  ...(AXO_ANCHORS[id] && { anchor: { ...ANCHOR, ...AXO_ANCHORS[id] }, joint: { ...JOINT, ...AXO_JOINTS[id] } })
+});
 // The fighters, by type. Alternate forms are casts of their own with their own anchors.
-export const CAST = ['cat', 'rat', 'rabbit', 'ocelot', 'bat', 'frog'].map(castOf);
+export const CAST = ['cat', 'rat', 'rabbit', 'ocelot', 'bat', 'frog', 'axolotl'].map(castOf);
+// The axolotl's clones: a smaller version of itself grown from a lost part, and the demon the
+// special turns it into. The demon borrows the clone's body until it has its own.
+export const AXO_MINI = castOf('axoMini');
+export const AXO_DEMON = { ...castOf('axoDemon'), parts: { ...AXO_PARTS.axoMini, ...AXO_PARTS.axoDemon }, tail: AXO_TAILS.axoDemon || { ...AXO_TAILS.axoMini, colors: ['2', '1', '3'], tip: '7' } };
 // The frog sits low: no neck, the head on the front of a round body, legs folded wide.
 Object.assign(CAST[5], {
   anchor: { head: [2, -8], body: [0, -2], armF: [4, -6], armB: [1, -7], footF: [3, -1], footB: [-3, -1], tail: [-4, -4], scarf: [0, -7] },
@@ -89,6 +101,7 @@ export const castFor = (type, form) => {
   if (!form || !ch) return ch;
   if (ch.id === 'ocelot') return form === 'titan' ? TITAN : BEAST;
   if (ch.id === 'frog' && form[0] === 'c') return FROG_LOOKS[+form.slice(1)] || ch;
+  if (ch.id === 'axolotl') return form === 'demon' ? AXO_DEMON : form === 'mini' ? AXO_MINI : ch;
   return ch;
 };
 const anchorsOf = ch => ch?.anchor || ANCHOR;
@@ -98,9 +111,6 @@ const jointsOf = ch => ch?.joint || JOINT;
 // at the ground, facing right): where each part's pivot sits in the rest pose.
 export const SLOTS = ['head', 'body', 'armF', 'armB', 'footF', 'footB'];
 const MATRIX = { head: 'head', body: 'body', armF: 'arm', armB: 'arm', footF: 'foot', footB: 'foot', scarf: 'scarf' };
-export const ANCHOR = { head: [1, -9], body: [0, -2], armF: [4, -7], armB: [1, -8], footF: [2, -1], footB: [-2, -1], tail: [-4, -5], scarf: [0, -7] };
-// Where each part hinges on the body (ragdoll joints and severed stumps).
-export const JOINT = { head: [1, -9], armF: [4, -7], armB: [1, -8], footF: [2, -2], footB: [-2, -2] };
 export const PARENT = { head: 'body', armF: 'body', armB: 'body', footF: 'body', footB: 'body' };
 // Cosmetic pieces ride on a slot: they share its offset.
 const RIDES = { scarf: 'body' };

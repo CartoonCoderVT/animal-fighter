@@ -9,6 +9,8 @@ import { MOVES, HEAVY, AIR, NOX_AIR, JUMA_AIR, BEAST_AIR, TITAN_AIR, NATURAL, co
 import { MAP } from './map.js';
 import { startSpecial, startStomp, throwCarried, startChase, endAct, startPlunge, startSwarm, startBite, startCharge, feedRage, frogPower } from './specials.js';
 import { isMelee, WEAPON_INFO, weaponSlot } from './weapons.js';
+import { axoHit } from './axolotl.js';
+import { hitMinions, hurtMinion } from './minions.js';
 
 export const KIND = {
   punch: 'blunt', board: 'blunt', impact: 'blunt', fall: 'blunt', crush: 'blunt', power: 'blunt', pipe: 'blunt',
@@ -276,6 +278,11 @@ export function strike(g, a, mv, i) {
     }
     if (vamp && !mv.feast && !b.dead) markBlood(g, b);
   }
+  // The axolotl's clones in reach take the blow too.
+  if (hitMinions(g, a.team, m => reaches(a, mv, m.x, m.y, 4, low), m => {
+    const side = mv.around || mv.pass ? (Math.sign(m.x - a.x) || face) : face;
+    hurtMinion(g, m, amount, { x: m.x - side * 3, y: m.y }, a.id, kind, { kb: { x: side * kb[0], y: kb[1] } });
+  })) struck = true;
   if (mv.spikes) g.fx('bloodSpikes', { x: a.x, y: a.y + 16, face, at: mv.spikes });
   if (mv.sweep && a.ground) g.fx('scytheSweep', { x: a.x + face * 8, y: a.y + 16, x2: a.x + face * mv.sweep, face });
   // The guillotine's blade bites into the floor ahead.
@@ -329,6 +336,15 @@ export function strike(g, a, mv, i) {
 // The titan is a much bigger target than her body box.
 const bulk = b => (b.form === 'titan' ? 8 : b.form === 'beast' ? 3 : 0);
 
+// Area blows (rings, shockwaves, roars) on the enemy axolotl's clones within rx of x and ry of y.
+// dmg(k) gets the closeness, 1 at the center down to 0 at the edge.
+export function areaMinions(g, a, x, y, rx, ry, dmg, kind) {
+  return hitMinions(g, a.team, m => Math.abs(m.x - x) < rx && Math.abs(m.y - y) < ry, m => {
+    const s = Math.sign(m.x - x) || a.face, k = 1 - Math.min(1, Math.abs(m.x - x) / rx);
+    hurtMinion(g, m, dmg(k), { x: m.x - s * 3, y: m.y }, a.id, kind, { kb: { x: s * (3 + 5 * k), y: -3 - 3 * k } });
+  });
+}
+
 function clapRing(g, a, already) {
   const x = a.x + a.face * 18, y = a.y - 4;
   for (const b of g.enemies(a)) {
@@ -336,6 +352,7 @@ function clapRing(g, a, already) {
     const s = Math.sign(b.x - x) || a.face, k = 1 - Math.abs(b.x - x) / 70;
     damage(g, b, 4 + 4 * k, { x: b.x - s * 4, y: b.y }, a.id, 'sonic', { kb: { x: s * (4 + 5 * k), y: -2 - 2 * k } });
   }
+  areaMinions(g, a, x, y, 70, 40, k => 4 + 4 * k, 'sonic');
   g.fx('clap', { x, y, face: a.face });
   g.sound('thud', x);
 }
@@ -349,6 +366,7 @@ function croakRing(g, a, mv, already) {
     const dealt = damage(g, b, 3 + 5 * k, { x: b.x - s * 4, y: b.y }, a.id, 'croak', { kb: { x: s * (3 + 6 * k), y: -2.5 - 3 * k } });
     if (dealt > 0 && !b.dead && !b.knocked && b.form !== 'titan') b.stun = Math.max(b.stun, 0.3 + 0.3 * k);
   }
+  areaMinions(g, a, x, y, R, R * 0.6, k => 3 + 5 * k, 'croak');
   for (const l of g.limbs) { const d = Math.hypot(l.x - x, l.y - y); if (d < R) Body.setVelocity(l.body, { x: l.body.velocity.x + Math.sign(l.x - x) * 5 * (1 - d / R), y: l.body.velocity.y - 3 * (1 - d / R) }); }
   g.fx('croak', { x, y, r: R, face: a.face });
   g.shake = Math.max(g.shake, 4);
@@ -445,6 +463,7 @@ function shockwave(g, a, mv, amount, already) {
     const s = Math.sign(b.x - x) || a.face, f = 1 - Math.abs(b.x - x) / mv.shock;
     if (damage(g, b, amount * (0.4 + 0.4 * f), { x: b.x - s * 4, y: b.y + 12 }, a.id, mv.kind, { kb: { x: s * (2 + 6 * f), y: -3 - 4 * f }, knock: f > 0.35, part: Math.random() < 0.5 ? 'footF' : 'footB' })) struck = true;
   }
+  if (areaMinions(g, a, x, y - 10, mv.shock, 34, k => amount * (0.4 + 0.4 * k), mv.kind)) struck = true;
   for (const l of g.limbs) if (Math.abs(l.x - x) < mv.shock && Math.abs(l.y - y) < 40) Body.setVelocity(l.body, { x: l.body.velocity.x + Math.sign(l.x - x) * 3, y: l.body.velocity.y - 4 });
   g.fx('ring', { x, y, size: mv.shock, color: '#ffe6c8' });
   g.fx('land', { x, y, p: 1 });
@@ -555,6 +574,7 @@ export function stepBullets(g, dt) {
     const candidates = [...statics];
     for (const a of g.actors) if (!a.dead && !a.knocked && a.swallowedBy == null && a.id !== b.owner && a.team !== b.team) candidates.push(a.body);
     for (const p of g.props) if (!p.held) candidates.push(p.body);
+    for (const m of g.minions) if (m.team !== b.team) candidates.push(m.body);
     for (const l of g.limbs) candidates.push(l.body);
     g.hz?.bulletBodies?.forEach(x => candidates.push(x));
     const hits = Query.ray(candidates, { x: b.x, y: b.y }, { x: nx, y: ny }, 3);
@@ -597,7 +617,13 @@ export function removeBullet(g, b) {
 // Returns true when the bullet is consumed.
 function bulletHit(g, b, body, point) {
   const angle = Math.atan2(b.vy, b.vx);
-  const a = body.plugin.actor, p = body.plugin.prop, l = body.plugin.limb;
+  const a = body.plugin.actor, p = body.plugin.prop, l = body.plugin.limb, m = body.plugin.minion;
+  if (m) {
+    if (m.dead || m.team === b.team) return false;
+    hurtMinion(g, m, b.damage ?? 10, point, b.owner, b.kind || 'bullet', { kb: { x: b.vx * 0.16, y: b.vy * 0.1 - 1 } });
+    removeBullet(g, b);
+    return true;
+  }
   if (a) {
     if (a.id === b.owner || a.team === b.team || a.dead) return false;
     const swingDeflect = isMelee(a.weapon) && a.attack > 0 && MOVES[a.attackKind]?.weapon && (b.x - a.x) * a.face > 0 && Math.random() < 0.6;
@@ -748,12 +774,14 @@ export function damage(g, a, amount, point, ownerId, kind = 'punch', opts = {}) 
   if (gore && !DOT.has(cat)) g.fx('blood', { x: point.x, y: point.y, dx: (opts.kb?.x || 0) * 0.4, dy: -1.5, n: Math.round(Math.min(40, amount * (gore === 2 ? 1.5 : 0.5))), s: cat === 'cut' ? 4.5 : 3 });
 
   if (cat === 'blunt' && limbOf(part) && a.partDmg[part] >= 42 && amount >= 12) breakBone(g, a, part);
-  if (cat === 'cut') a.bleed = Math.min(6, a.bleed + amount * 0.05);
-  if (cat === 'pierce') a.bleed = Math.min(6, a.bleed + amount * 0.025);
+  // The axolotl does not bleed out: it closes over and grows back.
+  if (cat === 'cut' && a.type !== 6) a.bleed = Math.min(6, a.bleed + amount * 0.05);
+  if (cat === 'pierce' && a.type !== 6) a.bleed = Math.min(6, a.bleed + amount * 0.025);
   if (cat === 'fire') a.char = Math.min(1, a.char + 0.035);
   if (cat === 'explosion') a.char = Math.min(1, a.char + 0.3);
   if (cat === 'shock') { a.char = Math.min(1, a.char + 0.02); a.shock = Math.max(a.shock, 0.35); }
-  if (gore === 2 && cat === 'cut' && part !== 'body' && a.partDmg[part] > (kind === 'axe' ? 22 : 30) && (kind === 'claw' || kind === 'blade' || kind === 'katana' || kind === 'axe' || amount > 18) && (part !== 'head' || a.hp < 25)) sever(g, a, part, ownerId);
+  if (a.type === 6 && !DOT.has(cat)) axoHit(g, a, part, amount, ownerId);
+  else if (gore === 2 && cat === 'cut' && part !== 'body' && a.partDmg[part] > (kind === 'axe' ? 22 : 30) && (kind === 'claw' || kind === 'blade' || kind === 'katana' || kind === 'axe' || amount > 18) && (part !== 'head' || a.hp < 25)) sever(g, a, part, ownerId);
   if (a.dead) return amount;
 
   const w = weightOf(a);

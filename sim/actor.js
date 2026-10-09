@@ -8,6 +8,7 @@ import { attack, power, damage, breakBone, tickAttack } from './combat.js';
 import { interact, dropWeapon, detonateCharges, updateHolding } from './props.js';
 import { knockdown, recover, ragdollOf } from './ragdoll.js';
 import { stepSpecial, startSwarm, tickForm, tickTitan, stepSwallowed, tickBelly } from './specials.js';
+import { tickRegrow } from './axolotl.js';
 import { HALF_H, FOOT } from '../render/rig.js';
 
 export { HALF_H };
@@ -107,6 +108,7 @@ export function stepActor(g, a, dt) {
   for (const k in a.drop) a.drop[k] = Math.max(0, a.drop[k] - dt);
   tickForm(g, a);
   tickBelly(g, a, dt);
+  tickRegrow(g, a);
   if (a.frozen > 0) {
     a.frozen -= dt;
     if (a.frozen <= 0) { a.frozen = 0; g.fx('shatter', { x: a.x, y: a.y, n: 6, small: true }); g.text(a.x, a.y - 28, 'DESCONGELOU', '#bdeeff'); }

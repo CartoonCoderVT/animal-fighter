@@ -18,7 +18,8 @@ function stage() {
   g.fillStyle = '#251a3a'; g.fillRect(0, 222, VIEW_W, 2);
   return (stageCache = c);
 }
-const SLOT = i => 54 + i * 106;
+// Pedestals spread evenly across the screen, however many fighters there are.
+const SLOT = i => Math.round(VIEW_W / FIGHTERS.length * (i + 0.5));
 let spotCache = null;
 function spotlight() {
   if (spotCache) return spotCache;
@@ -55,7 +56,7 @@ export class SelectScene {
     if (i.nav('right')) { this.index = (this.index + 1) % FIGHTERS.length; snd.play('ui_move'); }
     for (const c of i.clicks) {
       if (c.down) continue;
-      for (let k = 0; k < FIGHTERS.length; k++) if (Math.abs(c.x - SLOT(k)) < 50 && c.y > 110 && c.y < 236) { if (this.index === k) this.confirm(); else { this.index = k; snd.play('ui_move'); } }
+      for (let k = 0; k < FIGHTERS.length; k++) if (Math.abs(c.x - SLOT(k)) < VIEW_W / FIGHTERS.length / 2 && c.y > 110 && c.y < 236) { if (this.index === k) this.confirm(); else { this.index = k; snd.play('ui_move'); } }
     }
     if (hit(i, this.confirmRect)) this.confirm();
     // Solo: one to three bots.
@@ -85,8 +86,8 @@ export class SelectScene {
       }
       // pedestal
       g.fillStyle = sel ? f.color : '#3a2d52';
-      g.fillRect(x - 34, 228, 68, 2);
-      g.fillStyle = '#120d1e'; g.fillRect(x - 32, 230, 64, 6);
+      g.fillRect(x - 32, 228, 64, 2);
+      g.fillStyle = '#120d1e'; g.fillRect(x - 30, 230, 60, 6);
       g.fillStyle = 'rgba(8,4,14,0.6)';
       for (let xx = -18; xx <= 18; xx++) g.fillRect(x + xx, 227 - (Math.abs(xx) < 12 ? 1 : 0), 1, 1);
       if (sel) r.drawHero(g, k, x, 227, this.selOf === k ? this.selT : 0, { density: 2, dt, key: 'sel' + k });

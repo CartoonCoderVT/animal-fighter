@@ -10,6 +10,8 @@ import { installHazards, tickHazards, hazardSnapshot } from './hazards.js';
 import { stepRagdolls, settleLimits, knockdown, ragdollOf } from './ragdoll.js';
 import { HALF_H, BODY_W } from '../render/rig.js';
 import { MELEE, isMelee } from './weapons.js';
+import { stepMinions, syncMinions, minionSnapshot } from './minions.js';
+import { tickSprouts } from './axolotl.js';
 
 export { EMPTY_INPUT, FIGHTERS };
 
@@ -25,7 +27,7 @@ export class Game {
     this.staticBodies = statics;
     this.onewayBodies = oneways;
     this.nav = buildNav();
-    this.actors = []; this.props = []; this.bullets = []; this.limbs = []; this.ragdolls = []; this.pins = [];
+    this.actors = []; this.props = []; this.bullets = []; this.limbs = []; this.ragdolls = []; this.pins = []; this.minions = [];
     this.effects = []; this.fires = [];
     this.fxQueue = []; this.netEvents = []; this.eventId = 0;
     this.time = 0; this.seq = 0; this.nextId = 100;
@@ -54,7 +56,7 @@ export class Game {
       respawn: 0, lastHit: null, lastHitTime: -9, jumpGrace: 0, jumpBuffer: 0, airJumps: 0, drop: {}, knocked: false, knock: 0, getup: 0,
       aim: 0, burning: 0, stats: { damage: 0, kills: 0, limbs: 0 }, powerSeq: 0, act: null, actT: 0, gliding: false,
       form: null, rage: 0, morphTo: null, frenzy: null, biteCd: 0, chargeCd: 0, carry: null,
-      copy: null, belly: null, bellyT: 0, swallowedBy: null
+      copy: null, belly: null, bellyT: 0, swallowedBy: null, regrow: {}, shedCd: 0
     };
     body.plugin.actor = a;
     this.actors.push(a);
@@ -175,7 +177,7 @@ export class Game {
       act: null, actT: 0, hits: null, gliding: false, holdingLimb: null, holdJoint: null, ghostClear: true, hitlag: 0, lagPos: null,
       parry: 0, parryLag: 0, counter: 0, perfectT: 0, chase: null, float: 0, airDodged: false, hitstun: 0, hitstunMax: 0, stunN: 0, bloodMark: 0, beamAir: false, bounced: false, bounceArm: 0, turnT: 0, batCd: 0, swarm: null,
       form: null, rage: 0, morphTo: null, frenzy: null, biteCd: 0, chargeCd: 0, carry: null,
-      copy: null, belly: null, bellyT: 0, swallowedBy: null, copied: false, wobble: 0
+      copy: null, belly: null, bellyT: 0, swallowedBy: null, copied: false, wobble: 0, regrow: {}, shedCd: 0
     });
     this.fx('spawn', { x: a.x, y: a.y, color: FIGHTERS[a.type].color });
   }
@@ -212,6 +214,7 @@ export class Game {
     if (this.grab) this.holdGrab();
 
     for (const a of this.actors) stepActor(this, a, dt);
+    stepMinions(this, dt);
     stepBullets(this, dt);
     tickHazards(this, dt);
     tickProps(this, dt);
@@ -231,6 +234,7 @@ export class Game {
       if (px < 8 || px > 952) { Body.setPosition(a.body, { x: Math.max(8, Math.min(952, px)), y: a.body.position.y }); Body.setVelocity(a.body, { x: 0, y: a.body.velocity.y }); }
     }
     this.separateActors();
+    syncMinions(this);
 
     for (const a of this.actors) {
       syncActor(this, a);
@@ -249,10 +253,11 @@ export class Game {
       if (l.life <= 0 || l.y > 700) this.removeLimb(l);
     }
     if (this.limbs.length > 150) {
-      const old = this.limbs.filter(l => !l.ragdoll || l.ragdoll.detached || !l.attached).sort((a, b) => a.life - b.life).slice(0, this.limbs.length - 150);
+      const old = this.limbs.filter(l => !l.sprout && (!l.ragdoll || l.ragdoll.detached || !l.attached)).sort((a, b) => a.life - b.life).slice(0, this.limbs.length - 150);
       old.forEach(l => this.removeLimb(l));
     }
     for (const p of [...this.pins]) { p.life -= dt; if (p.life <= 0) { Composite.remove(this.engine.world, p.c); this.pins.splice(this.pins.indexOf(p), 1); } }
+    tickSprouts(this);
     this.ragdolls = this.ragdolls.filter(r => Object.keys(r.limbs).length);
     this.dropWeapons(dt);
     tickStatuses(this, dt);
@@ -306,6 +311,7 @@ export class Game {
       effects: this.effects.map(e => ({ ...e })),
       fires: this.fires.map(f => ({ id: f.id, x: f.x, y: f.y, life: r(f.life) })),
       pins: this.pins.map(p => ({ x: p.x, y: p.y })),
+      minions: minionSnapshot(this),
       hazards: hazardSnapshot(this)
     };
   }

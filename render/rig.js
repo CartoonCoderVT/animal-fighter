@@ -58,6 +58,6 @@ export function pose(a, time = 0) {
 
 // Offset from a part's center to its matrix pivot, in pixels, per fighter type (wounds are stored from the pivot).
 export const PIVOT_FROM_CENTER = CAST.map(ch => Object.fromEntries(SLOTS.map(slot => {
-  const [cx, cy] = partCenter(ch, slot), [ax, ay] = ANCHOR[slot];
+  const [cx, cy] = partCenter(ch, slot), [ax, ay] = (ch.anchor || ANCHOR)[slot];
   return [slot, [cx - ax - 0.5, cy - ay - 0.5]];
 })));

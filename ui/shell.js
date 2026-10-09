@@ -177,7 +177,8 @@ export class Shell {
     if (!prev) return remote;
     const t = clamp((performance.now() - this.lastRemote) / 50, 0, 1);
     const out = { ...remote, time: prev.time + (remote.time - prev.time) * t };
-    for (const key of ['actors', 'props', 'limbs', 'bullets']) {
+    for (const key of ['actors', 'props', 'limbs', 'bullets', 'minions']) {
+      if (!remote[key] || !prev[key]) continue;
       const old = new Map(prev[key].map(a => [a.id, a]));
       out[key] = remote[key].map(a => {
         const b = old.get(a.id);

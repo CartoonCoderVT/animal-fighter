@@ -1,4 +1,5 @@
 import { Bodies, Body, Composite, Constraint, CAT, MASK, approach, inPit } from './physics.js';
+import { killMinion, hurtMinion } from './minions.js';
 import { MAP } from './map.js';
 import { rnd, dist, clamp } from '../engine/const.js';
 import { damage, kill } from './combat.js';
@@ -185,6 +186,7 @@ export function tickHazards(g, dt) {
         g.text(900, 420, 'PRENSADO!', '#ff8f7a');
       }
     }
+    for (const m of [...g.minions]) if (m.x > P.x0 - 6 && m.x < P.x1 + 6 && bottom > m.y - m.foot + 6 && m.y > P.rest) killMinion(g, m, 'crush');
     if (bottom >= P.bottom) {
       pr.y = P.bottom - P.headH;
       pr.state = 'hold'; pr.t = 0.5;
@@ -228,6 +230,7 @@ export function tickHazards(g, dt) {
       g.text(480, 470, 'TRITURADO!', '#ff8f7a');
     }
   }
+  for (const m of [...g.minions]) if (inPit(m.x) && m.y + m.foot > pit.y0 + 10) { grindFx(g, m.x, 'blood'); killMinion(g, m, 'grind'); }
   for (const l of [...g.limbs]) if (inPit(l.x) && l.y > pit.y0 + 12) { grindFx(g, l.x, 'blood'); g.removeLimb(l); }
   for (const p of [...g.props]) if (inPit(p.x) && p.y > pit.y0 + 10) {
     removeProp(g, p);
@@ -253,6 +256,15 @@ export function tickHazards(g, dt) {
       a.shock = 0.55;
       g.fx('zap', { x1: ex, y1: ey, x2: a.x, y2: a.y - 4 });
       g.sound('zap', a.x);
+    }
+  }
+  for (const m of [...g.minions]) {
+    m.shockCd = Math.max(0, (m.shockCd || 0) - dt);
+    if (m.shockCd > 0) continue;
+    if (Math.hypot(m.x - ex, m.y - ey) < 16 || (pd.live > 0 && m.ground && m.x > pd.x0 && m.x < pd.x1)) {
+      m.shockCd = 0.3;
+      hurtMinion(g, m, 6, { x: m.x, y: m.y }, null, 'shock', { kb: { x: Math.sign(m.x - ex || 1) * 2.5, y: -2 } });
+      g.fx('zap', { x1: ex, y1: ey, x2: m.x, y2: m.y });
     }
   }
   for (const l of g.limbs) if (Math.hypot(l.x - ex, l.y - ey) < 20 || (pd.live > 0 && l.x > pd.x0 && l.x < pd.x1 && l.y > pd.y - 10)) {

@@ -602,8 +602,19 @@ const aimArm = (a, recoil) => {
   return [recoil ? -1 : 0, 0, (rel * 180) / Math.PI - 90];
 };
 
+// The axolotl's clones are drawn at about half size: their poses move parts half as far.
+const SHRINK = ['head', 'body', 'armF', 'armB', 'footF', 'footB'];
+function shrunk(f) {
+  const frame = { ...f.frame };
+  for (const k of SHRINK) if (frame[k]) frame[k] = [Math.round((frame[k][0] || 0) / 2), Math.round((frame[k][1] || 0) / 2), frame[k][2] || 0];
+  return { ...f, frame };
+}
 // Returns { frame, expr, name } for an actor (live or snapshot).
 export function frameFor(a, time = 0) {
+  const f = fullFrameFor(a, time);
+  return a.foot && a.foot < 17 ? shrunk(f) : f;
+}
+function fullFrameFor(a, time = 0) {
   const seed = (a.id || 0) * 1.37;
   const blink = (time + seed) % 3.4 < 0.12;
   const pick = (name, expr = blink ? 'Blink' : '') => ({ frame: FRAMES[name], expr, name });

@@ -466,6 +466,16 @@ export class Renderer {
       fc.alpha = fc.body.g.getImageData(0, 0, FIG_W, FIG_H).data;
       figures.push({ a, hx: fx, hy: fy, cx: fx, cy: fy - 10, info, fc, x: fx - FIG_X + ox, y: fy - FIG_Y + oy });
     }
+    // The axolotl's clones go through the same pipeline: lit, rimmed and shadowed like fighters.
+    for (const a of state.minions || []) {
+      const fx = Math.round(a.x * S), fy = Math.round((a.y + (a.foot ?? FOOT)) * S);
+      const fc = this.figureCanvases('m' + a.owner + '_' + a.slot);
+      fc.body.g.clearRect(0, 0, FIG_W, FIG_H);
+      const info = this.paintFighter(fc.body.g, a, FIG_X, FIG_Y, state.time ?? t);
+      for (const k of ['eye', 'hand']) { info[k].x += fx - FIG_X; info[k].y += fy - FIG_Y; }
+      fc.alpha = fc.body.g.getImageData(0, 0, FIG_W, FIG_H).data;
+      figures.push({ a, minion: true, hx: fx, hy: fy, cx: fx, cy: fy - 6, info, fc, x: fx - FIG_X + ox, y: fy - FIG_Y + oy });
+    }
     this.updateTrails(figures, this.simDt);
     for (const f of figures) if (f.a.type >= 3 || styleOf(f.a) >= 3) this.keyFx(f);
 
@@ -814,6 +824,7 @@ export class Renderer {
       lg.drawImage(sh, Math.round(X(x) - sh.width / 2) + ox, X(top) - 2 + oy);
       lg.globalAlpha = 1;
     };
+    for (const a of state.minions || []) put(a.x, a.y + (a.foot ?? FOOT), a.form === 'demon' ? 9 : 6);
     for (const a of state.actors) if (!a.dead && !a.knocked && a.act !== 'swarm' && a.swallowedBy == null) put(a.x, a.y + FOOT, a.act === 'ball' ? 16 : a.form === 'titan' ? 24 : a.form === 'beast' ? 15 : 11);
     for (const p of state.props) if (p.kind !== 'glass' && p.kind !== 'cargo') put(p.x, p.y + p.h / 2, X(p.w) + 2);
   }

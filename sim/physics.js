@@ -3,12 +3,14 @@ import { MAP } from './map.js';
 export const M = globalThis.Matter;
 export const { Engine, Bodies, Body, Composite, Constraint, Events, Query, Vector } = M;
 
-export const CAT = { world: 1, actor: 2, prop: 4, limb: 8, bullet: 16, cable: 1 << 20, sensor: 1 << 21 };
+export const CAT = { world: 1, actor: 2, prop: 4, limb: 8, bullet: 16, minion: 1 << 10, cable: 1 << 20, sensor: 1 << 21 };
 export const onewayBit = i => 32 << i;
 export const ALL_ONEWAY = MAP.oneway.reduce((m, _, i) => m | onewayBit(i), 0);
 export const MASK = {
   actor: CAT.world | CAT.actor | CAT.prop | CAT.bullet,
-  prop: CAT.world | CAT.actor | CAT.prop | CAT.limb | CAT.bullet | CAT.cable | ALL_ONEWAY,
+  prop: CAT.world | CAT.actor | CAT.prop | CAT.limb | CAT.bullet | CAT.cable | CAT.minion | ALL_ONEWAY,
+  // The axolotl's clones stand on floors and props and pass through fighters and each other.
+  minion: CAT.world | CAT.prop,
   limb: CAT.world | CAT.prop | CAT.limb | CAT.bullet | CAT.cable | ALL_ONEWAY,
   bullet: CAT.world | CAT.actor | CAT.prop | CAT.limb,
   cable: CAT.world | CAT.prop | CAT.limb | ALL_ONEWAY,

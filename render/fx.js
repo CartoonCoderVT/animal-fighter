@@ -17,6 +17,8 @@ const BLOOD = [P.blood1, P.blood2, P.blood3, P.blood2, P.blood0];
 const ROCK = ['#5a5068', '#7a6e88', '#3e3648', '#9a8eaa'], STEAM = ['#e8e4f0', '#c8c0d8', '#a8a0c0'], EMBER = ['#ffffff', '#ffe2a0', '#ffb040', '#ff6a2a'];
 const DUST = ['#6a6078', '#8a7f95', '#4f475e'];
 const SLIME = ['#c8f080', '#9be05a', '#6b9e3c', '#ffffff'];
+// The axolotl's goo (pink, wet) and the demon's (embers and dark blood).
+const GOO = ['#ffd0de', '#ff9cc0', '#f06e98', '#ffffff'], DEMON = ['#ffd040', '#ff5a1a', '#b02a44', '#2c0814'];
 // The colours of a fighter the frog copied (his own green when there is none).
 const copyCols = c => (c >= 0 && FIGHTERS[c] ? [FIGHTERS[c].color, '#ffffff', '#ffe2a0'] : SLIME);
 const FIRE = [P.fire0, P.fire1, P.fire2, P.fire3, P.fire4];
@@ -316,6 +318,38 @@ export class FX {
       // The beast's paws clapped together: a ring of force and a burst of light.
       // The frog. The gulp: a wet slurp of slime and a ring closing in on him. The copy: a burst of
       // stars in the colours of whoever he swallowed. The spit: a star where they shoot out.
+      // The axolotl. A part popping off: a wet burst of pink goo. A clone hatching: goo, a ring and
+      // a few hearts of light. A clone dying: it bursts into goo (a demon, into embers).
+      case 'goo':
+        this.burst('blood', x, y, e.n || 10, { spread: 6.3, s: 2.2, life: 0.6, colors: GOO, g: 0.18, stick: true, rnd });
+        this.burst('spark', x, y, 6, { spread: 6.3, s: 1.6, life: 0.3, colors: ['#ffffff', '#ffd0de'], g: 0, em: true, rnd });
+        break;
+      case 'cloneBirth':
+        this.rings.push({ x, y, life: 0.3, max: 0.3, r: 14, color: '#ffd0de' });
+        this.rings.push({ x, y, life: 0.45, max: 0.45, r: 22, color: '#ff9cc0' });
+        this.burst('blood', x, y, 12, { a: -Math.PI / 2, spread: 2.6, s: 2.4, life: 0.6, colors: GOO, g: 0.2, stick: true, rnd });
+        this.burst('spark', x, y - 4, 10, { a: -Math.PI / 2, spread: 2, s: 1.8, life: 0.5, colors: ['#ffffff', '#ffd0de', '#ff9cc0'], g: -0.02, drag: 0.94, em: true, rnd });
+        break;
+      case 'cloneDeath': {
+        const demon = e.form === 'demon';
+        this.burst('blood', x, y, 14, { spread: 6.3, s: 2.6, life: 0.6, colors: demon ? DEMON : GOO, g: 0.2, stick: true, rnd });
+        this.burst(demon ? 'spark' : 'steam', x, y, demon ? 12 : 6, { a: -Math.PI / 2, spread: 2.4, s: demon ? 2 : 0.8, life: 0.6, colors: demon ? DEMON : ['#ffe8f0', '#ffd0de'], g: -0.03, drag: 0.94, em: demon, size: demon ? 1 : 2, grow: demon ? 0 : 0.05, rnd });
+        if (e.how === 'melt') this.rings.push({ x, y: y + 4, life: 0.3, max: 0.3, r: 10, color: demon ? '#ff5a1a' : '#ffd0de' });
+        break;
+      }
+      case 'cloneHit':
+        this.burst('blood', x, y, 5, { spread: 6.3, s: 1.8, life: 0.4, colors: e.form === 'demon' ? DEMON : GOO, g: 0.2, stick: true, rnd });
+        this.flashes.push({ x, y, life: 0.08, max: 0.08, kind: 'star', p: 1.2, a: 0, seed: e.id || 1, color: '#ffffff' });
+        break;
+      case 'cloneHop':
+        this.burst('blood', x, y, 8, { a: -Math.PI / 2, spread: 1.6, s: 2.2, life: 0.5, colors: GOO, g: 0.2, stick: true, rnd });
+        this.rings.push({ x, y, life: 0.25, max: 0.25, r: 9, color: '#ff9cc0' });
+        break;
+      // A part grown back: a swirl of pink light closing in on it.
+      case 'regrow':
+        for (let i = 0; i < 10; i++) { const a = (i / 10) * Math.PI * 2; this.add({ k: 'spark', x: x + Math.cos(a) * 10, y: y + Math.sin(a) * 10, vx: -Math.cos(a) * 0.9, vy: -Math.sin(a) * 0.9, life: 0.4, c: i % 2 ? '#ffffff' : '#ff9cc0', s: 1, g: 0, b: 0, em: true, drag: 0.95, stick: false, grow: 0 }); }
+        this.flashes.push({ x, y, life: 0.12, max: 0.12, kind: 'star', p: 1.6, a: Math.PI / 4, seed: e.id || 1, color: '#ffd0de' });
+        break;
       case 'gulp':
         this.rings.push({ x, y, life: 0.25, max: 0.25, r: 22, color: '#c8f080' });
         this.burst('spark', x + (e.face || 1) * 8, y - 2, 12, { spread: 6.3, s: 2.2, life: 0.4, colors: SLIME, g: 0.12, drag: 0.94, rnd });

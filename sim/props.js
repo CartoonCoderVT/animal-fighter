@@ -6,6 +6,7 @@ import { pose } from '../render/rig.js';
 import { hazardInteract } from './hazards.js';
 import { startCarry, throwCarried } from './specials.js';
 import { MELEE, WEAPON_INFO, isMelee } from './weapons.js';
+import { hitMinions, hurtMinion } from './minions.js';
 
 export const THROWABLES = ['grenade', 'molotov', 'mine', 'c4'];
 export const WEAPON_PROPS = ['gun', 'extinguisher', ...MELEE];
@@ -110,6 +111,11 @@ export function explode(g, x, y, owner, power = 1) {
     const amount = k * 68 * power;
     damage(g, a, amount, { x: a.x - dx * 6, y: a.y - dy * 6 }, owner, 'explosion', { kb: { x: dx * 13 * k, y: dy * 9 * k - 7 * k }, knock: true, overkill: amount > a.hp + 30, environment: true });
   }
+  // Blasts tear through clones, the axolotl's own included.
+  hitMinions(g, null, m => dist(m, { x, y }) < R, m => {
+    const d = dist(m, { x, y }), k = 1 - d / (R * 1.15), dx = (m.x - x) / (d || 1);
+    hurtMinion(g, m, k * 68 * power, { x: m.x, y: m.y }, owner, 'explosion', { kb: { x: dx * 10 * k, y: -8 * k } });
+  });
   for (const p of [...g.props]) {
     if (p.held || p.fixed) continue;
     const d = dist(p, { x, y });

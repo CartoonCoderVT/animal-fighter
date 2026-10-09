@@ -1,6 +1,6 @@
 // Secondary motion for tails and scarf ends: short verlet chains in character space (pixels,
 // facing right) that keep their drawn shape, wag, and lag behind the body's motion.
-import { CAST, ANCHOR, TAILS, SCARF, BEAST, TITAN, castFor } from './pixel-data.js';
+import { CAST, ANCHOR, TAILS, SCARF, BEAST, TITAN, AXO_MINI, AXO_DEMON, castFor } from './pixel-data.js';
 import { lookOf } from '../sim/fighters.js';
 import { S } from '../engine/const.js';
 
@@ -11,6 +11,10 @@ const SPECS = {
   ocelot: [{ root: ANCHOR.tail, shape: TAILS.ocelot.shape, tube: TAILS.ocelot, stiff: 0.2, tip: 0.3, grav: 0.05, drag: 0.32, inertia: 0.7, wag: [1.5, 7] }],
   ocelotBeast: [{ root: BEAST.anchor.tail, shape: TAILS.ocelotBeast.shape, tube: TAILS.ocelotBeast, stiff: 0.28, tip: 0.3, grav: 0.06, drag: 0.3, inertia: 0.8, wag: [1.1, 9] }],
   ocelotTitan: [{ root: TITAN.anchor.tail, shape: TAILS.ocelotTitan.shape, tube: TAILS.ocelotTitan, stiff: 0.32, tip: 0.3, grav: 0.07, drag: 0.3, inertia: 0.85, wag: [0.9, 8] }],
+  // The axolotl's tail is long and flat: it sways slowly and drags behind like a fin in water.
+  axolotl: [{ root: CAST[6].anchor.tail, shape: CAST[6].tail.shape, tube: CAST[6].tail, stiff: 0.16, tip: 0.25, grav: 0.03, drag: 0.4, inertia: 0.8, wag: [1.3, 11] }],
+  axoMini: [{ root: AXO_MINI.anchor.tail, shape: AXO_MINI.tail.shape, tube: AXO_MINI.tail, stiff: 0.2, tip: 0.3, grav: 0.03, drag: 0.4, inertia: 0.8, wag: [2.6, 14] }],
+  axoDemon: [{ root: AXO_DEMON.anchor.tail, shape: AXO_DEMON.tail.shape, tube: AXO_DEMON.tail, stiff: 0.24, tip: 0.3, grav: 0.02, drag: 0.35, inertia: 0.9, wag: [4, 16] }],
   rat: [{ root: ANCHOR.tail, shape: TAILS.rat.shape, tube: TAILS.rat, stiff: 0.12, tip: 0.3, grav: 0.08, drag: 0.32, inertia: 0.9, wag: [1.4, 14] }],
   bat: SCARF.strands.map((shape, i) => ({ root: SCARF.root, shape, tube: SCARF, stiff: 0.05, tip: 0.2, grav: 0.12, drag: 0.85, inertia: 1, wag: [1.7 + i * 0.4, 6], flutter: 0.35 + i * 0.15 }))
 };
