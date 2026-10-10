@@ -182,7 +182,8 @@ export class Game {
     if (!Composite.allBodies(this.engine.world).includes(a.body)) Composite.add(this.engine.world, a.body);
     // Lola keeps whatever her watch had wound up when she went down; Nox the blood he had drunk, and
     // DARK NOX stays DARK NOX (his clock waited while he was down).
-    const abilityCd = a.type === 2 ? Math.max(1, a.abilityCd) : 1;
+    // (and the Cat King his wait to plant again, or to go home)
+    const abilityCd = a.type === 2 || a.type === 0 ? Math.max(1, a.abilityCd) : 1;
     const dark = a.form === 'dark', blood = a.blood || 0, formT = dark ? a.formT : 0;
     Object.assign(a, {
       x: spot[0], y: spot[1], hp: a.maxHp, dead: false, invincible: 1.7, wounds: {}, partDmg: {}, severed: [], broken: {}, stumps: [], embedded: [],

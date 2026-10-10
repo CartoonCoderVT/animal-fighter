@@ -421,7 +421,8 @@ function walkTo(g, kg, u, goal, gx, speed) {
 }
 
 // A blow of one of the kingdom's units at (cx, cy): rivals within spec.r, never launched or knocked down,
-// and (with the court) only one blow every AUTO.stagger s makes a rival reel.
+// and (with the court) only one blow every AUTO.stagger s makes a rival reel. A parried blow is batted
+// back at the unit (never at the King, wherever he is).
 function unitHit(g, kg, u, spec, cx, cy, dir) {
   const dmg = spec.dmg * K.buff.dmg[kg.lv];
   let struck = 0;
@@ -430,7 +431,7 @@ function unitHit(g, kg, u, spec, cx, cy, dir) {
     if (b.iframes > 0 && b.dodge > 0 && !b.perfect) { perfectDodge(g, b); continue; }
     const light = g.time - (b.courtReelT ?? -9) < AUTO.stagger;
     if (!light) b.courtReelT = g.time;
-    const dealt = damage(g, b, dmg, { x: b.x - dir * 4, y: b.y }, kg.by, spec.kind, { kb: { x: dir * spec.kb[0], y: spec.kb[1] }, solo: true, light, noLift: true, dir: rnd(-0.8, 0.8) });
+    const dealt = damage(g, b, dmg, { x: b.x - dir * 4, y: b.y }, kg.by, spec.kind, { kb: { x: dir * spec.kb[0], y: spec.kb[1] }, solo: true, light, noLift: true, dir: rnd(-0.8, 0.8), familiar: () => { u.cd = Math.max(u.cd, 0.8); } });
     if (!dealt) continue;
     struck++;
     if (!b.dead && !b.knocked && !light && spec.hold) { b.hitstun = Math.max(b.hitstun || 0, spec.hold); b.hitstunMax = Math.max(b.hitstunMax || 0, b.hitstun); }
