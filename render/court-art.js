@@ -914,7 +914,7 @@ function tintOf(s, color, rim = false) {
     } else if (rim === 'wash') {
       g.drawImage(s.canvas, 0, 0);
       g.globalCompositeOperation = 'source-atop';
-      g.globalAlpha = 0.55;
+      g.globalAlpha = 0.5;
       g.fillStyle = color; g.fillRect(0, 0, s.w, s.h);
     } else if (rim) {
       g.fillStyle = color;
@@ -1025,7 +1025,7 @@ const ORDER = [3, 1, 2, 0, 4];
 // tumbles (turned in quarter turns about its middle), its weapon flying off on its own.
 function blitRec(g, r, ox, oy, alpha, tint = null) {
   const cue = r.q.cue, hu = cue.hurt || 0;
-  const s = tint ? tintOf(r.s, tint) : cue.tint ? tintOf(r.s, cue.tint) : hu > 0.72 ? tintOf(r.s, '#ffffff') : hu > 0 && Math.floor(hu * 12) % 2 ? tintOf(r.s, '#ff3050', 'wash') : r.s;
+  const s = tint ? tintOf(r.s, tint) : cue.tint ? tintOf(r.s, cue.tint) : hu > 0.72 ? tintOf(r.s, '#ffffff') : hu > 0 && Math.floor(hu * 9) % 2 ? tintOf(r.s, '#ff3050', 'wash') : r.s;
   g.globalAlpha = alpha * (cue.fade ? 1 - cue.fade * 0.8 : 1) * (r.alpha ?? 1);
   if (r.rot !== undefined) {
     for (const w of r.bits || []) blitRot(g, tint ? tintOf(w.s, tint) : w.s, w.x + ox, w.y + oy, 1, 0, 0);
@@ -1267,6 +1267,12 @@ export class CourtFX {
       for (let j = 0; j < 7; j++) { const an = rnd() * Math.PI * 2; this.part('spark', px + Math.cos(an) * 4, py + Math.sin(an) * 3, Math.cos(an) * 46, Math.sin(an) * 30 - 24, 0.4, [P.core, P.hot, P.mid][j % 3], { drag: 0.05 }); }
       this.fx.push({ k: 'poof', x: px, y: py, P, t: 0, life: 0.3 });
       for (const w of D.bits || []) this.smoke(w[0], w[1], 3, rnd, { r: 3, life: 0.35, up: 10, cols: ['#d8d0e8', '#a89cc0'] });
+    }
+    // Landing: a little burst of dust off the floor.
+    if (D && !D.landed && D.last && T >= DIE.fly && T < DIE.fly + 0.2) {
+      D.landed = true;
+      const rnd = seeded((a.id + 1) * 613 + i * 71 + Math.floor(D.x)), cols = ['#8a7e9a', '#a89cb4', '#6a6078'];
+      for (let j = 0; j < 6; j++) { const sd = j % 2 ? 1 : -1; this.part('smoke', D.last[0] + sd * (2 + rnd() * 4), D.floor - 1, sd * (14 + rnd() * 26), -6 - rnd() * 10, 0.3 + rnd() * 0.2, cols[j % 3], { s: 1 + Math.floor(rnd() * 2), drag: 0.05 }); }
     }
     if (T >= DIE.end) return null;
     const G = D || this.deathOf(a, F), s = G.s, f = G.f;
