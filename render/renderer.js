@@ -910,7 +910,7 @@ export class Renderer {
 
   // Where a bud sits this frame: its stage (one per fifth of a second), its breath, its place.
   budOf(m, st) {
-    const stage = Math.min(3, Math.floor((m.actT ?? 0) / 0.2)), pulse = Math.floor(st * (5 + stage * 3)) % 2, mat = BUD[stage][pulse];
+    const stage = Math.max(0, Math.min(3, Math.floor((m.actT ?? 0) / 0.2))), pulse = Math.floor(st * (5 + stage * 3)) % 2, mat = BUD[stage][pulse];
     const w = mat[0].length, h = mat.length, bottom = Math.round((m.y + (m.foot ?? 0)) * S);
     return { m: mat, key: 'bud' + stage + pulse, face: m.face || 1, x: Math.round(m.x * S) - (w >> 1), y: bottom - h + 1 };
   }

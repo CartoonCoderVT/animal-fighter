@@ -22,7 +22,7 @@ export const CLONE = {
   cap: 3, hp: 18, life: 12, w: 10, h: 10, speed: 5.2, accel: 0.6, jump: 8.6,
   leash: 130, reach: 150, dive: 200, budget: 12, budgetAll: 18, window: 6,
   nibble: { dmg: 3, cd: 1.1, at: 0.2, dur: 0.45, range: 22, band: 18 },
-  echo: { mul: 0.3, cost: 0.8, near: 70, delay: 0.1, step: 0.08 },
+  echo: { mul: 0.3, cost: 0.8, near: 80, delay: 0.1, step: 0.08 },
   latch: { dmg: 1, every: 0.3, ticks: 5 },
   toss: { vx: 9, vy: -2.5, time: 0.6, dmg: 6, cost: 2 }
 };
@@ -130,7 +130,7 @@ export function killMinion(g, m, how = 'hit') {
 // Melting away slowly (time is up, or its owner is gone): it shrinks into bubbles, then it is gone.
 function dissolve(g, m, delay = 0) {
   if (m.dying) return;
-  m.dying = 0.4 + delay; m.act = 'dying'; m.actT = -delay; m.latch = null;
+  m.dying = 0.4 + delay; m.act = 'dying'; m.actT = 0; m.dyingIn = delay; m.latch = null;
   if (m.body) m.body.collisionFilter.mask = MASK.minion;
 }
 
@@ -238,6 +238,8 @@ export function stepMinions(g, dt) {
     // Without the axolotl that grew them, clones melt away (demons crumble into ash, no burst).
     if ((!owner || owner.dead) && !m.dying) dissolve(g, m, 0.15 * m.slot);
     if (m.dying) {
+      // A staggered melt holds its clock until its turn comes.
+      if (m.dyingIn > 0) { m.dyingIn -= dt; m.actT = 0; }
       m.dying -= dt;
       if (m.dying <= 0) { killMinion(g, m, m.form === 'demon' ? 'ash' : 'melt'); continue; }
       calm(m, dt);
@@ -255,7 +257,7 @@ export function stepMinions(g, dt) {
     if (m.act === 'dive') { stepDive(g, m, owner); continue; }
     if (m.act === 'thrown') { stepThrown(g, m, owner); updateMask(m); continue; }
     if (m.act === 'latch' || m.act === 'feast') { stepLatch(g, m, owner, dt); continue; }
-    if (m.act === 'burst') { stepBurst(g, m, owner); continue; }
+    if (m.act === 'burst') { if (m.burstIn > 0) { m.burstIn -= dt; m.actT = 0; } stepBurst(g, m, owner); continue; }
     const v = m.body.velocity;
     let vx = v.x, vy = v.y;
     if (m.hitstun > 0) { if (m.ground) vx *= 0.8; }
@@ -348,7 +350,7 @@ function thinkMini(g, m, owner, dt, v) {
   }
   if (m.act === 'echo') return stepEcho(g, m, owner, v);
   if (m.echo && g.time >= m.echo.at) { const e = m.echo; m.echo = null; if (free && !m.act) startEcho(g, m, owner, e); }
-  let goal = owner.x - (owner.face || 1) * (12 + m.slot * 9);
+  let goal = owner.x - (owner.face || 1) * (22 + m.slot * 14);
   // Around a rival they spread out a little instead of piling up on one spot.
   if (t) goal = t.x - Math.sign(t.x - m.x || 1) * (8 + m.slot * 4);
   const dx = goal - m.x;
@@ -618,7 +620,7 @@ function thinkDemon(g, m, owner, dt, v) {
     if (!m.launched) {
       m.launched = true;
       const tx = t ? t.x : m.x + m.face * 60, ty = t ? t.y - 4 : m.y - 20, d = Math.max(1, Math.hypot(tx - m.x, ty - m.y));
-      g.sound('howl', m.x);
+      g.sound('snarl', m.x);
       return { vx: (tx - m.x) / d * P.v, vy: Math.min(-3, (ty - m.y) / d * P.v - 2) };
     }
     if (t && !t.dead && !t.knocked && Math.abs(t.x - m.x) < 18 && Math.abs(t.y - m.y) < 24) {
@@ -642,7 +644,7 @@ function thinkDemon(g, m, owner, dt, v) {
     return { vx: v.x * 0.7 + (m.actT < B.at ? m.face * 0.8 : 0), vy: v.y };
   }
   if (Math.random() < 0.05) g.fx('embers', { x: m.x, y: m.y - 6 });
-  let goal = owner.x - (owner.face || 1) * (12 + m.slot * 9);
+  let goal = owner.x - (owner.face || 1) * (20 + m.slot * 16);
   if (t) goal = t.x - Math.sign(t.x - m.x || 1) * (8 + m.slot * 4);
   const dx = goal - m.x, move = Math.abs(dx) > 5 ? Math.sign(dx) : 0;
   if (move) m.face = move;
@@ -659,7 +661,7 @@ function thinkDemon(g, m, owner, dt, v) {
 // The end of the awakening: every demon still standing swells white and bursts in hellfire.
 export function burstDemons(g, owner) {
   let i = 0;
-  for (const m of g.minions) if (m.owner === owner.id && m.kind === 'demon' && !m.dying && m.act !== 'burst') { m.act = 'burst'; m.actT = -0.06 * i++; m.latch = null; m.body.collisionFilter.mask = MASK.minion; }
+  for (const m of g.minions) if (m.owner === owner.id && m.kind === 'demon' && !m.dying && m.act !== 'burst') { m.act = 'burst'; m.actT = 0; m.burstIn = 0.06 * i++; m.latch = null; m.body.collisionFilter.mask = MASK.minion; }
 }
 function stepBurst(g, m, owner) {
   const v = m.body.velocity;
