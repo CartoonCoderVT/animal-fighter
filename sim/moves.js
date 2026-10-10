@@ -297,8 +297,8 @@ export const AUTO = {
 // No blow of the kingdom ever launches, knocks down or spikes, and only one of its blows (or the court's)
 // every AUTO.stagger s makes a rival reel.
 export const KINGDOM = {
-  w: [0, 20, 56, 84], h: [0, 60, 60, 96], hp: [0, 60, 140, 240],
-  need: [0, 5, 10, 0], heal: [0, 6, 10, 16],
+  w: [0, 20, 56, 84], h: [0, 60, 60, 96], hp: [0, 150, 260, 380],
+  need: [0, 3, 6, 0], heal: [0, 6, 10, 16],
   aura: [0, 130, 180, Infinity], auraY: [0, 110, 140, Infinity],
   buff: { dmg: [1, 1.2, 1.35, 1.5], cd: [1, 0.85, 0.75, 0.65], taken: [1, 0.9, 0.8, 0.7], regen: [0, 0.5, 1, 1.5], respawn: [COURT_RESPAWN, 9, 7, 5.5] },
   vs: { blast: 1.5, pellet: 0.6, thrown: 10 },
@@ -307,7 +307,7 @@ export const KINGDOM = {
   ring: { r: 40, ry: 30, dmg: 4, kb: [3, -4] },
   fish: { cap: 5, back: 6, first: 0.5, stagger: 0.4, near: 140, eat: 4, gather: 0.5, drop: 0.3 },
   worker: {
-    n: [0, 2, 3, 3], first: 1.5, every: 3, respawn: 6, hp: 10, speed: 1.5, carry: 0.85, see: 24, seeY: 30, cd: 1.0, tries: 3, give: 2, ignore: 3,
+    n: [0, 3, 4, 4], first: 1.5, every: 1.5, respawn: 6, hp: 10, speed: 1.9, carry: 0.85, see: 24, seeY: 30, cd: 1.0, tries: 3, give: 2, ignore: 3,
     swing: { dur: 0.35, at: 0.5, dmg: 3, kb: [1.2, -1], hold: 0.15, r: 16, kind: 'bash' }
   },
   knight: {

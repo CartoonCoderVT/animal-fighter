@@ -90,7 +90,7 @@ export function think(g, a, dt) {
   if (ek) {
     const dR = target ? dist(a, target) : Infinity, dS = Math.hypot(ek.x - a.x, ek.y - (a.y + HALF_H));
     const threat = target && ((target.attack > 0 && dR < 90) || (a.blowBy === target.id && g.time - (a.blowT ?? -9) < 1.2));
-    const want = !target || target.knocked || target.invincible > 0 || (currentNode(g, a)?.id === ek.node && dS < 140 && dR > 160) || dS < 0.6 * dR;
+    const want = !target || target.knocked || target.invincible > 0 || (currentNode(g, a)?.id === ek.node && dS < 140 && dR > 160) || dS < 0.4 * dR;
     if (want && !threat) { if (ai.goalKg !== ek.id) { ai.goalKg = ek.id; ai.goalT = g.time + 1; } }
     else if (threat || g.time >= (ai.goalT ?? 0)) ai.goalKg = null;
   } else ai.goalKg = null;
