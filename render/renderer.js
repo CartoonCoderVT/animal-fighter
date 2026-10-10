@@ -24,6 +24,8 @@ import { MOVES, COMBOS, comboOf } from '../sim/moves.js';
 import { castFor, composeChars, composeTubes, paletteFor, tailPoints, snapDeg, ANCHOR, JOINT } from './pixel-data.js';
 import { BITS_PAL, TAIL_PIECE, BUD, REGROW, regrowStage, PUDDLE, bitCanvas, turn } from './axo-bits.js';
 import { FIGHTERS, lookOf, styleOf } from '../sim/fighters.js';
+// Who wears the Cat King's regalia (king-art.js): the King, and the frog with him in his belly.
+const regal = a => a.type === 0 || (a.type === 5 && lookOf(a) === 'c0');
 import { isMelee, WEAPON_INFO } from '../sim/weapons.js';
 import { LolaFX, handKnives, embeddedKnife } from './lola-art.js';
 import { worldPhase } from '../sim/moves.js';
@@ -504,7 +506,7 @@ export class Renderer {
     for (const f of figures) {
       sil.globalCompositeOperation = 'copy';
       sil.drawImage(f.fc.body.c, 0, 0);
-      if (f.a.type === 0 && !f.a.dead && this.kingArt) { sil.globalCompositeOperation = 'source-over'; this.kingArt.drawRegalia(sil, f, ox - f.x, oy - f.y, state.time ?? 0, 'keep'); }
+      if (regal(f.a) && !f.a.dead && this.kingArt) { sil.globalCompositeOperation = 'source-over'; this.kingArt.drawRegalia(sil, f, ox - f.x, oy - f.y, state.time ?? 0, 'keep'); }
       sil.globalCompositeOperation = 'source-in';
       sil.fillStyle = fg;
       sil.fillRect(0, 0, FIG_W, FIG_H);
@@ -639,7 +641,7 @@ export class Renderer {
     this.kingdom?.drawUnits(lg, state, ox, oy, false);
     if (this.court) for (const a of kings) this.court.drawCourt(lg, a, ox, oy, state.time ?? t, false);
     const blink = f => (f.a.invincible > 0.1 && Math.floor(t * 12) % 2 ? 0.55 : 1);
-    if (this.kingArt) for (const f of figures) if (f.a.type === 0 && !f.a.dead) { lg.globalAlpha = blink(f); this.kingArt.drawRegalia(lg, f, ox, oy, state.time ?? t, 'back'); lg.globalAlpha = 1; }
+    if (this.kingArt) for (const f of figures) if (regal(f.a) && !f.a.dead) { lg.globalAlpha = blink(f); this.kingArt.drawRegalia(lg, f, ox, oy, state.time ?? t, 'back'); lg.globalAlpha = 1; }
     for (const f of figures) {
       if (f.a.invincible > 0.1 && Math.floor(t * 12) % 2) lg.globalAlpha = 0.55;
       lg.drawImage(f.fc.body.c, f.x, f.y);
@@ -648,7 +650,7 @@ export class Renderer {
     }
     // His crown and scepter, then the court in front of him (the shield on guard, whoever is striking),
     // and their arrows.
-    if (this.kingArt) for (const f of figures) if (f.a.type === 0 && !f.a.dead) { lg.globalAlpha = blink(f); this.kingArt.drawRegalia(lg, f, ox, oy, state.time ?? t, 'front'); lg.globalAlpha = 1; }
+    if (this.kingArt) for (const f of figures) if (regal(f.a) && !f.a.dead) { lg.globalAlpha = blink(f); this.kingArt.drawRegalia(lg, f, ox, oy, state.time ?? t, 'front'); lg.globalAlpha = 1; }
     if (this.court) {
       for (const a of kings) this.court.drawCourt(lg, a, ox, oy, state.time ?? t, true);
     }
@@ -674,9 +676,9 @@ export class Renderer {
     // (the Cat King's kingdom, court and regalia too, in the lit pass's order so nothing shows through)
     this.kingdom?.drawKeep(lg, state, ox, oy, figures);
     if (this.court) for (const a of state.actors) if (a.court) this.court.drawCourtKeep?.(lg, a, ox, oy, state.time ?? t, figures);
-    if (this.kingArt) for (const f of figures) if (f.a.type === 0 && !f.a.dead) this.kingArt.drawRegalia(lg, f, ox, oy, state.time ?? t, 'back');
+    if (this.kingArt) for (const f of figures) if (regal(f.a) && !f.a.dead) this.kingArt.drawRegalia(lg, f, ox, oy, state.time ?? t, 'back');
     for (const f of figures) lg.drawImage(f.fc.body.c, f.x, f.y);
-    if (this.kingArt) for (const f of figures) if (f.a.type === 0 && !f.a.dead) this.kingArt.drawRegalia(lg, f, ox, oy, state.time ?? t, 'front');
+    if (this.kingArt) for (const f of figures) if (regal(f.a) && !f.a.dead) this.kingArt.drawRegalia(lg, f, ox, oy, state.time ?? t, 'front');
     lg.globalAlpha = 1;
     for (const f of figures) if (f.info.smear) this.drawSmear(lg, f.a, f.info.smear.frame, f.info.smear.sm, f.hx + ox, f.hy + oy, f.a.face || 1, 1);
     if (state.limbs?.length) this.drawLimbs(lg, state, ox, oy, t, 0.38);
@@ -1473,7 +1475,7 @@ export class Renderer {
     if (this.darkNoxMod?.familiarLights) for (const a of state.actors) if (a.fam) for (const l of this.darkNoxMod.familiarLights(a, t, this.fx.gore) || []) add(l);
     if (this.courtMod?.courtLights) for (const l of this.courtMod.courtLights(state, t) || []) add(l);
     if (this.kingdomMod?.kingdomLights && (state.kingdoms?.length || this.kingdom?.fx.length)) for (const l of this.kingdomMod.kingdomLights(state, state.time ?? t, this.kingdom) || []) add(l);
-    if (this.kingArt?.regaliaLights) for (const f of figures) if (f.a.type === 0 && !f.a.dead) for (const l of this.kingArt.regaliaLights(f, t) || []) add(l);
+    if (this.kingArt?.regaliaLights) for (const f of figures) if (regal(f.a) && !f.a.dead) for (const l of this.kingArt.regaliaLights(f, t) || []) add(l);
     for (const m of state.minions || []) if (kindOf(m) === 'bud') add({ x: X(m.x), y: X(m.y + (m.foot ?? 0)) - 3, r: 16, color: '#ff9cc0', i: 0.35, noRim: true });
     for (const f of figures) if (styleOf(f.a) === 4 && f.info?.eye) {
       if (f.a.type === 4) add({ x: f.info.eye.x, y: f.info.eye.y, r: 10, color: '#ff4f6e', i: 0.7, noRim: true });
@@ -1533,7 +1535,7 @@ export class Renderer {
     if (this.kingdom) { this.kingdom.drawGlow(eg, state, ox, oy); this.kingdom.drawEffects(eg, ox, oy); }
     if (this.court) {
       for (const a of state.actors) if (a.court) this.court.drawCourtGlow(eg, a, ox, oy, st);
-      if (this.kingArt) for (const f of figures) if (f.a.type === 0 && !f.a.dead) this.kingArt.drawRegalia(eg, f, ox, oy, st, 'glow');
+      if (this.kingArt) for (const f of figures) if (regal(f.a) && !f.a.dead) this.kingArt.drawRegalia(eg, f, ox, oy, st, 'glow');
       this.court.drawEffects(eg, ox, oy, st);
     }
     for (const f of figures) {

@@ -28,6 +28,7 @@
 // included) in character space, so it follows any frame: head tilts, body offsets, quarter-turn
 // tumbles. KingHero (king-hero.js) draws the same pieces at the menu's density via drawKingRegalia.
 import { slotPoint, castFor, rotate, mirror } from './pixel-data.js';
+import { lookOf } from '../sim/fighters.js';
 import { MOVES, SPECIALS } from '../sim/moves.js';
 import { bayer } from '../engine/const.js';
 import { mix } from '../engine/palette.js';
@@ -37,6 +38,21 @@ const EYE = [2, -6], HAND = [0, 3];
 // between the ears, on the crown of the skull.
 const CROWN_AT = [-1, -10];
 const REST = 40;
+// Where the regalia sit on each body that wears them: Mingau's, and Don Sapone's while the King is in
+// his belly (the frog takes his court, and his crown, cape and scepter with it). On the frog the crown
+// is perched on top of the fedora between his cat ears, the cape hangs from behind his head (he has
+// no neck to tie it round) and the collar sits under his chin. crown: head cells under its band;
+// cape: its root, character cells from the body's offset; collar: the shift of its cells; float:
+// where the scepter hangs when it leaves his paw (head cells).
+const FIT = {
+  cat: { crown: CROWN_AT, cape: [0, -11], collar: [0, 0], float: [2, -19] },
+  frog: { crown: [-5, -18], cape: [-4, -10], collar: [1, 2], float: [-3, -28] }
+};
+// Who wears them: the King, and the frog that swallowed him.
+export const regal = a => !!a && (a.type === 0 || (a.type === 5 && lookOf(a) === 'c0'));
+// The body the regalia are being drawn on right now (set by drawKingRegalia and regaliaLights).
+let fit = FIT.cat;
+const fitOf = a => (a?.type === 5 ? FIT.frog : FIT.cat);
 
 // Light from the top left. Golds, two jewels, pearls; the cape's velvet ramp (0 darkest .. 4 lit),
 // ermine (white, shade, black tails) and the gold trim.
@@ -188,7 +204,7 @@ function toView(T, x, y) {
 const cell = (T, x, y) => { const [X, Y] = toView(T, x, y); return [Math.round(X), Math.round(Y)]; };
 
 function basis(f, ox, oy) {
-  const a = f.a, frame = f.info?.frame || {}, ch = castFor(a.type, a.form), face = a.face || 1;
+  const a = f.a, frame = f.info?.frame || {}, ch = castFor(a.type, lookOf(a)), face = a.face || 1;
   const eu = ch?.eye || EYE, [ex, ey] = slotPoint('head', frame, eu[0], eu[1], ch);
   const q = (((frame.spin || 0) % 4) + 4) % 4;
   const eye = f.info?.eye || { x: f.hx + ex * face, y: f.hy + ey };
@@ -326,7 +342,7 @@ const C = Object.fromEntries(CODES.map((c, i) => [c, i]));
 
 function capePolygon(frame, P, t) {
   const [bdx = 0, bdy = 0] = frame.body || [];
-  const rx = bdx, ry = -11 + bdy, W = P.W, L = P.L;
+  const rx = bdx + fit.cape[0], ry = fit.cape[1] + bdy, W = P.W, L = P.L;
   const amp = 0.35 + Math.min(1.4, Math.abs(W - 2) * 0.12 + Math.abs(L) * 0.12);
   const Rf = [rx, ry], Rb = [rx - 5, ry - 0.5];
   const hb = Math.max(Math.min(W, 12), -4), wob = Math.sin(t * 4.3) * amp * 0.6;
@@ -418,7 +434,7 @@ function drawCape(g, T, frame, P, t, v, mask) {
 
 // ---- the crown, the collar, the scepter
 function drawCrown(g, T, frame, ch, v, lift = 0, tilt = 0) {
-  const [cx, cy] = slotPoint('head', frame, CROWN_AT[0], CROWN_AT[1] - lift, ch);
+  const [cx, cy] = slotPoint('head', frame, fit.crown[0], fit.crown[1] - lift, ch);
   const s = sprite('crown', CROWN, CROWN_PIV, (frame.head?.[2] || 0) + tilt + T.q * 90, T.face, v);
   const [X, Y] = cell(T, cx, cy);
   g.drawImage(s.c, X - s.px * T.sc, Y - s.py * T.sc, s.w * T.sc, s.h * T.sc);
@@ -426,17 +442,16 @@ function drawCrown(g, T, frame, ch, v, lift = 0, tilt = 0) {
 
 // The ermine collar shows round the front of his neck, under the chin.
 function drawCollar(g, T, frame, v) {
-  const [bdx = 0, bdy = 0] = frame.body || [], P = palette(v), s = T.sc;
+  const [bdx0 = 0, bdy0 = 0] = frame.body || [], bdx = bdx0 + fit.collar[0], bdy = bdy0 + fit.collar[1], P = palette(v), s = T.sc;
   const cells = [[-3, -9, 'E'], [-2, -9, 'k'], [-1, -9, 'E'], [0, -9, 'E'], [1, -9, 'e'], [-4, -9, 'o'], [2, -9, 'o'], [-3, -8, 'o'], [-2, -8, 'o'], [-1, -8, 'o'], [0, -8, 'o'], [1, -8, 'o']];
   for (const [x, y, c] of cells) { const [X, Y] = cell(T, x + bdx, y + bdy); g.fillStyle = P[c]; g.fillRect(X, Y, s, s); }
 }
 
 // Where the scepter hangs over his crown when it leaves his paw (head cells, its grip).
-const FLOAT = [2, -19];
 function scepterAt(T, frame, ch, P) {
   let [hx, hy] = slotPoint('armF', frame, HAND[0], HAND[1], ch);
   if (P.free > 0) {
-    const [fx, fy] = slotPoint('head', frame, FLOAT[0], FLOAT[1] + (P.bob || 0), ch), k = P.free;
+    const [fx, fy] = slotPoint('head', frame, fit.float[0], fit.float[1] + (P.bob || 0), ch), k = P.free;
     hx += (fx - hx) * k; hy += (fy - hy) * k;
   }
   const r = (P.ang * Math.PI) / 180, dx = Math.sin(r), dy = -Math.cos(r);
@@ -584,8 +599,9 @@ function drawPillar(g, T, P, t) {
 
 // Draws the regalia on any canvas: T maps character space to it (see basis()); used by the game
 // (drawRegalia) and the select screen (king-hero.js) alike.
-export function drawKingRegalia(g, T, a, frame, P, t, layer, { mask = null, ch = castFor(a.type, a.form), v = variantOf(a) } = {}) {
+export function drawKingRegalia(g, T, a, frame, P, t, layer, { mask = null, ch = castFor(a.type, lookOf(a)), v = variantOf(a) } = {}) {
   const severed = a.severed || [];
+  fit = fitOf(a);
   if (severed.includes('body')) return;
   const hasBanner = P.banner && !severed.includes('armB');
   if (layer === 'back') { drawCape(g, T, frame, P, t, v, mask); if (hasBanner) drawBannerHeld(g, T, frame, ch, P, v, mask); return; }
@@ -663,7 +679,7 @@ function glints(g, T, frame, ch, P, t, hasHead, hasArm) {
   }
   if (hasHead) {
     // The crown's jewels twinkle in turn.
-    const [cx, cy] = slotPoint('head', frame, CROWN_AT[0], CROWN_AT[1] - (P.hurt ? 1 : 0), ch);
+    const [cx, cy] = slotPoint('head', frame, fit.crown[0], fit.crown[1] - (P.hurt ? 1 : 0), ch);
     const k = Math.floor(t * 1.7) % 5;
     if (k < 3) {
       const [X, Y] = cell(T, cx + (k - 1) * 2, cy - 1);
@@ -701,21 +717,22 @@ function poseFor(f, t) {
 
 export function drawRegalia(g, f, ox, oy, t, layer = 'front') {
   const a = f?.a;
-  if (!a || a.type !== 0 || !f.info) return;
+  if (!regal(a) || !f.info) return;
   const { frame, ch, T } = basis(f, ox, oy), P = poseFor(f, t);
   drawKingRegalia(g, T, a, frame, P, t, layer, { mask: layer === 'back' || layer === 'keep' ? bodyMask(f.info.sprite) : null, ch });
 }
 
 export function regaliaLights(f, t) {
   const a = f?.a;
-  if (!a || a.type !== 0 || !f.info) return [];
+  if (!regal(a) || !f.info) return [];
+  fit = fitOf(a);
   // Lights are gathered before the figures are drawn, on another clock: use the pose last drawn.
   const P = poses.get(a.id);
   if (!P) return [];
   const { frame, ch, T } = basis(f, 0, 0), severed = a.severed || [], out = [];
   // A soft glint off the crown, so the gold reads in the darkest arenas.
   if (!severed.includes('head') && !severed.includes('body')) {
-    const [cx, cy] = slotPoint('head', frame, CROWN_AT[0], CROWN_AT[1] - 2, ch), [x, y] = toView(T, cx, cy);
+    const [cx, cy] = slotPoint('head', frame, fit.crown[0], fit.crown[1] - 2, ch), [x, y] = toView(T, cx, cy);
     out.push({ x, y, r: 12, color: '#ffd88a', i: 0.45 + P.glow * 0.4, noRim: true });
   }
   if (!severed.includes('armF') && !severed.includes('body')) {
@@ -738,8 +755,8 @@ export function regaliaLights(f, t) {
 const SCR = 160;
 let scratch = null;
 export function drawMenuRegalia(g, a, fr, x, y, t, { face = 1, scale = 2, layer = 'front', sprite = null, dim = 0 } = {}) {
-  if (!a || a.type !== 0 || !fr?.frame) return;
-  const frame = fr.frame, ch = castFor(0), st = stateOf(a, t);
+  if (!regal(a) || !fr?.frame) return;
+  const frame = fr.frame, ch = castFor(a.type, lookOf(a)), st = stateOf(a, t);
   let P = poses.get(a.id);
   if (!P || P.t !== t) { P = pose(a, { hx: x / scale, hy: y / scale, info: { frame, name: fr.name } }, t, st); P.t = t; poses.set(a.id, P); }
   const mask = layer === 'back' ? bodyMask(sprite) : null;

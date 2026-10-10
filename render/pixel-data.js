@@ -101,10 +101,11 @@ export const TITAN = {
   pivot: { arm: [5, 1] },
   eye: [5, -9]
 };
-// The frog's hybrid looks (pixel-frog.js), one per fighter he can swallow, by the victim's type.
-// They hang on the frog's own skeleton; a borrowed tail or scarf hangs off his back.
+// The frog's hybrid looks (pixel-frog.js), one per fighter he can swallow, by the victim's type (a
+// frog swallowed by a frog copies nothing). They hang on the frog's own skeleton; a borrowed tail or
+// scarf hangs off his back. With the Cat King inside he also wears his regalia (king-art.js).
 const FROG_SCARF = { ...SCARF, root: [-3, -5] };
-export const FROG_LOOKS = ['frogCat', 'frogRat', 'frogRabbit', 'frogOcelot', 'frogBat'].map((id, t) => FROG_PARTS[id] && {
+export const FROG_LOOKS = ['frogCat', 'frogRat', 'frogRabbit', 'frogOcelot', 'frogBat', null, 'frogAxolotl'].map((id, t) => FROG_PARTS[id] && {
   id, copyOf: t, palette: FROG_PALETTES[id], parts: FROG_PARTS[id], tail: FROG_TAILS[id] || null, scarf: id === 'frogBat' ? FROG_SCARF : null,
   anchor: CAST[5].anchor, joint: CAST[5].joint, eye: CAST[5].eye, mouth: CAST[5].mouth
 });
