@@ -6,13 +6,16 @@ import { FIGHTERS, lookOf, styleOf, BELLY } from '../sim/fighters.js';
 import { TOUCH_BUTTONS } from '../engine/input.js';
 import { WEAPON_INFO } from '../sim/weapons.js';
 import { seeded } from '../engine/const.js';
+import { SPECIALS } from '../sim/moves.js';
 
 const X = v => Math.round(v * S);
 const DEATH_TAG = {
   shatter: 'GELO', grind: 'FOSSO', crush: 'PRENSA', explosion: 'BUM', fire: 'FOGO', shock: 'CHOQUE', fall: 'QUEDA', decap: 'CABEÇA', bleed: 'SANGUE',
   impact: 'ARREMESSO', bullet: 'TIRO', pellet: 'TIRO', thrown: 'LÂMINA', claw: 'GARRAS', whip: 'RABADA', kick: 'COICE', paw: 'PATADA',
   fang: 'MORDIDA', bite: 'MORDIDA', roar: 'RUGIDO', sonic: 'GRITO', blood: 'HEMOMANCIA', hemo: 'PERFURANTE', scythe: 'FOICE', stomp: 'PISÃO', slam: 'PISÃO DO CÉU',
-  blade: 'FACA', katana: 'KATANA', spear: 'LANÇA', pipe: 'CANO', axe: 'MACHADO', hammer: 'MARRETA'
+  blade: 'FACA', katana: 'KATANA', spear: 'LANÇA', pipe: 'CANO', axe: 'MACHADO', hammer: 'MARRETA',
+  // Xolo: its own blows, its clones' and its demons'.
+  gill: 'GUELRA', fin: 'CAUDA', gulp: 'GOLE', bubble: 'BOLHA', belly: 'BARRIGADA', nibble: 'MORDIDA', ember: 'BRASA', clone: 'BROTO', xolotl: 'XOLOTL'
 };
 
 // The fury bar's colors while it fills toward the beast, toward the titan, and as the titan.
@@ -21,6 +24,31 @@ export const RAGE_COLORS = {
   beast: { base: '#e83a1a', light: '#ff7a3a', dark: '#8a1610', back: '#3a1010' },
   titan: { base: '#ff3a10', light: '#ffe08a', dark: '#a01008', back: '#4a0a08' }
 };
+
+// Xolo's brood on its card: one pip per clone slot, a head seen from the front, 5 wide, with its
+// fan of three gills on each side. g/G gill tips and stalks (flames on a demon), h top light, b
+// skin, s chin, e eye, m mouth (the inside of the maw on a demon), t tooth.
+const PIP = {
+  mini: ['g.......g', '.G.hhh.G.', 'gGbebebGg', '.GbbmbbG.', 'g.sssss.g'],
+  demon: ['g.......g', '.G.hhh.G.', 'gGbebebGg', '.GtmtmtG.', 'g.smtms.g']
+};
+const PIP_PAL = {
+  mini: { g: '#ff6e8c', G: '#c4305a', h: '#ffd0de', b: '#f69bb7', s: '#d26f90', e: '#1c0a18', m: '#7a1e44' },
+  demon: { g: '#ffd040', G: '#ff5a1a', h: '#ff5a4a', b: '#c8203a', s: '#6a1024', e: '#fff6a0', t: '#fff2dc', m: '#160006' }
+};
+const PIP_W = 9, PIP_H = 5;
+const inPip = (x, y) => x >= 0 && y >= 0 && x < PIP_W && y < PIP_H && PIP.mini[y][x] !== '.';
+// The head's pixels, its rim (for the empty and the coming pips) and the dark outline around it.
+const PIP_IN = [], PIP_RIM = [], PIP_OUT = [];
+for (let y = -1; y <= PIP_H; y++) {
+  for (let x = -1; x <= PIP_W; x++) {
+    const n4 = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => !inPip(x + dx, y + dy));
+    if (inPip(x, y)) { PIP_IN.push([x, y]); if (n4) PIP_RIM.push([x, y]); } else if ([-1, 0, 1].some(dy => [-1, 0, 1].some(dx => inPip(x + dx, y + dy)))) PIP_OUT.push([x, y]);
+  }
+}
+const BROOD_KINDS = ['seed', 'bud', 'mini', 'demon'];
+// Seconds left of the axolotl's demons: a snapshot carries them, a live record its end time.
+const demonLeft = (a, time) => { const ax = a.axo; return !ax ? 0 : 'demonEnd' in ax ? Math.max(0, (ax.demonEnd || 0) - time) : ax.demon || 0; };
 
 export function panel(g, x, y, w, h, { fill = '#120d1ecc', edge = '#3b3052', light = '#5a4a78', accent = null } = {}) {
   g.fillStyle = fill; g.fillRect(x, y, w, h);
@@ -44,8 +72,10 @@ export class HUD {
     this.feed = [];
     this.lastHp = new Map();
     this.rage = new Map();
+    this.cdLast = new Map();
+    this.cdMax = new Map();
   }
-  reset() { this.feed.length = 0; this.lastHp.clear(); this.rage.clear(); }
+  reset() { this.feed.length = 0; this.lastHp.clear(); this.rage.clear(); this.cdLast.clear(); this.cdMax.clear(); }
   kill(e) {
     this.feed.unshift({ killer: e.killer, victim: e.victim, kind: e.kind, life: 5 });
     this.feed.length = Math.min(this.feed.length, 5);
@@ -116,7 +146,10 @@ export class HUD {
     let cx = Math.round((VIEW_W - total) / 2);
     for (const a of list) {
       const f = FIGHTERS[a.type], local = a.id === localId;
-      panel(g, cx, 6, cw, 26, { accent: f.color, fill: local ? '#1d1430e6' : '#120d1ed9', edge: local ? '#6a5490' : '#3b3052' });
+      // While Xolo's demons are out its card's edge smoulders.
+      const demon = a.type === 6 && !a.dead ? demonLeft(a, state.time ?? time) : 0;
+      const accent = demon > 0 ? (Math.floor(time * 5) % 2 ? '#ff3a1a' : '#c8102a') : f.color;
+      panel(g, cx, 6, cw, 26, { accent, fill: local ? '#1d1430e6' : '#120d1ed9', edge: local ? '#6a5490' : '#3b3052' });
       g.save();
       g.beginPath(); g.rect(cx + 3, 8, 22, 22); g.clip();
       // The titan towers out of the frame: lower her so the face shows.
@@ -132,6 +165,12 @@ export class HUD {
         this.rageBar(g, a, cx + 29, 25, 58, 4, dt, time);
         g.fillStyle = '#2a2036'; g.fillRect(cx + 29, 30, 58, 1);
         g.fillStyle = cd >= 1 ? '#f2c35b' : '#8a7aa8'; g.fillRect(cx + 29, 30, Math.round(58 * cd), 1);
+      } else if (a.type === 6) {
+        // Xolo's card: its life, its brood (a head per clone slot, with what each has left beside
+        // it) and the K under them.
+        bar(g, cx + 29, 19, 58, 3, a.hp / a.maxHp, a.hp < a.maxHp * 0.3 ? '#ee6b6b' : '#8fd694');
+        this.broodPips(g, a, state, cx + 29, 23, time);
+        this.xoloK(g, a, cx + 29, 30, 58, demon, time);
       } else {
         bar(g, cx + 29, 21, 58, 3, a.hp / a.maxHp, a.hp < a.maxHp * 0.3 ? '#ee6b6b' : '#8fd694');
         bar(g, cx + 29, 27, 58, 1, cd, cd >= 1 ? '#f2c35b' : '#8a7aa8');
@@ -240,6 +279,117 @@ export class HUD {
       if (cur) { g.fillStyle = Math.floor(time * 4) % 2 ? '#ffffff' : RAGE_COLORS[form].light; g.fillRect(px, y, 5, 1); }
       if (i === 2 && !reached) { g.fillStyle = '#4a3a5a'; g.fillRect(px + 2, y + 1, 1, h - 2); }
     });
+  }
+
+  // Xolo's three clone slots. Empty: a grey head. A part in flight: its rim pulsing pink. A bud:
+  // the head filling up pink from the chin as it swells. An adult: pink, with the time it has
+  // left beside it (flashing white when hit). A demon: red, a mouth full of teeth, flames for
+  // gills and its life in embers; white as it swells to burst. A dying one melts out of its slot.
+  broodPips(g, a, state, x, y, time) {
+    const kind = m => m.kind || (m.form === 'demon' ? 'demon' : 'mini');
+    const mine = (state.minions || []).filter(m => m.owner === a.id && BROOD_KINDS.includes(kind(m)));
+    const f16 = Math.floor(time * 16), pulse = ['#7a2a50', '#c4507a', '#ff9cb8', '#ffd0de', '#ff9cb8', '#c4507a'][Math.floor(time * 12) % 6];
+    for (let slot = 0; slot < 3; slot++) {
+      const m = mine.find(n => n.slot === slot && !n.dying) || mine.find(n => n.slot === slot);
+      const k = m ? kind(m) : null, px = x + slot * 20 + 1, bx = px + 11, by = y + 1, bw = 6, bh = 3;
+      // The head: a dark outline, the empty slot, then whatever fills it.
+      g.fillStyle = '#0b0812';
+      for (const [dx, dy] of PIP_OUT) g.fillRect(px + dx, y + dy, 1, 1);
+      g.fillStyle = '#2a2036';
+      for (const [dx, dy] of PIP_IN) g.fillRect(px + dx, y + dy, 1, 1);
+      g.fillStyle = k === 'seed' ? pulse : '#4a3a5a';
+      for (const [dx, dy] of PIP_RIM) g.fillRect(px + dx, y + dy, 1, 1);
+      g.fillStyle = '#0b0812'; g.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
+      g.fillStyle = '#2a2036'; g.fillRect(bx, by, bw, bh);
+      if (!m || k === 'seed') {
+        // A part on its way: a spark running along the empty bar.
+        if (k === 'seed') { g.fillStyle = pulse; g.fillRect(bx + Math.abs((Math.floor(time * 12) % 10) - 5), by, 1, bh); }
+        continue;
+      }
+      const life = clamp(m.lifeMax ? m.life / m.lifeMax : 1, 0, 1);
+      if (m.dying) {
+        // Melting: the head sinks out of its slot.
+        const sink = Math.floor(clamp((m.actT || 0) / 0.4, 0, 1) * (PIP_H + 1));
+        this.pip(g, px, y, m.form === 'demon' ? 'demon' : 'mini', { sink, time, slot });
+        continue;
+      }
+      if (k === 'bud') {
+        const grown = 1 - life;
+        this.pip(g, px, y, 'mini', { from: PIP_H - Math.ceil(grown * PIP_H), eyes: false, flash: Math.floor(time * 12) % 3 === 0, time, slot });
+        g.fillStyle = pulse; g.fillRect(bx, by, Math.round(bw * grown), bh);
+        continue;
+      }
+      if (k === 'mini') {
+        // Turning into a demon: it flickers between the two.
+        const look = m.act === 'morph' && f16 % 2 ? 'demon' : 'mini';
+        this.pip(g, px, y, look, { white: m.hurt > 0 && f16 % 2, time, slot });
+        const fw = Math.ceil(bw * life), low = life < 0.25 && Math.floor(time * 8) % 2;
+        g.fillStyle = low ? '#ffffff' : '#f69bb7'; g.fillRect(bx, by, fw, bh);
+        g.fillStyle = low ? '#ffffff' : '#ffd0de'; g.fillRect(bx, by, fw, 1);
+        g.fillStyle = low ? '#ffffff' : '#d26f90'; g.fillRect(bx, by + bh - 1, fw, 1);
+        continue;
+      }
+      // A demon. Swelling to burst it flashes white and shakes; its bar is its life, burning.
+      const burst = m.act === 'burst', hurt = m.hurt > 0 || m.act === 'morph';
+      this.pip(g, px + (burst && f16 % 2 ? 1 : 0), y, 'demon', { white: (burst || hurt) && f16 % 2, time, slot });
+      const fw = Math.ceil(bw * clamp(m.hp / (m.maxHp || 1), 0, 1));
+      for (let i = 0; i < fw; i++) {
+        const band = ((i - Math.floor(time * 16) - slot * 3) % 4 + 4) % 4;
+        g.fillStyle = band === 0 ? '#ffd040' : '#ff5a1a'; g.fillRect(bx + i, by, 1, 1);
+        g.fillStyle = band === 1 ? '#ffd040' : '#ff5a1a'; g.fillRect(bx + i, by + 1, 1, 1);
+        g.fillStyle = band === 2 ? '#ff5a1a' : '#a8102a'; g.fillRect(bx + i, by + 2, 1, 1);
+      }
+    }
+  }
+
+  // One head pip at (x, y): its look, the rows it fills from (a bud fills up from the chin), how far
+  // it has sunk (melting), all white (a flash), and whether it has its eyes yet.
+  pip(g, x, y, look, { from = 0, sink = 0, white = false, flash = false, eyes = true, time = 0, slot = 0 } = {}) {
+    const rows = PIP[look], pal = PIP_PAL[look];
+    // A demon's gill flames lick: their tips swap shades a few times a second.
+    const lick = look === 'demon' && (Math.floor(time * 9) + slot) % 2;
+    for (let r = Math.max(from, 0); r < PIP_H; r++) {
+      const src = r - sink;
+      if (src < 0) continue;
+      for (let c = 0; c < PIP_W; c++) {
+        let ch = rows[src][c];
+        if (ch === '.') continue;
+        if (ch === 'e' && !eyes) ch = 'b';
+        if (lick && (ch === 'g' || ch === 'G')) ch = ch === 'g' ? 'G' : 'g';
+        if (flash && ch === 'b') ch = 'h';
+        g.fillStyle = white ? '#ffffff' : pal[ch];
+        g.fillRect(x + c, y + r, 1, 1);
+      }
+    }
+  }
+
+  // Xolo's K. While its demons are out it burns down in embers over the awakening; then (and after
+  // the Bocarra's shorter wait) it fills back up from wherever the wait started.
+  xoloK(g, a, x, y, w, demon, time) {
+    const cdNow = Math.max(0, a.abilityCd || 0), full = FIGHTERS[6].cooldown;
+    if (!this.cdMax.has(a.id)) this.cdMax.set(a.id, full);
+    else if (cdNow > (this.cdLast.get(a.id) ?? 0) + 0.05) this.cdMax.set(a.id, clamp(cdNow, 0.5, full));
+    this.cdLast.set(a.id, cdNow);
+    g.fillStyle = '#2a2036'; g.fillRect(x, y, w, 1);
+    if (demon <= 0) {
+      const k = clamp(1 - cdNow / this.cdMax.get(a.id), 0, 1);
+      g.fillStyle = k >= 1 ? '#f2c35b' : '#8a7aa8'; g.fillRect(x, y, Math.round(w * k), 1);
+      return;
+    }
+    const fw = Math.round(w * clamp(demon / SPECIALS[6].dur, 0, 1)), f30 = Math.floor(time * 30);
+    for (let i = 0; i < fw; i++) {
+      const band = ((i - Math.floor(time * 24)) % 6 + 6) % 6;
+      g.fillStyle = band < 2 ? '#ffd040' : band < 4 ? '#ff5a1a' : '#c8102a';
+      g.fillRect(x + i, y, 1, 1);
+    }
+    // The burning end, and embers rising off the fuse.
+    if (fw > 0) { g.fillStyle = f30 % 2 ? '#ffffff' : '#fff2a0'; g.fillRect(x + fw - 1, y, 1, 1); }
+    const rnd = seeded(Math.floor(time * 12) + a.id * 17);
+    for (let i = 0; i < fw; i++) {
+      if (rnd() > 0.14) continue;
+      g.fillStyle = rnd() < 0.5 ? '#ff8a1e' : '#ffd040';
+      g.fillRect(x + i, y - (rnd() < 0.25 ? 2 : 1), 1, 1);
+    }
   }
 
   drawTouch(g, type) {

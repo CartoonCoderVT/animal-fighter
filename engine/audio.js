@@ -1,5 +1,11 @@
 // Synthesized sound effects and a tiny chiptune sequencer; nothing is loaded from disk.
-const N = (freq, dur, type = 'lowpass', to = null) => ({ freq, dur, type, to });
+// A filtered noise burst: the filter can sweep (to), ring (q) and swell in (env, as for waves).
+const N = (freq, dur, type = 'lowpass', to = null, q = null, env = null) => ({ freq, dur, type, to, q, env });
+// A sound is one voice: sine partials, filtered noise and an oscillator swept from f0 to f1 (or
+// along glide, [[seconds, Hz], ...]), each optional. Optional extras: env [attack, hold] to swell
+// in and sustain instead of striking, vib [Hz, cents], lp (a lowpass on the oscillator), crackle
+// [ticks, Hz] (pops of noise scattered over the noise), gain (the voice's level), seq [[seconds,
+// voice], ...] (more voices layered after it) and gap (the least time between two of it).
 const SFX = {
   jump: { wave: 'square', f0: 340, f1: 620, dur: 0.09, vol: 0.5 },
   land: { wave: 'sine', f0: 140, f1: 55, dur: 0.09, noise: N(420, 0.08), vol: 0.7 },
@@ -57,8 +63,44 @@ const SFX = {
   gulp: { wave: 'sine', f0: 260, f1: 70, dur: 0.22, noise: N(500, 0.18, 'lowpass', 150), vol: 0.75 },
   spit: { wave: 'square', f0: 140, f1: 420, dur: 0.1, noise: N(1600, 0.16, 'bandpass', 700), vol: 0.7 },
   croak: { wave: 'sawtooth', f0: 95, f1: 70, dur: 0.38, noise: N(240, 0.3, 'bandpass', 120), vol: 0.8 },
-  slap: { wave: 'sine', f0: 320, f1: 120, dur: 0.06, noise: N(2400, 0.08, 'bandpass', 900), vol: 0.75 }
+  slap: { wave: 'sine', f0: 320, f1: 120, dur: 0.06, noise: N(2400, 0.08, 'bandpass', 900), vol: 0.75 },
+  // Xolo: the wet pop of a part coming off (and of a bud hatching), the bubbly gulp of a bud or a
+  // bubble, the bright drop of a part grown back, the clones' bite, the howl of the awakening and
+  // the hiss of a demon's embers. Water sounds are bubbles: a sine whose pitch shoots up.
+  plop: { wave: 'sine', f0: 190, glide: [[0.05, 720]], dur: 0.09, noise: N(1100, 0.05, 'lowpass', 260), seq: [[0.035, { wave: 'sine', f0: 430, f1: 920, dur: 0.045, gain: 0.35 }]], vol: 0.75 },
+  blub: {
+    wave: 'sine', f0: 240, glide: [[0.045, 560]], dur: 0.065, noise: N(700, 0.05, 'lowpass', 200),
+    seq: [[0.07, { wave: 'sine', f0: 150, glide: [[0.075, 390]], dur: 0.12 }], [0.075, { wave: 'sine', f0: 120, f1: 70, dur: 0.13, gain: 0.5 }], [0.18, { wave: 'sine', f0: 620, f1: 1180, dur: 0.035, gain: 0.3 }]],
+    vol: 0.65
+  },
+  plip: { wave: 'sine', f0: 1100, glide: [[0.03, 2500]], dur: 0.06, seq: [[0.028, { partials: [[2500, 0.18, 0.1]] }], [0.05, { wave: 'sine', f0: 1800, f1: 3400, dur: 0.035, gain: 0.35 }]], vol: 0.35 },
+  chomp: {
+    noise: N(3800, 0.025, 'highpass'), wave: 'square', f0: 300, f1: 70, dur: 0.07, lp: 1400,
+    seq: [[0.018, { noise: N(1100, 0.11, 'bandpass', 320, 3), wave: 'sine', f0: 170, f1: 60, dur: 0.09, gain: 0.8 }]], vol: 0.65
+  },
+  // A long dog's howl that climbs, wavers and falls: a filtered saw, a ghostly fifth above that beats
+  // against it, a body an octave below and the breath through it.
+  howl: {
+    wave: 'sawtooth', f0: 250, glide: [[0.32, 540], [0.7, 610], [1.02, 360]], dur: 1.05, env: [0.14, 0.62], vib: [5.5, 26], lp: 1500,
+    seq: [
+      [0.05, { wave: 'triangle', f0: 372, glide: [[0.32, 804], [0.7, 908], [1.02, 536]], dur: 1, env: [0.22, 0.56], vib: [6.3, 40], gain: 0.4 }],
+      [0, { wave: 'sine', f0: 125, glide: [[0.32, 270], [0.7, 305], [1.02, 180]], dur: 1.02, env: [0.1, 0.6], gain: 0.45 }],
+      [0.02, { noise: N(700, 0.95, 'bandpass', 1400, 3, [0.25, 0.55]), gain: 0.5 }]
+    ],
+    gap: 1, vol: 0.5
+  },
+  // A demon's short snarl as it leaps (rough with a fast flutter), so its pounces need not howl.
+  snarl: { wave: 'sawtooth', f0: 380, glide: [[0.04, 520], [0.16, 210]], dur: 0.17, vib: [32, 70], lp: 1800, noise: N(900, 0.14, 'bandpass', 500, 2), gap: 0.15, vol: 0.6 },
+  sizzle: { noise: N(5600, 0.55, 'highpass', 2400, null, [0.03, 0.16]), crackle: [9, 2600], seq: [[0, { wave: 'sine', f0: 150, f1: 50, dur: 0.18, gain: 0.55 }]], gap: 0.08, vol: 0.5 }
 };
+// Scheduling of a gain: struck at its peak (or swelling in over env's attack and held to its hold),
+// then dying away by dur.
+function envelope(p, t, dur, peak, env) {
+  const [attack = 0, hold = 0] = env || [];
+  if (attack > 0) { p.setValueAtTime(0.0001, t); p.linearRampToValueAtTime(peak, t + attack); } else p.setValueAtTime(peak, t);
+  if (hold > attack) p.setValueAtTime(peak, t + hold);
+  p.exponentialRampToValueAtTime(0.001, t + dur);
+}
 
 const SONGS = {
   menu: {
@@ -125,54 +167,86 @@ export class Sound {
     const spec = SFX[name];
     if (!spec) return;
     const t = this.ctx.currentTime;
-    if (t - (this.last[name] || 0) < 0.035) return;
+    if (t - (this.last[name] || 0) < (spec.gap ?? 0.035)) return;
     this.last[name] = t;
     const out = this.ctx.createGain();
     out.gain.setValueAtTime(this.volume * 0.3 * (spec.vol ?? 0.6), t);
-    let node = out;
     if (x !== null && this.ctx.createStereoPanner) {
       const pan = this.ctx.createStereoPanner();
       pan.pan.value = Math.max(-0.8, Math.min(0.8, (x / 960) * 1.6 - 0.8));
       out.connect(pan);
       pan.connect(this.master);
     } else out.connect(this.master);
+    let dur = this.voice(spec, t, out);
+    for (const [at, v] of spec.seq || []) dur = Math.max(dur, at + this.voice(v, t + at, out));
+    setTimeout(() => out.disconnect(), (dur + 0.1) * 1000);
+  }
+
+  // One voice of a sound, scheduled at t into node. Returns how long it rings.
+  voice(spec, t, node) {
+    const k = spec.gain ?? 1;
     const dur = Math.max(spec.dur || 0, spec.noise?.dur || 0, ...(spec.partials || []).map(p => p[2]));
     for (const [f, v, d] of spec.partials || []) {
       const o = this.ctx.createOscillator(), pg = this.ctx.createGain();
       o.type = 'sine';
       o.frequency.setValueAtTime(f * (0.98 + Math.random() * 0.04), t);
-      pg.gain.setValueAtTime(v, t);
+      pg.gain.setValueAtTime(v * k, t);
       pg.gain.exponentialRampToValueAtTime(0.001, t + d);
       o.connect(pg); pg.connect(node);
       o.start(t); o.stop(t + d);
     }
     if (spec.noise) {
-      const src = this.ctx.createBufferSource();
-      src.buffer = this.noiseBuffer;
+      const n = spec.noise, src = this.noise(t, n.dur);
       const filter = this.ctx.createBiquadFilter();
-      filter.type = spec.noise.type;
-      filter.frequency.value = spec.noise.freq;
-      if (spec.noise.to) filter.frequency.exponentialRampToValueAtTime(spec.noise.to, t + spec.noise.dur);
+      filter.type = n.type;
+      filter.frequency.value = n.freq;
+      if (n.q) filter.Q.value = n.q;
+      if (n.to) { filter.frequency.setValueAtTime(n.freq, t); filter.frequency.exponentialRampToValueAtTime(n.to, t + n.dur); }
       const g = this.ctx.createGain();
-      g.gain.setValueAtTime(1, t);
-      g.gain.exponentialRampToValueAtTime(0.001, t + spec.noise.dur);
+      envelope(g.gain, t, n.dur, k, n.env);
       src.connect(filter); filter.connect(g); g.connect(node);
-      src.start(t, Math.random() * 0.5);
-      src.stop(t + spec.noise.dur);
+      // Crackles: short pops of noise scattered over it, each at its own pitch.
+      for (let i = 0; i < (spec.crackle?.[0] || 0); i++) {
+        const at = t + Math.random() * n.dur * 0.85, c = this.noise(at, 0.02), cf = this.ctx.createBiquadFilter(), cg = this.ctx.createGain();
+        cf.type = 'bandpass'; cf.frequency.value = spec.crackle[1] * (0.6 + Math.random() * 0.9); cf.Q.value = 2;
+        envelope(cg.gain, at, 0.006 + Math.random() * 0.014, k * (0.8 + Math.random() * 1.6));
+        c.connect(cf); cf.connect(cg); cg.connect(node);
+      }
     }
     if (spec.wave) {
       const o = this.ctx.createOscillator();
       o.type = spec.wave;
       o.frequency.setValueAtTime(spec.f0, t);
-      o.frequency.exponentialRampToValueAtTime(Math.max(20, spec.f1), t + spec.dur);
+      if (spec.glide) for (const [at, f] of spec.glide) o.frequency.exponentialRampToValueAtTime(f, t + at);
+      else o.frequency.exponentialRampToValueAtTime(Math.max(20, spec.f1), t + spec.dur);
+      if (spec.vib) {
+        const lfo = this.ctx.createOscillator(), depth = this.ctx.createGain();
+        lfo.frequency.value = spec.vib[0];
+        depth.gain.value = spec.vib[1];
+        lfo.connect(depth); depth.connect(o.detune);
+        lfo.start(t); lfo.stop(t + spec.dur);
+      }
       const g = this.ctx.createGain();
-      g.gain.setValueAtTime(0.7, t);
-      g.gain.exponentialRampToValueAtTime(0.001, t + spec.dur);
-      o.connect(g); g.connect(node);
+      envelope(g.gain, t, spec.dur, 0.7 * k, spec.env);
+      if (spec.lp) {
+        const f = this.ctx.createBiquadFilter();
+        f.type = 'lowpass'; f.frequency.value = spec.lp;
+        o.connect(f); f.connect(g);
+      } else o.connect(g);
+      g.connect(node);
       o.start(t);
       o.stop(t + spec.dur);
     }
-    setTimeout(() => out.disconnect(), (dur + 0.1) * 1000);
+    return dur;
+  }
+  // The shared noise, from a random point in it (looping for long sounds).
+  noise(t, dur) {
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.noiseBuffer;
+    src.loop = dur > 0.45;
+    src.start(t, Math.random() * 0.5);
+    src.stop(t + dur);
+    return src;
   }
 
   music(name) {

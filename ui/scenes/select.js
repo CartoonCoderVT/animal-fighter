@@ -92,19 +92,28 @@ export class SelectScene {
       for (let xx = -18; xx <= 18; xx++) g.fillRect(x + xx, 227 - (Math.abs(xx) < 12 ? 1 : 0), 1, 1);
       if (sel) r.drawHero(g, k, x, 227, this.selOf === k ? this.selT : 0, { density: 2, dt, key: 'sel' + k });
       else r.drawPreview(g, k, x, 227, { density: 2, mode: 'idle', key: 'sel' + k, face: 1, dt, dim: 0.6 });
-      drawText(g, f.name, sel ? Math.max(66, Math.min(VIEW_W - 66, x)) : x, 240, { color: sel ? '#fff1d6' : '#6a5e80', align: 'center', scale: sel ? 2 : 1, shadow: sel ? '#3a2450' : null });
+      // The picked one's name, big, kept on screen at the ends of the row.
+      const half = measure(f.name, sel ? 2 : 1) / 2 + 6;
+      drawText(g, f.name, Math.round(Math.max(half, Math.min(VIEW_W - half, x))), 240, { color: sel ? '#fff1d6' : '#6a5e80', align: 'center', scale: sel ? 2 : 1, shadow: sel ? '#3a2450' : null });
     }
     const f = FIGHTERS[this.index];
     panel(g, 12, 262, VIEW_W - 24, 86, { accent: f.color });
     drawText(g, f.species, 22, 268, { color: f.color });
     drawText(g, f.role, VIEW_W - 22, 268, { color: '#8a7f9c', align: 'right' });
-    paragraph(g, f.desc, 22, 282, 290, '#d8cde8');
-    drawText(g, 'PODER ESPECIAL', 22, 310, { color: '#8a7f9c' });
-    drawText(g, f.icon + ' ' + f.ability, 22, 322, { color: '#f2c35b' });
-    paragraph(g, f.detail, 330, 282, 290, '#b9aecb');
-    ['DANO', 'MOBILIDADE', 'ESPECIAL'].forEach((label, j) => {
-      drawText(g, label, 330, 318 + j * 10, { color: '#8a7f9c' });
-      for (let k = 0; k < 5; k++) { g.fillStyle = k < f.stats[j] ? f.color : '#2a2036'; g.fillRect(420 + k * 14, 320 + j * 10, 11, 4); }
+    // Left: who they are and their special, pushed down under a longer description. Right: how
+    // they fight, and the three ratings in one row along the bottom.
+    const ay = Math.max(310, 282 + paragraph(g, f.desc, 22, 282, 290, '#d8cde8') + 4);
+    drawText(g, 'PODER ESPECIAL', 22, ay, { color: '#8a7f9c' });
+    drawText(g, f.icon + ' ' + f.ability, 22, ay + 12, { color: '#f2c35b' });
+    paragraph(g, f.detail, 330, 282, 288, '#b9aecb');
+    const labels = ['DANO', 'MOBILIDADE', 'ESPECIAL'], bar = 5 * 8 - 2;
+    const gap = (288 - labels.reduce((w, l) => w + measure(l) + 4 + bar, 0)) / (labels.length - 1);
+    let sx = 330;
+    labels.forEach((label, j) => {
+      drawText(g, label, Math.round(sx), 334, { color: '#8a7f9c' });
+      sx += measure(label) + 4;
+      for (let k = 0; k < 5; k++) { g.fillStyle = k < f.stats[j] ? f.color : '#2a2036'; g.fillRect(Math.round(sx) + k * 8, 336, 6, 4); }
+      sx += bar + gap;
     });
     if (this.next !== 'browse') button(g, this.confirmRect, this.next === 'online' ? 'CONTINUAR ▶' : 'LUTAR ▶', { hot: true, color: f.color });
     if (this.next === 'solo') {

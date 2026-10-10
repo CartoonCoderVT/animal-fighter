@@ -726,6 +726,7 @@ function shrunk(f) {
 }
 // Returns { frame, expr, name } for an actor (live or snapshot).
 export function frameFor(a, time = 0) {
+  if (isMinion(a)) return minionFrame(a, time);
   let f = fullFrameFor(a, time);
   // Xolo without its tail (torn off, growing back): the pose never draws it; secondary.js grows the
   // stub back out of the chain.
@@ -734,6 +735,142 @@ export function frameFor(a, time = 0) {
     f = { ...f, frame: { ...frame, ...(front && front !== 'tail' && { front }), tail: false } };
   }
   return a.foot && a.foot < 17 ? shrunk(f) : f;
+}
+
+// ---- The axolotl's brood ----------------------------------------------------------------------
+// Its clones ("Brotos") and their demon form (Xolotl's) have casts of their own, drawn at their own
+// size, so their frames are their own too: offsets of a pixel or two, picked from the record the
+// sim keeps for them (act, actT, attack, hitstun) and how they move.
+Object.assign(FRAMES, {
+  // The Broto: a low, wide stance with its little hands up like its parent, breathing.
+  cIdle1: { armF: [0, 0, -67.5], armB: [0, 0, -56.25], tailDeg: -4 },
+  cIdle2: { head: [0, 1], armF: [0, 1, -67.5], armB: [0, 1, -56.25], tailDeg: 0 },
+  // The waddle: the head bobbing ahead, short legs paddling, the tail sculling.
+  cRun1: { head: [1, 0], armF: [1, 0, 22.5], armB: [1, 0, -45], footF: [1, 0], footB: [-1, -1], tailDeg: 10 },
+  cRun2: { head: [1, -1], body: [0, -1], armF: [1, -1, -22.5], armB: [0, -1, -22.5], footF: [0, -1], tailDeg: 0 },
+  cRun3: { head: [1, 0], armF: [1, 0, -67.5], armB: [0, 0, 22.5], footF: [-1, -1], footB: [1, 0], tailDeg: -10 },
+  cRun4: { head: [1, -1], body: [0, -1], armF: [1, -1, -22.5], armB: [0, -1, -22.5], footB: [0, -1], tailDeg: 0 },
+  // A hop (arms flung up for joy) and the drop after it.
+  cHop: { head: [0, -1], body: [0, -1], armF: [1, -1, -135], armB: [0, -1, -112.5], footF: [1, -1], footB: [-1, -1], tailDeg: -14 },
+  cFall: { armF: [1, -1, -101.25], armB: [0, -1, -78.75], footF: [1, 0], footB: [-1, 0], tailDeg: 14 },
+  // The nibble: pulled back low with the mouth open, a dart forward, the chomp, back.
+  cNibA: { head: [-1, 1, -11.25], body: [-1, 0], armF: [0, 0, 22.5], armB: [-1, 0, 11.25], footB: [-1, 0], tailDeg: -12 },
+  cNibX: { head: [2, 0, 11.25], body: [1, 0], armF: [2, -1, -90], armB: [1, -1, -78.75], footF: [1, 0], footB: [-1, -1, 22.5], tailDeg: 14 },
+  cNibI: { head: [2, 1, 22.5], body: [1, 0], armF: [2, 0, -56.25], armB: [1, 0, -45], footF: [1, 0], footB: [-1, 0], tailDeg: 18 },
+  cNibR: { head: [1, 1], armF: [1, 0, -45], armB: [0, 0, -33.75], tailDeg: 6 },
+  // Clinging to a rival's back and gnawing: hands up gripping, legs tucked, the tail hanging.
+  cLatch1: { head: [1, 0], body: [0, -1], armF: [1, -1, -90], armB: [0, -1, -90], footF: [1, -1], footB: [-1, -1], tailDeg: -40 },
+  cLatch2: { head: [1, 1], body: [0, -1], armF: [1, 0, -90], armB: [0, 0, -90], footF: [1, -1], footB: [-1, -1], tailDeg: -34 },
+  // Thrown, curled up in a spinning ball; leaping onto a rival's back.
+  cSpin: { head: [1, 2, 22.5], armF: [0, 0, -22.5], armB: [0, 0, -11.25], footF: [1, -2], footB: [-1, -2], tail: [[1, 0], [-1, 2], [-1, 4], [1, 5], [3, 4]] },
+  cLeap: { head: [2, 0, 11.25], body: [1, -1], armF: [2, -1, -101.25], armB: [1, -1, -112.5], footF: [-1, -1, 45], footB: [-2, -1, 56.25], tailDeg: -6 },
+  // Reeling from a blow, and tumbling through the air.
+  cHurt: { head: [-1, 0, -22.5], body: [-1, 0], armF: [0, -1, -146.25], armB: [-1, -1, 135], footF: [1, -1], tailDeg: 20 },
+  cTumble: { head: [-1, 0, -11.25], armF: [1, -1, -101.25], armB: [-1, -1, 101.25], footF: [1, -1], footB: [-1, -1] },
+  // Into the goo head first, and popping back out of it arms up.
+  cDive: { head: [2, 2, 33.75], body: [1, 0], armF: [2, 1, -11.25], armB: [1, 1, 0], footF: [0, -1], footB: [-1, -1], tailDeg: 30 },
+  cPop: { head: [0, -1, -11.25], body: [0, -1], armF: [1, -2, -157.5], armB: [0, -2, -146.25], tailDeg: -6 },
+  // Just hatched: it shakes itself off, head and gills flung side to side.
+  cHatch1: { head: [-1, 1, -11.25], armF: [1, 1, -22.5], armB: [0, 1, -11.25], tailDeg: 10 },
+  cHatch2: { head: [1, 1, 11.25], armF: [1, 1, -78.75], armB: [0, 1, -67.5], tailDeg: -10 },
+  // Melting away: it sags into the puddle.
+  cDie: { head: [0, 2, 22.5], body: [0, 1], armF: [1, 1, 11.25], armB: [0, 1, 22.5], tailDeg: -10 },
+  // Turning demon: it shivers, reared up, as the change tears through it.
+  cShiv1: { head: [-1, -1, -22.5], body: [0, -1], armF: [1, -1, -135], armB: [-1, -1, 135], tailDeg: 20 },
+  cShiv2: { head: [0, -1, -11.25], body: [0, -1], armF: [1, -2, -146.25], armB: [-1, -2, 146.25], tailDeg: 14 }
+});
+// The nibble, by its clock (0.45 s, the bite lands at 0.2): [from, frame, face].
+const NIBBLE = [[0, 'cNibA', 'Open'], [0.15, 'cNibX', 'Open'], [0.2, 'cNibI', 'Angry'], [0.32, 'cNibR', 'Angry']];
+const atClock = (keys, at) => { let r = keys[0]; for (const k of keys) if (at >= k[0]) r = k; return r; };
+// The owner's faces that a clone does not have.
+const MINI_FACE = { Lash: 'Angry', Trail: 'Open', Puff: 'Open', Wide: 'Open', Maw: 'Open', MawShut: 'Angry', Pain: 'Hurt', Cast: 'Open', Cast2: 'Open' };
+const MINION = ['seed', 'bud', 'mini', 'demon'];
+const isMinion = a => a.type === 6 && (MINION.includes(a.kind) || a.form === 'mini' || a.form === 'demon');
+
+function minionFrame(a, time) {
+  const seed = (a.id || 0) * 1.37, t = time + seed, at = a.actT ?? 0, act = a.act, face = a.face || 1;
+  const pick = (name, expr = '') => ({ frame: FRAMES[name], expr, name });
+  const spun = (name, expr, rate) => ({ frame: { ...FRAMES[name], spin: Math.floor(t * rate) * face }, expr, name });
+  const blink = t % 3.1 < 0.12;
+  if (a.form === 'demon') return demonFrame(a, time);
+  if (act === 'dying') return pick('cDie', 'Hurt');
+  if (act === 'morph') return pick(Math.floor(t * 30) % 2 ? 'cShiv1' : 'cShiv2', Math.floor(t * 15) % 2 ? 'Hurt' : 'Open');
+  if (act === 'thrown') return spun('cSpin', 'Angry', 16);
+  if (act === 'dive') return at < 0.35 ? pick('cDive', 'Angry') : pick('cPop', 'Open');
+  if (a.hitstun > 0) return a.ground ? pick('cHurt', 'Hurt') : spun('cTumble', 'Hurt', 12);
+  if (act === 'hatch') return at < 0.42 ? pick(Math.floor(at * 14) % 2 ? 'cHatch2' : 'cHatch1', at < 0.2 ? 'Blink' : 'Open') : pick('cIdle1', 'Open');
+  if (act === 'nibble') { const [, name, expr] = atClock(NIBBLE, at); return pick(name, expr); }
+  if (act === 'latch') {
+    // Leaping on, then hanging on and gnawing.
+    if (Math.abs(a.vx || 0) + Math.abs(a.vy || 0) > 0.5) return pick('cLeap', 'Open');
+    const k = Math.floor(t * 8) % 2;
+    return pick(k ? 'cLatch2' : 'cLatch1', k ? 'Angry' : 'Open');
+  }
+  if (act === 'echo' && a.attack > 0 && KEYS[a.attackKind] && MOVES[a.attackKind]) {
+    // The owner's blow, a beat late: its own keys, the moves made half as big.
+    const [, name, expr] = keyFor(a.attackKind, Math.max(0, Math.min(0.999, 1 - a.attack / MOVES[a.attackKind].dur)));
+    return shrunk({ frame: FRAMES[name], expr: MINI_FACE[expr] ?? expr, name });
+  }
+  if (!a.ground) return pick((a.vy ?? 0) < -1 ? 'cHop' : 'cFall', (a.vy ?? 0) < -1 ? 'Open' : '');
+  if (Math.abs(a.vx || 0) > 0.6) return pick(['cRun1', 'cRun2', 'cRun3', 'cRun4'][Math.floor(t * 14 * Math.min(1.4, 0.55 + Math.abs(a.vx) / 6)) % 4], blink ? 'Blink' : '');
+  const idle = pick(Math.floor(t * 1.8) % 2 ? 'cIdle2' : 'cIdle1', blink ? 'Blink' : '');
+  return { ...idle, frame: { ...idle.frame, tailDeg: (idle.frame.tailDeg || 0) + Math.round(Math.sin(t * 2.2) * 2) * 3 } };
+}
+
+// The demon of Xolotl hunts on all fours: the arms are its front legs, the backward feet push
+// behind. Its head is never turned (a rotation would smear the teeth): it moves by whole pixels and
+// is drawn over the arms, so the maw always reads. Faces: 'Maw' open, 'MawShut' on the bite.
+const DEMON_FRAMES = {
+  // Breathing through the open maw, hunched over its front claws.
+  dIdle1: { tailDeg: -6 },
+  dIdle2: { head: [0, 1], body: [0, 1], tailDeg: -2 },
+  // The gallop: gathered, reaching out with the claws, in the air, landing on the front legs.
+  dRun1: { head: [1, 1], body: [0, 1], armF: [-1, 0, 22.5], armB: [0, 0, 33.75], footF: [1, 0], footB: [0, -1, 11.25], tailDeg: 10 },
+  dRun2: { head: [2, 0], body: [1, 0], armF: [2, -1, -45], armB: [1, -1, -33.75], footF: [-1, -1, 22.5], footB: [-1, 0, 33.75], tailDeg: -6 },
+  dRun3: { head: [2, -1], body: [1, -1], armF: [2, -2, -67.5], armB: [1, -2, -56.25], footF: [-2, -1, 33.75], footB: [-1, -1, 45], tailDeg: 0 },
+  dRun4: { head: [1, 1], body: [0, 0], armF: [1, 0, -11.25], armB: [0, 0, 0], footF: [-1, -1, 22.5], footB: [-1, -1, 33.75], tailDeg: 6 },
+  // Jumping and dropping.
+  dJump: { head: [1, -1], body: [0, -1], armF: [1, -2, -78.75], armB: [0, -2, -67.5], footF: [-1, -1, 33.75], footB: [-1, -1, 45], tailDeg: -14 },
+  dFall: { armF: [1, -1, -33.75], armB: [0, -1, -22.5], footF: [0, -1], footB: [0, -1], tailDeg: 16 },
+  // The pounce: flattened to the floor with the tail up, then flying jaws first, claws out.
+  dCrouch: { head: [0, 2], body: [-1, 2], armF: [0, 0, 22.5], armB: [0, 0, 33.75], footF: [0, 0], footB: [-1, 0], tailDeg: 22 },
+  dPounce: { head: [3, -1], body: [1, -1], armF: [3, -2, -101.25], armB: [2, -2, -90], footF: [-2, -1, 56.25], footB: [-3, -1, 67.5], tailDeg: -10 },
+  // The bite: reared back with the maw gaping, the lunge, the jaws slammed shut low, back.
+  dBiteA: { head: [-1, -1], body: [-1, 0], armF: [0, 0, 11.25], armB: [0, 0, 22.5], footF: [0, 0], tailDeg: -12 },
+  dBiteX: { head: [3, 1], body: [1, 0], armF: [2, 0, -33.75], armB: [1, 0, -22.5], footF: [0, 0], footB: [-1, -1, 22.5], tailDeg: 12 },
+  dBiteI: { head: [3, 2], body: [1, 1], armF: [2, 0, -22.5], armB: [1, 0, -11.25], footF: [0, 0], footB: [-1, 0, 11.25], tailDeg: 16 },
+  dBiteR: { head: [1, 1], body: [0, 1], armF: [1, 0, -11.25], armB: [0, 0, 0], tailDeg: 6 },
+  // Feasting on a rival's back: claws dug in, legs tucked, the tail hanging, the head gnawing.
+  dFeast1: { head: [1, -1], body: [0, -1], armF: [2, -2, -123.75], armB: [1, -2, -135], footF: [0, -1, -22.5], footB: [-1, -1, -11.25], tailDeg: -34 },
+  dFeast2: { head: [2, 1], body: [0, -1], armF: [2, -1, -112.5], armB: [1, -1, -123.75], footF: [0, -1, -22.5], footB: [-1, -1, -11.25], tailDeg: -28 },
+  // Swelling to burst: reared up, limbs flung wide.
+  dBurst1: { head: [0, -2], body: [0, -1], armF: [2, -2, -135], armB: [-1, -2, 135], footF: [0, 0], footB: [-1, 0], tailDeg: 20 },
+  dBurst2: { head: [0, -3], body: [0, -2], armF: [2, -3, -146.25], armB: [-1, -3, 146.25], footF: [0, -1], footB: [-1, 0], tailDeg: 26 },
+  // Hit, and crumbling to ash.
+  dHurt: { head: [-2, 0], body: [-1, 0], armF: [0, -1, -56.25], armB: [-1, -1, 45], footF: [0, 0], tailDeg: 18 },
+  dDie: { head: [0, 2], body: [0, 1], armF: [1, 0, 22.5], armB: [0, 0, 33.75], tailDeg: -12 }
+};
+for (const [k, f] of Object.entries(DEMON_FRAMES)) FRAMES[k] = { ...f, front: 'head' };
+FRAMES.dBurst = FRAMES.dBurst1;
+
+function demonFrame(a, time) {
+  const seed = (a.id || 0) * 1.37, t = time + seed, at = a.actT ?? 0, act = a.act;
+  const pick = (name, expr = 'Maw') => ({ frame: FRAMES[name], expr, name });
+  if (act === 'dying') return pick('dDie', 'Hurt');
+  if (act === 'burst') return pick(Math.floor(t * 20) % 2 ? 'dBurst2' : 'dBurst1', 'Maw');
+  // Out of the change it rears up and roars.
+  if (act === 'morph') return pick(Math.floor(t * 20) % 2 ? 'dBurst2' : 'dBurst1', 'Maw');
+  if (a.hitstun > 0) return pick('dHurt', 'Hurt');
+  if (act === 'bite') return at < 0.12 ? pick('dBiteA') : at < 0.18 ? pick('dBiteX') : at < 0.3 ? pick('dBiteI', 'MawShut') : pick('dBiteR', at < 0.4 ? 'MawShut' : 'Maw');
+  if (act === 'pounce') return at < 0.12 ? pick('dCrouch', 'MawShut') : pick('dPounce');
+  if (act === 'feast') {
+    if (Math.abs(a.vx || 0) + Math.abs(a.vy || 0) > 0.5) return pick('dPounce');
+    const k = Math.floor(t * 10) % 2;
+    return pick(k ? 'dFeast2' : 'dFeast1', k ? 'MawShut' : 'Maw');
+  }
+  if (!a.ground) return pick((a.vy ?? 0) < -1 ? 'dJump' : 'dFall');
+  if (Math.abs(a.vx || 0) > 0.6) return pick(['dRun1', 'dRun2', 'dRun3', 'dRun4'][Math.floor(t * 15) % 4]);
+  return pick(Math.floor(t * 2.6) % 2 ? 'dIdle2' : 'dIdle1');
 }
 function fullFrameFor(a, time = 0) {
   const seed = (a.id || 0) * 1.37;
