@@ -2,14 +2,16 @@
 // shield-bearer) who follow him everywhere in formation and do all his fighting. The King never strikes:
 // each of his moves is an order, and the one it is meant for runs, shoots, blinks or casts. Left to
 // themselves they guard him: they turn to whoever threatens him and strike on their own, taking turns,
-// the shield-bearer takes blows for him, and none of them ever strays far from him.
+// the shield-bearer takes blows for him, and none of them ever strays far from him. Near his banner (his
+// kingdom, sim/kingdom.js) they are stronger (`b`, the buff tier, KINGDOM.buff).
 import { Body } from './physics.js';
-import { COURT, RANKS, COURT_ACTS, COURT_PLAN, COURT_HP, COURT_RESPAWN, ROYAL, ARROW, AUTO, MOVES, KING_AIR, comboOf, SPECIALS } from './moves.js';
+import { COURT, RANKS, COURT_ACTS, COURT_PLAN, COURT_HP, ARROW, AUTO, MOVES, KING_AIR, KINGDOM, comboOf } from './moves.js';
 import { weightOf } from './fighters.js';
-import { damage, perfectDodge, cutCorpse, drama, startMove, removeBullet } from './combat.js';
-import { startChase, setAct, endAct } from './specials.js';
+import { damage, perfectDodge, cutCorpse, startMove, removeBullet } from './combat.js';
+import { startChase } from './specials.js';
 import { knockdown } from './ragdoll.js';
 import { damageProp } from './props.js';
+import { strikeKingdoms, kingdomInPath, buffTier, structureAhead } from './kingdom.js';
 import { HALF_H } from '../render/rig.js';
 import { clamp, rnd } from '../engine/const.js';
 
@@ -62,10 +64,13 @@ function command(g, a, who, act, targets = null, auto = false) {
   f.f = f.dir;
 }
 
-// Where the action is aimed: its rival (live), else a spot ahead of the King.
+// Where the action is aimed: its rival (live), else a rival's banner, house or castle ahead of him in
+// reach, else a spot ahead of the King.
 function aim(g, a, f, spec) {
   const b = f.tgt != null ? g.actor(f.tgt) : null;
   if (b && !b.dead) return { x: b.x, y: b.y, b };
+  const st = structureAhead(g, a, f.dir || a.face || 1, spec.reach || 100);
+  if (st) return { x: st.x, y: st.y, b: null };
   return { x: a.x + (f.dir || a.face || 1) * Math.min(spec.reach || 100, 90), y: a.y, b: null };
 }
 
@@ -100,27 +105,26 @@ function shove(b, x, y) {
   if (b.lagPos) b.lagVel = { x, y };
 }
 
-// A strike of the court's at (cx, cy): every rival within `r` (or all around a ring on the floor), the
-// ragdolls and the things lying around. Never freezes the King (solo); his string goes on from it.
-function courtHit(g, a, f, spec, cx, cy, dir, only = null) {
-  const r = spec.r || 20;
+// A strike of the court's at (cx, cy): every rival within `r`, the ragdolls and the things lying around
+// (and the rivals' kingdoms). Never freezes the King (solo); his string goes on from it.
+function courtHit(g, a, f, spec, cx, cy, dir) {
+  const r = spec.r || 20, dmg = spec.dmg * KINGDOM.buff.dmg[f.b | 0];
   let struck = 0;
   for (const b of g.enemies(a)) {
-    if (b.dead || (b.knocked && !spec.down) || (only && !only.includes(b.id))) continue;
-    const inside = spec.ring ? Math.abs(b.x - cx) < r && Math.abs(b.y + HALF_H - cy) < 40 : Math.hypot(b.x - cx, (b.y - cy) * 1.15) < r;
-    if (!inside) continue;
+    if (b.dead || (b.knocked && !spec.down)) continue;
+    if (Math.hypot(b.x - cx, (b.y - cy) * 1.15) >= r) continue;
     if (b.knocked) {
-      if (damage(g, b, spec.dmg, { x: b.x, y: b.y }, a.id, 'blade', { part: 'body', kb: { x: 0, y: 2 }, force: true, solo: true })) { struck++; if (spec.bleed) b.bleed = Math.min(6, (b.bleed || 0) + spec.bleed); }
+      if (damage(g, b, dmg, { x: b.x, y: b.y }, a.id, 'blade', { part: 'body', kb: { x: 0, y: 2 }, force: true, solo: true })) { struck++; if (spec.bleed) b.bleed = Math.min(6, (b.bleed || 0) + spec.bleed); }
       continue;
     }
     if (b.iframes > 0 && b.dodge > 0 && !b.perfect) { perfectDodge(g, b); continue; }
-    const side = spec.ring ? Math.sign(b.x - cx) || dir : dir, kb = spec.kb || [0.5, -1];
+    const side = dir, kb = spec.kb || [0.5, -1];
     const kind = f.k === 'mage' ? 'magic' : f.k === 'shield' ? 'bash' : 'blade';
     // On its own, only one blow of the court every so often makes a rival reel; the rest just sting
     // (unless the King is being hit: then they cut the attacker off him).
     const light = f.auto && !f.rescue && g.time - (b.courtReelT ?? -9) < AUTO.stagger;
     if (f.auto && !light) b.courtReelT = g.time;
-    const dealt = damage(g, b, spec.dmg, { x: b.x - side * 4, y: b.y }, a.id, kind, { kb: { x: side * kb[0], y: kb[1] }, knock: !!spec.knock, launch: !!(spec.launch || spec.spike), dir: rnd(-0.8, 0.8), solo: true, light, noLift: !!f.auto, familiar: () => { f.hit = spec.hits.length; } });
+    const dealt = damage(g, b, dmg, { x: b.x - side * 4, y: b.y }, a.id, kind, { kb: { x: side * kb[0], y: kb[1] }, knock: !!spec.knock, launch: !!(spec.launch || spec.spike), dir: rnd(-0.8, 0.8), solo: true, light, noLift: !!f.auto, familiar: () => { f.hit = spec.hits.length; } });
     if (!dealt) continue;
     struck++;
     // (the court's own blows never pick the rival the King's orders go to)
@@ -144,8 +148,8 @@ function courtHit(g, a, f, spec, cx, cy, dir, only = null) {
     // Hits in the air keep the rival up there for the next order.
     if (!b.ground && !spec.spike && !b.knocked && !f.auto) b.float = Math.max(b.float || 0, 0.35);
   }
-  // Another King's court in the way takes it too.
-  strikeCourts(g, a, (x, y) => (spec.ring ? Math.abs(x - cx) < r && Math.abs(y + 9 - cy) < 40 : Math.hypot(x - cx, y - cy) < r + 4), spec.dmg, () => dir);
+  // Another King's court (or his kingdom) in the way takes it too.
+  struck += strikeCourts(g, a, (x, y) => Math.hypot(x - cx, y - cy) < r + 4, dmg, () => dir);
   const gore = g.settings.gore ?? 2;
   for (const l of [...g.limbs]) {
     if (Math.hypot(l.x - cx, l.y - cy) > r + 4) continue;
@@ -162,11 +166,12 @@ function courtHit(g, a, f, spec, cx, cy, dir, only = null) {
   return struck;
 }
 
-// An arrow from the archer at (x, y) toward T, aimed over the drop of its fall.
-function loose(g, a, x, y, T, spec, { speed = ARROW.speed, vy = null, auto = false } = {}) {
+// An arrow from the archer at (x, y) toward T, aimed over the drop of its fall (`mult`x as hard; `gate`:
+// only one blow of the court's or the kingdom's every AUTO.stagger s makes the rival reel).
+export function loose(g, a, x, y, T, spec, { speed = ARROW.speed, vy = null, auto = false, mult = 1, gate = false } = {}) {
   const dx = T.x - x, dy = T.y - 2 - y, steps = Math.max(4, Math.abs(dx) / speed);
   const vx = clamp(dx / steps, -speed, speed), v = vy ?? clamp((dy - 0.5 * ARROW.grav * steps * steps) / steps, -speed, speed);
-  g.bullets.push({ id: g.nextId++, owner: a.id, team: a.team, x, y, px: x, py: y, vx, vy: v, damage: spec.dmg, life: 1.4, color: '#e8d8a8', kind: 'arrow', bounces: 1, grav: ARROW.grav, court: 1, hold: spec.hold || 0, auto });
+  g.bullets.push({ id: g.nextId++, owner: a.id, team: a.team, x, y, px: x, py: y, vx, vy: v, damage: spec.dmg * mult, life: 1.4, color: '#e8d8a8', kind: 'arrow', bounces: 1, grav: ARROW.grav, court: 1, hold: spec.hold || 0, auto, ...(gate ? { gate: 1 } : null) });
   g.sound('whoosh', x);
 }
 
@@ -183,7 +188,7 @@ function stepAct(g, a, f, dt) {
   const spec0 = COURT_ACTS[f.k][f.act], spec = f.auto ? toned(spec0) : spec0, p = f.t / spec.dur;
   const aimed = aim(g, a, f, spec), dir = f.dir;
   // Held on its leash, a familiar may not get all the way to its rival: then it strikes the air in front.
-  const T = Math.abs(aimed.x - a.x) > AUTO.leash + 20 && ['soldier', 'assassin', 'shield'].includes(f.k) && !['charge', 'slam'].includes(f.act)
+  const T = Math.abs(aimed.x - a.x) > AUTO.leash + 20 && ['soldier', 'assassin', 'shield'].includes(f.k) && f.act !== 'charge'
     ? { x: a.x + Math.sign(aimed.x - a.x) * AUTO.leash, y: aimed.y, b: null } : aimed;
   const due = () => f.hit < spec.hits.length && p >= spec.hits[f.hit];
   const hand = () => ({ x: f.x + f.f * 5, y: f.y - 9 });
@@ -225,26 +230,11 @@ function stepAct(g, a, f, dt) {
       if (due()) { courtHit(g, a, f, spec, f.x + dir * 6, f.y - 10, dir); f.hit++; }
       break;
     }
-    // The finale: a leap high over the first rival and a huge cut down through them.
-    case 'soldier.finale': {
-      const h = spec.hits[0];
-      if (p < h * 0.6) glide(f, T.x - dir * 10, T.y - 60, 0.3, 16);
-      else if (p < h) glide(f, T.x, T.y + HALF_H, 0.5, 20);
-      if (due()) {
-        courtHit(g, a, f, spec, T.x, T.y, dir, f.targets);
-        g.fx('royal', { x: Math.round(T.x), y: Math.round(T.y), f: dir });
-        g.text(T.x, T.y - 40, 'PELO REI!', '#ffd76a');
-        g.shake = Math.max(g.shake, 8); g.flash = Math.max(g.flash, 0.2);
-        drama(g, 0.4, a);
-        f.hit++;
-      }
-      break;
-    }
     // The archer stays in rank and shoots.
     case 'archer.shot': case 'archer.volley': case 'archer.airshot': {
       if (f.act === 'airshot') glide(f, home.x, home.y - 26, 0.3, 8); else glide(f, home.x, home.y, 0.2, 6);
       f.f = Math.sign(T.x - f.x) || f.f;
-      if (due()) { const h = hand(); loose(g, a, h.x, h.y, { x: T.x + (T.b ? T.b.body.velocity.x * 4 : 0), y: T.y }, spec, { auto: !!f.auto }); f.hit++; }
+      if (due()) { const h = hand(); loose(g, a, h.x, h.y, { x: T.x + (T.b ? T.b.body.velocity.x * 4 : 0), y: T.y }, spec, { auto: !!f.auto, mult: KINGDOM.buff.dmg[f.b | 0] }); f.hit++; }
       break;
     }
     // Into the sky, and a moment later the arrows come down all over them.
@@ -256,19 +246,7 @@ function stepAct(g, a, f, dt) {
         g.sound('whoosh', h.x);
         // Spread over where they stand (and where they are running to), falling from a little above them.
         const lead = T.b ? clamp(T.b.body.velocity.x * 8, -30, 30) : 0;
-        f.rain = Array.from({ length: spec.arrows }, (_, i) => ({ at: spec.delay - f.t + i * 0.05, x: T.x + lead + (i / (spec.arrows - 1) - 0.5) * spec.spread * 2 + rnd(-4, 4), y: Math.max(4, T.y - spec.height) }));
-        f.hit++;
-      }
-      break;
-    }
-    // Arrows arcing down onto every rival of the decree.
-    case 'archer.barrage': {
-      glide(f, home.x, home.y, 0.2, 6);
-      if (due()) {
-        const list = (f.targets || []).map(id => g.actor(id)).filter(b => b && !b.dead);
-        const b = list[f.hit % Math.max(1, list.length)] || T.b;
-        const h = hand();
-        if (b) loose(g, a, h.x, h.y, b, spec, { speed: 10 });
+        f.rain = Array.from({ length: spec.arrows }, (_, i) => ({ at: spec.delay - f.t + i * 0.05, x: T.x + lead + (i / (spec.arrows - 1) - 0.5) * spec.spread * 2 + rnd(-4, 4), y: Math.max(4, T.y - spec.height), dmg: spec.dmg * KINGDOM.buff.dmg[f.b | 0] }));
         f.hit++;
       }
       break;
@@ -284,20 +262,6 @@ function stepAct(g, a, f, dt) {
       if (due()) { courtHit(g, a, f, spec, T.x, T.y, -dir); f.hit++; }
       break;
     }
-    // From one rival of the decree to the next, cutting.
-    case 'assassin.dance': {
-      const list = (f.targets || []).map(id => g.actor(id)).filter(b => b && !b.dead);
-      const b = list[Math.min(list.length - 1, Math.floor(p * list.length))] || T.b;
-      // Held on its leash: a rival who got away beyond it is cut in the air at the leash.
-      const far = b && Math.abs(b.x - a.x) > AUTO.leash + 20, cx = far ? clamp(a.x + Math.sign(b.x - a.x) * AUTO.leash, 12, 948) : b?.x;
-      if (b && f.on !== b.id) {
-        const s = Math.sign(f.x - b.x) || 1, x = far ? cx : clamp(b.x - s * 14, 12, 948), y = b.y + HALF_H;
-        g.fx('blink', { x: Math.round(f.x), y: Math.round(f.y), x2: Math.round(x), y2: Math.round(y) });
-        f.x = x; f.y = y; f.on = b.id; f.f = Math.sign(b.x - x) || 1;
-      }
-      if (due() && b) { courtHit(g, a, f, spec, cx, b.y, f.f, [b.id]); f.hit++; }
-      break;
-    }
     // The mage stays floating in rank; the sky does the rest.
     case 'mage.zap': case 'mage.meteor': {
       glide(f, home.x, home.y, 0.2, 6);
@@ -310,33 +274,11 @@ function stepAct(g, a, f, dt) {
       }
       break;
     }
-    case 'mage.storm': {
-      glide(f, home.x, home.y - 10, 0.2, 6);
-      if (due()) {
-        const list = (f.targets || []).map(id => g.actor(id)).filter(b => b && !b.dead);
-        for (const b of list.length ? list : T.b ? [T.b] : []) { g.fx('bolt', { x: Math.round(b.x), y: Math.round(b.y) }); courtHit(g, a, f, spec, b.x, b.y, Math.sign(b.x - a.x) || dir, [b.id]); }
-        if (!list.length && !T.b) g.fx('bolt', { x: Math.round(T.x), y: Math.round(T.y) });
-        f.hit++;
-      }
-      break;
-    }
     // The shield's bash: a short charge into them that throws them up.
     case 'shield.bash': {
       const h = spec.hits[0];
       if (p < h) glide(f, f.sx + (T.x - dir * 12 - f.sx) * ease(p / h), T.y + HALF_H, 1);
       if (due()) { courtHit(g, a, f, spec, T.x, T.y, dir); f.hit++; }
-      break;
-    }
-    // The decree's opener: a leap and the shield slammed into the floor; the ring holds them all.
-    case 'shield.slam': {
-      const h = spec.hits[0], fx = T.x - dir * 20, floor = T.y + HALF_H;
-      if (p < h) glide(f, f.sx + (fx - f.sx) * ease(p / h), floor - Math.sin((p / h) * Math.PI) * 40, 1);
-      if (due()) {
-        g.fx('shieldSlam', { x: Math.round(f.x), y: Math.round(floor), r: spec.r });
-        g.shake = Math.max(g.shake, 6);
-        courtHit(g, a, f, spec, f.x, floor, dir, f.targets);
-        f.hit++;
-      }
       break;
     }
     case 'shield.guard': glide(f, home.x, home.y, 0.3, 6); break;
@@ -351,6 +293,8 @@ function tickCourt(g, a, dt) {
     a.courtSeq = a.attackSeq;
     for (const [who, act] of COURT_PLAN[a.attackKind]) command(g, a, who, act);
   }
+  // How strong each of them is right now: by the King's banner (or anywhere, at his castle).
+  for (const f of a.court) f.b = a.dead ? 0 : f.st === 'dead' ? buffTier(g, a, a.x, a.y + HALF_H) : buffTier(g, a, f.x, f.y);
   if (!a.dead) courtBrain(g, a, dt);
   for (const f of a.court) {
     // The King is down: they vanish in a puff, and come back with him.
@@ -363,7 +307,7 @@ function tickCourt(g, a, dt) {
     f.hurt = Math.max(0, (f.hurt || 0) - dt);
     // Fallen: back after a while, popping in by the King.
     if (f.st === 'dead') {
-      if (f.t >= COURT_RESPAWN) {
+      if (f.t >= KINGDOM.buff.respawn[f.b | 0]) {
         const s = rankSpot(a, f.k);
         Object.assign(f, { st: 'appear', t: 0, act: 'idle', hp: COURT_HP[f.k], hurt: 0, x: s.x, y: s.y, vx: 0, vy: 0, auto: false, rescue: false });
         g.fx('courtAppear', { x: Math.round(s.x), y: Math.round(s.y), k: f.k });
@@ -374,14 +318,15 @@ function tickCourt(g, a, dt) {
     if (f.rain) {
       for (const r of f.rain) if (!r.done && (r.at -= dt) <= 0) {
         r.done = true;
-        g.bullets.push({ id: g.nextId++, owner: a.id, team: a.team, x: r.x, y: r.y, px: r.x, py: r.y - 6, vx: 0, vy: 13, damage: COURT_ACTS.archer.rain.dmg, life: 1.6, color: '#e8d8a8', kind: 'arrow', bounces: 1, court: 1, hold: COURT_ACTS.archer.rain.hold, rainY: 1 });
+        g.bullets.push({ id: g.nextId++, owner: a.id, team: a.team, x: r.x, y: r.y, px: r.x, py: r.y - 6, vx: 0, vy: 13, damage: r.dmg, life: 1.6, color: '#e8d8a8', kind: 'arrow', bounces: 1, court: 1, hold: COURT_ACTS.archer.rain.hold, rainY: 1 });
       }
       if (f.rain.every(r => r.done)) f.rain = null;
     }
     if (f.st === 'appear' && f.t >= 0.4) { f.st = 'follow'; f.t = 0; }
+    if (f.b && f.st !== 'appear') f.hp = Math.min(COURT_HP[f.k], f.hp + KINGDOM.buff.regen[f.b] * dt);
     if (f.st === 'act') {
       stepAct(g, a, f, dt);
-      if (f.t >= COURT_ACTS[f.k][f.act].dur) { f.st = 'back'; f.t = 0; f.act = 'idle'; f.blinked = false; f.on = null; f.targets = null; }
+      if (f.t >= COURT_ACTS[f.k][f.act].dur) { f.st = 'back'; f.t = 0; f.act = 'idle'; f.blinked = false; f.targets = null; }
     } else {
       // In rank, or running back to it; in rank they never stand still, hopping about their place.
       if ((f.wt -= dt) <= 0) { f.wt = rnd(0.25, 0.6); f.wx = rnd(-AUTO.fidget, AUTO.fidget); }
@@ -438,7 +383,7 @@ function courtBrain(g, a, dt) {
   for (const f of a.court) f.autoCd = Math.max(0, (f.autoCd || 0) - dt);
   const T = threatOf(g, a);
   a.guardDir = T ? Math.sign(T.x - a.x) || a.face : a.face;
-  if (!T || a.courtBeat > 0 || a.act === 'decree') return;
+  if (!T || a.courtBeat > 0 || a.act === 'plant' || a.act === 'recall') return;
   const d = Math.abs(T.x - a.x);
   const danger = a.hitstun > 0 || a.knocked || (a.blowBy === T.id && g.time - (a.blowT ?? -9) < 0.8);
   // While the King runs a string of his own they leave his rival to it (unless he is in danger).
@@ -453,7 +398,7 @@ function courtBrain(g, a, dt) {
     if (who === 'shield' && (a.shieldAt ?? -9) <= g.time) continue;
     command(g, a, who, act, [T.id], true);
     f.rescue = danger;
-    f.autoCd = AUTO.cd[who] * rnd(0.8, 1.2);
+    f.autoCd = AUTO.cd[who] * KINGDOM.buff.cd[f.b | 0] * rnd(0.8, 1.2);
     a.courtBeat = AUTO.beat;
     if (danger && g.time - (a.rescueT ?? -9) > 5) { a.rescueT = g.time; g.text(a.x, a.y - 42, 'PROTEJAM O REI!', '#ffd76a'); }
     return;
@@ -488,6 +433,9 @@ const alive = f => f.st !== 'gone' && f.st !== 'dead' && f.st !== 'appear';
 // A familiar of King k takes a blow (from actor id src, thrown toward dir); at 0 it falls.
 export function hurtFamiliar(g, k, f, amount, src = null, dir = 0) {
   if (!alive(f) || !(amount > 0)) return false;
+  amount *= KINGDOM.buff.taken[f.b | 0];
+  const before = f.hp, o = src != null ? g.actor(src) : null;
+  if (o && o !== k && o.team !== k.team) o.stats.damage += Math.min(amount, before);
   f.hp -= amount;
   f.hurt = 0.25;
   const s = dir || -(f.f || 1);
@@ -499,24 +447,24 @@ export function hurtFamiliar(g, k, f, amount, src = null, dir = 0) {
   g.fx('courtDie', { x: Math.round(f.x), y: Math.round(f.y), k: f.k, f: s });
   g.text(f.x, f.y - 26, NAMES[f.k] + ' CAIU!', '#ff9a8a');
   g.sound('squish', f.x);
-  const o = src != null ? g.actor(src) : null;
-  if (o && o !== k) o.stats.damage += amount;
   return true;
 }
 
-// A blow reaching the courts of the rivals of `atk` (an actor, or null for anyone's): every familiar whose
-// body (feet x, y) passes `test` takes `amount`, thrown toward dirOf(f).
-export function strikeCourts(g, atk, test, amount, dirOf = null) {
+// A blow reaching the courts of the rivals of `atk` (an actor or { id, team }, or null for anyone's): every
+// familiar whose body (feet x, y - 9) passes `test` takes `amount`, thrown toward dirOf(f); and so do the
+// rivals' kingdoms (sim/kingdom.js; kind: 'hit', 'shot', 'pellet', 'blast', 'thrown').
+export function strikeCourts(g, atk, test, amount, dirOf = null, kind = 'hit') {
   if (!(amount > 0)) return 0;
   let n = 0;
   for (const k of g.actors) {
     if (k.type !== 0 || !k.court || k.dead || k === atk || (atk && k.team === atk.team)) continue;
     for (const f of k.court) if (alive(f) && test(f.x, f.y - 9) && hurtFamiliar(g, k, f, amount, atk?.id ?? null, dirOf ? dirOf(f) : 0)) n++;
   }
-  return n;
+  return n + strikeKingdoms(g, atk, test, amount, dirOf, kind);
 }
 
-// A shot on its way from (x0, y0) to (x1, y1): the first rival familiar on that segment, with where (0..1).
+// A shot on its way from (x0, y0) to (x1, y1): the first rival familiar on that segment, with where (0..1):
+// { k, f, u }; or a rival's kingdom (its structure or one of its units): { kg, f, u }.
 export function courtInPath(g, b, x1, y1) {
   let best = null;
   const dx = x1 - b.x, dy = y1 - b.y, len2 = dx * dx + dy * dy || 1;
@@ -528,7 +476,8 @@ export function courtInPath(g, b, x1, y1) {
       if (Math.hypot(b.x + dx * u - cx, b.y + dy * u - cy) < 8 && (!best || u < best.u)) best = { k, f, u };
     }
   }
-  return best;
+  const kg = kingdomInPath(g, b, x1, y1);
+  return kg && (!best || kg.u < best.u) ? kg : best;
 }
 
 // Every step: each King's court.
@@ -536,38 +485,14 @@ export function tickKings(g, dt) {
   for (const a of g.actors) if (a.type === 0) tickCourt(g, a, dt);
 }
 
-// ---- ATAQUE REAL ------------------------------------------------------------------------------
-
-// K: the King raises his scepter and the court strikes as one at the rivals around him.
-export function royalAttack(g, a) {
-  const targets = g.enemies(a).filter(b => !b.dead && !b.knocked && Math.abs(b.x - a.x) < ROYAL.reach && Math.abs(b.y - a.y) < ROYAL.band)
-    .sort((p, q) => Math.hypot(p.x - a.x, p.y - a.y) - Math.hypot(q.x - a.x, q.y - a.y)).slice(0, ROYAL.max).map(b => b.id);
-  a.powerSeq = (a.powerSeq || 0) + 1;
-  a.abilityCd = SPECIALS[0].cd;
-  a.attack = 0; a.hits = null;
-  if (targets.length) a.face = Math.sign(g.actor(targets[0]).x - a.x) || a.face;
-  setAct(a, 'decree', SPECIALS[0].dur);
-  a.decree = { targets, done: 0 };
-  Body.setVelocity(a.body, { x: a.body.velocity.x * 0.2, y: a.ground ? a.body.velocity.y : Math.min(a.body.velocity.y, 0) });
-  g.fx('decree', { x: a.x, y: a.y, who: a.id });
-  g.text(a.x, a.y - 34, 'POR ORDEM DO REI!', '#ffd76a');
-  g.flash = Math.max(g.flash, 0.15);
-  drama(g, 0.5, a);
-  g.sound('charge', a.x);
-}
-
-// The decree's steps, on the King's clock (he stands with the scepter up; a blow on him ends it).
-export function stepDecree(g, a) {
-  const d = a.decree;
-  if (!d) { endAct(g, a); return null; }
-  while (d.done < ROYAL.at.length && a.actT >= ROYAL.at[d.done][2]) {
-    const [who, act] = ROYAL.at[d.done];
-    command(g, a, who, act, d.targets.filter(id => { const b = g.actor(id); return b && !b.dead; }));
-    d.done++;
+// VOLTA AO REINO: the King is home in a flash, and his court (those alive) pops in around him.
+export function courtFollow(g, a) {
+  for (const f of a.court || []) {
+    if (f.st === 'dead' || f.st === 'gone') continue;
+    const s = rankSpot(a, f.k);
+    Object.assign(f, { st: 'appear', t: 0, act: 'idle', x: s.x, y: s.y, vx: 0, vy: 0, rain: null, targets: null, auto: false, rescue: false, blinked: false });
+    g.fx('courtAppear', { x: Math.round(s.x), y: Math.round(s.y), k: f.k });
   }
-  if (a.actT > a.actMax) { endAct(g, a); a.decree = null; return null; }
-  const v = a.body.velocity;
-  return { lock: true, vx: v.x * 0.6, vy: a.ground ? v.y : Math.min(v.y, 0.5) };
 }
 
 // One of King k's court about to strike b within `within` s (for the bots' combo breaker).
@@ -579,8 +504,6 @@ export function courtStrikeSoon(k, b, within) {
   });
 }
 
-// Held in the decree: no breaking out of it with Shift.
-export const decreeHolds = (o, b) => o.act === 'decree' && !!o.decree?.targets.includes(b.id);
 
 const r1 = v => Math.round(v * 10) / 10, r2 = v => Math.round(v * 100) / 100;
-export const courtSnapshot = court => !court ? null : court.map(f => ({ k: f.k, x: r1(f.x), y: r1(f.y), f: f.f, vx: r1(f.vx), air: !!f.air, st: f.st, act: f.act, t: r2(f.t), hp: r1(f.hp), hurt: r2(f.hurt || 0) }));
+export const courtSnapshot = court => !court ? null : court.map(f => ({ k: f.k, x: r1(f.x), y: r1(f.y), f: f.f, vx: r1(f.vx), air: !!f.air, st: f.st, act: f.act, t: r2(f.t), hp: r1(f.hp), hurt: r2(f.hurt || 0), b: f.b | 0 }));

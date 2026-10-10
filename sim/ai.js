@@ -2,17 +2,29 @@ import { EMPTY_INPUT } from '../engine/input.js';
 import { MAP, pathTo } from './map.js';
 import { inPit } from './physics.js';
 import { rnd, dist, clamp } from '../engine/const.js';
-import { FOOT } from '../render/rig.js';
-import { MOVES, DARK, POOL, ROYAL, comboOf } from './moves.js';
+import { FOOT, HALF_H } from '../render/rig.js';
+import { MOVES, DARK, POOL, KINGDOM, comboOf } from './moves.js';
 import { courtStrikeSoon } from './court.js';
+import { ownKingdom, canPlant } from './kingdom.js';
 import { MELEE, isMelee } from './weapons.js';
 
 const RANGED = a => a.weapon === 'pistol' || a.weapon === 'shotgun';
 
+// The nearest standing kingdom of a rival's.
+function rivalKingdom(g, a) {
+  let best = null, bd = Infinity;
+  for (const k of g.kingdoms || []) {
+    if (k.st === 'fall' || k.team === a.team) continue;
+    const d = Math.hypot(k.x - a.x, k.y - (a.y + HALF_H));
+    if (d < bd) { bd = d; best = k; }
+  }
+  return best;
+}
+
 // When each special is worth firing, given the gap to the target.
 const SPECIAL_RANGE = [
-  // The Cat King: his court's ATAQUE REAL when rivals are around him (inside the decree's own reach).
-  (dx, dy) => Math.abs(dx) < ROYAL.reach - 10 && Math.abs(dy) < Math.min(90, ROYAL.band),
+  // The Cat King: his banner has its own rules (think, below).
+  () => false,
   (dx, dy) => Math.abs(dx) < 220 && Math.abs(dy) < 24,
   // Lola stops time whenever a rival is in reach of her knives (it charges slowly anyway).
   (dx, dy) => Math.abs(dx) < 280 && Math.abs(dy) < 150,
@@ -68,9 +80,26 @@ export function think(g, a, dt) {
     return input;
   }
 
-  const target = g.closest(a);
-  if (!target) return input;
+  let target = g.closest(a);
   const ranged = RANGED(a);
+  // A rival's kingdom (a Cat King's banner, house or castle) is a goal of its own: when nobody is in the
+  // way, when it is right there on this floor, or much closer than any rival; never while a rival is
+  // on top of the bot. Once on it, a second at least before letting go.
+  ai.aimAt = null;
+  const ek = rivalKingdom(g, a);
+  if (ek) {
+    const dR = target ? dist(a, target) : Infinity, dS = Math.hypot(ek.x - a.x, ek.y - (a.y + HALF_H));
+    const threat = target && ((target.attack > 0 && dR < 90) || (a.blowBy === target.id && g.time - (a.blowT ?? -9) < 1.2));
+    const want = !target || target.knocked || target.invincible > 0 || (currentNode(g, a)?.id === ek.node && dS < 140 && dR > 160) || dS < 0.6 * dR;
+    if (want && !threat) { if (ai.goalKg !== ek.id) { ai.goalKg = ek.id; ai.goalT = g.time + 1; } }
+    else if (threat || g.time >= (ai.goalT ?? 0)) ai.goalKg = null;
+  } else ai.goalKg = null;
+  const goal = ai.goalKg != null ? g.kingdoms.find(k => k.id === ai.goalKg && k.st !== 'fall') : null;
+  if (goal) {
+    target = { x: goal.x, y: goal.y - HALF_H, knocked: false, ground: true, stun: 0, hitstun: 0, invincible: 0, id: null, kg: goal, hw: KINGDOM.w[goal.lv] / 2 };
+    if (ranged) ai.aimAt = { x: goal.x, y: goal.y - KINGDOM.h[goal.lv] / 2 };
+  }
+  if (!target) return input;
   const dx = target.x - a.x, dy = target.y - a.y;
 
   const mine = currentNode(g, a);
@@ -119,8 +148,8 @@ export function think(g, a, dt) {
     } else {
       ai.path = null;
       ai.edge = null;
-      // The Cat King keeps a few steps back and lets his court go in.
-      const desired = ranged ? 210 : a.type === 0 ? 46 : 16;
+      // The Cat King keeps a few steps back and lets his court go in; a kingdom is struck at its wall.
+      const desired = target.kg ? (a.type === 0 ? target.hw + 46 : ranged ? 210 : target.hw + 6) : ranged ? 210 : a.type === 0 ? 46 : 16;
       if (Math.abs(dx) > desired) moveTo = target.x;
       else if (ranged && Math.abs(dx) < 110) moveTo = a.x - Math.sign(dx || 1) * 90;
       if (mine && moveTo !== null) moveTo = clamp(moveTo, mine.x0, mine.x1);
@@ -142,6 +171,19 @@ export function think(g, a, dt) {
     const pool = g.pools.filter(p => p.amt > 2 && Math.abs(p.y - feet) < 6 && Math.abs(p.x - a.x) < 260 && (!mine || (p.x > mine.x0 - 4 && p.x < mine.x1 + 4)) && !inPit(p.x))
       .sort((p, q) => q.amt / (40 + Math.abs(q.x - a.x)) - p.amt / (40 + Math.abs(p.x - a.x)))[0];
     if (pool && Math.abs(pool.x - a.x) > POOL.reach * 0.5) moveTo = pool.x;
+  }
+
+  // The Cat King without a kingdom, his banner ready: to the nearest place it may go. With one below the
+  // castle: home, so his court stands in its aura (unless a rival is near).
+  if (a.type === 0 && a.ground && !a.act && !target.kg && dist(a, target) > 200) {
+    const kg = ownKingdom(g, a);
+    if (!kg && a.abilityCd <= 1) { const c = canPlant(g, a); if (!c.ok && c.near != null) moveTo = c.near; }
+    else if (kg && kg.lv < 3 && mine?.id === kg.node && Math.abs(a.x - kg.x) > 100) moveTo = kg.x;
+  }
+  // Hurt and with nobody close: a fish on this floor.
+  if (a.ground && !a.act && a.hp < a.maxHp * 0.7 && g.fish?.length && !(a.type === 0 && ownKingdom(g, a)) && (!target || target.kg || dist(a, target) > 140)) {
+    const f = g.fish.filter(f => Math.abs(f.x - a.x) < 120 && Math.abs(f.y - (a.y + HALF_H)) < 6).sort((p, q) => Math.abs(p.x - a.x) - Math.abs(q.x - a.x))[0];
+    if (f) moveTo = f.x;
   }
 
   // Hazard avoidance overrides the plan.
@@ -198,8 +240,17 @@ export function think(g, a, dt) {
     const armed = isMelee(a.weapon);
     const meleeRange = a.weapon === 'extinguisher' ? 110 : armed ? MOVES[a.weapon + ':nLight'].range + 4 : natural;
     const facing = dx * a.face >= -4;
-    input.attack = ranged ? Math.abs(dy) < 230 && Math.abs(dx) < 650 : Math.abs(dy) < 24 && Math.abs(dx) < meleeRange && facing && !target.knocked;
-    input.power = armed ? Math.abs(dy) < 26 && Math.abs(dx) < meleeRange + 10 && facing && Math.random() < 0.06 : a.abilityCd <= 0 && !a.act && !target.knocked && facing && SPECIAL_RANGE[a.type](dx, dy, a, target, g);
+    const reachX = target.kg ? target.hw + meleeRange - 4 : meleeRange;
+    input.attack = ranged ? Math.abs(dy) < 230 && Math.abs(dx) < 650 : Math.abs(dy) < 24 && Math.abs(dx) < reachX && facing && !target.knocked;
+    if (target.kg && a.type === 0) input.attack = Math.abs(dx) < target.hw + 100 && Math.abs(dy) < 40 && facing;
+    input.power = target.kg ? false : armed ? Math.abs(dy) < 26 && Math.abs(dx) < meleeRange + 10 && facing && Math.random() < 0.06 : a.abilityCd <= 0 && !a.act && !target.knocked && facing && SPECIAL_RANGE[a.type](dx, dy, a, target, g);
+    // The Cat King: the banner when nobody is on top of him and it may go here; with his kingdom standing,
+    // home when it is under attack and he is far from it.
+    if (a.type === 0) {
+      const kg = ownKingdom(g, a), near = (r, ry) => g.enemies(a).some(b => !b.dead && Math.abs(b.x - a.x) < r && Math.abs(b.y - a.y) < ry);
+      if (!kg) input.power = a.abilityCd <= 0 && !a.act && a.ground && !near(120, 80) && canPlant(g, a).ok;
+      else input.power = !target.kg && a.abilityCd <= 0 && !a.act && a.ground && g.time - kg.hitT < 1.5 && Math.hypot(a.x - kg.x, a.y + HALF_H - kg.y) > 260 && !near(140, 90);
+    }
     // With a weapon, mix in the directional lights now and then: side to lunge in, down to lift.
     if (armed && input.attack && a.ground && Math.random() < 0.25) { if (Math.abs(dx) > meleeRange * 0.6) { input.right = dx > 0; input.left = dx < 0; } else input.down = Math.random() < 0.4; }
     // Follow a launched rival into the air and keep the combo going.

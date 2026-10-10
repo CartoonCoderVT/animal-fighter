@@ -227,31 +227,26 @@ export const COURT_ACTS = {
     rise: { dur: 0.32, hits: [0.5], dmg: 7, kb: [0.8, -10.5], launch: true, reach: 90, r: 20 },
     air: { dur: 0.24, hits: [0.5], dmg: 6, kb: [0.6, -1.2], hold: 0.4, reach: 110, r: 22 },
     plunge: { dur: 0.32, hits: [0.6], dmg: 9, kb: [1, 9], spike: true, reach: 110, r: 22 },
-    charge: { dur: 0.4, hits: [0.2, 0.4, 0.6, 0.8], dmg: 4, kb: [6, -4], reach: 130, r: 18, run: 130 },
-    finale: { dur: 0.7, hits: [0.65], dmg: 10, kb: [6, -6], knock: true, reach: 300, r: 30 }
+    charge: { dur: 0.4, hits: [0.2, 0.4, 0.6, 0.8], dmg: 4, kb: [6, -4], reach: 130, r: 18, run: 130 }
   },
   archer: {
     shot: { dur: 0.288, hits: [0.5], dmg: 5, hold: 0.3, reach: 230 },
     volley: { dur: 0.4, hits: [0.3, 0.55, 0.8], dmg: 3, hold: 0.35, reach: 180 },
     rain: { dur: 0.36, hits: [0.4], dmg: 4, hold: 0.4, reach: 220, arrows: 7, spread: 18, delay: 0.3, height: 150 },
-    airshot: { dur: 0.288, hits: [0.5], dmg: 5, hold: 0.4, reach: 220 },
-    barrage: { dur: 0.6, hits: [0.2, 0.4, 0.6, 0.8], dmg: 2, hold: 0.6, reach: 300 }
+    airshot: { dur: 0.288, hits: [0.5], dmg: 5, hold: 0.4, reach: 220 }
   },
   assassin: {
     stab: { dur: 0.336, hits: [0.45, 0.75], dmg: 4, kb: [0.4, -0.5], hold: 0.45, bleed: 0.4, reach: 125, r: 20 },
     shadow: { dur: 0.32, hits: [0.4], dmg: 6, kb: [1, -1.5], hold: 0.4, bleed: 0.6, reach: 150, r: 20, run: 30 },
-    mercy: { dur: 0.4, hits: [0.3, 0.55, 0.8], dmg: 4, bleed: 0.8, reach: 120, r: 24, down: true },
-    dance: { dur: 0.8, hits: [0.15, 0.35, 0.55, 0.75], dmg: 3, kb: [0.3, -0.5], hold: 0.6, bleed: 0.3, reach: 300, r: 22 }
+    mercy: { dur: 0.4, hits: [0.3, 0.55, 0.8], dmg: 4, bleed: 0.8, reach: 120, r: 24, down: true }
   },
   mage: {
     zap: { dur: 0.336, hits: [0.55], dmg: 6, kb: [0.3, -2], hold: 0.45, shock: 0.3, reach: 170, r: 18 },
-    meteor: { dur: 0.4, hits: [0.7], dmg: 8, kb: [1, 9], spike: true, reach: 200, r: 24 },
-    storm: { dur: 0.6, hits: [0.35, 0.6, 0.85], dmg: 3, kb: [0.3, -2], hold: 0.7, shock: 0.3, reach: 300, r: 20 }
+    meteor: { dur: 0.4, hits: [0.7], dmg: 8, kb: [1, 9], spike: true, reach: 200, r: 24 }
   },
   shield: {
     bash: { dur: 0.32, hits: [0.5], dmg: 6, kb: [1.5, -10.5], launch: true, reach: 110, r: 20 },
     drop: { dur: 0.36, hits: [0.6], dmg: 8, kb: [1.5, 9], spike: true, reach: 140, r: 24 },
-    slam: { dur: 0.55, hits: [0.7], dmg: 4, kb: [0.5, -3], hold: 1.5, reach: 300, r: 100, ring: true },
     charge: { dur: 0.4, hits: [0.2, 0.4, 0.6, 0.8], dmg: 4, kb: [6, -4], reach: 130, r: 18, run: 130 },
     guard: { dur: 0.2, hits: [] }
   }
@@ -263,9 +258,6 @@ export const COURT_PLAN = {
   kRain: [['archer', 'rain']], kRise: [['soldier', 'rise']], kMercy: [['assassin', 'mercy']],
   kCharge: [['shield', 'charge'], ['soldier', 'charge']], kShadow: [['assassin', 'shadow']], kDrop: [['shield', 'drop']]
 };
-// ATAQUE REAL: on up to `max` rivals within `reach` x `band` of the King, the court strikes in turn at
-// these moments (s): the shield's slam, the arrows, the lightning, the assassin's dance, the soldier's finale.
-export const ROYAL = { max: 3, reach: 170, band: 110, at: [['shield', 'slam', 0.2], ['archer', 'barrage', 0.62], ['mage', 'storm', 0.95], ['assassin', 'dance', 1.3], ['soldier', 'finale', 1.8]] };
 // The court on its own (sim/court.js): they live to guard the King, frantically. Rivals within `guard` x
 // `band` of him are threats (more so the one swinging at him or who just hit him). Every `beat` s another of
 // them may strike on its own (`acts`), each then waiting its own `cd`; those blows are `dmg`x as hard, hold

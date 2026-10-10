@@ -3,7 +3,8 @@
 import { Body, Composite } from './physics.js';
 import { SPECIALS, JUMA_AIR, LOLA_AIR, KING_AIR, DARK, noxAir } from './moves.js';
 import { freeScythe } from './nox.js';
-import { royalAttack, stepDecree } from './court.js';
+import { kingSpecial, stepPlant, stepRecall } from './kingdom.js';
+import { strikeCourts } from './court.js';
 import { FIGHTERS } from './fighters.js';
 import { damage, startMove, landPlunge, markOf, drama } from './combat.js';
 import { MOVES } from './moves.js';
@@ -34,8 +35,8 @@ export function endAct(g, a) {
 }
 
 export function startSpecial(g, a) {
-  // The Cat King's ATAQUE REAL (sim/court.js).
-  if (a.type === 0) { royalAttack(g, a); return; }
+  // The Cat King's BANDEIRA REAL, or with his kingdom standing, VOLTA AO REINO (sim/kingdom.js).
+  if (a.type === 0) { kingSpecial(g, a); return; }
   if (a.type === 3) { jumaSpecial(g, a); return; }
   if (a.type === 4) { noxSpecial(g, a); return; }
   // Lola's ZA WARUDO (sim/timestop.js); nothing happens while time is already stopped.
@@ -339,7 +340,8 @@ export function stepSpecial(g, a, input, pressed, dt) {
     case 'toss':
       if (a.actT > a.actMax) endAct(g, a);
       return null;
-    case 'decree': return stepDecree(g, a);
+    case 'plant': return stepPlant(g, a);
+    case 'recall': return stepRecall(g, a);
     case 'darkRise': {
       // The blood gathers into him, shivering; then he turns.
       if (a.form !== 'dark' && a.actT >= DARK.pop) becomeDark(g, a);
@@ -484,6 +486,7 @@ function shockwave(g, a, R = 120, beast = false) {
     if (p.kind === 'glass' && d < 60) { damageProp(g, p, 60, a.id); continue; }
     Body.setVelocity(p.body, { x: p.body.velocity.x + Math.sign(p.x - x) * 5 * (1 - d / R), y: p.body.velocity.y - 6 * (1 - d / R) });
   }
+  strikeCourts(g, a, (px, py) => Math.abs(px - x) < R && Math.abs(py - y) < 50, (beast ? 8 : 6) + 7, f => Math.sign(f.x - x) || a.face);
   g.fx('ring', { x, y, size: R, color: beast ? '#ffb070' : '#ffd6e4' });
   g.fx('ring', { x, y, size: R * 0.6, color: '#ffffff' });
   g.fx('land', { x, y, p: 1 });
@@ -807,6 +810,8 @@ function bloodBeam(g, a) {
     if (g.props.includes(p) && !p.body.isStatic) Body.setVelocity(p.body, { x: p.body.velocity.x + dx * 6, y: p.body.velocity.y + dy * 6 - 2 });
   }
   for (const lamp of g.hz?.lamps || []) if (along(lamp.body.position.x, lamp.body.position.y, 12) >= 0) breakLamp(g, lamp, { vx: dx * 20, vy: dy * 20 });
+  // The Cat Kings' courts and kingdoms in its way.
+  strikeCourts(g, a, (px, py) => along(px, py, wide) >= 0, 14 * hard, () => Math.sign(dx) || a.face);
   if (drank) a.hp = Math.min(a.maxHp, a.hp + drank * 0.25);
   Body.setVelocity(a.body, { x: -dx * 3, y: a.beamAir ? -2.5 : a.body.velocity.y });
   g.fx('bloodBeam', { x: x0, y: y0, x2: x0 + dx * len, y2: y0 + dy * len, dark: dark ? 1 : 0 });

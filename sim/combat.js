@@ -5,9 +5,10 @@ import { S, rnd, clamp } from '../engine/const.js';
 import { knockdown, pushActor, buildRagdoll, ragdollOf, breakJoint, gib, makeLimb, releaseHeld, pinLimb, addStump } from './ragdoll.js';
 import { extendedAttack, dropWeapon, damageProp } from './props.js';
 import { hazardBulletHit } from './hazards.js';
-import { MOVES, HEAVY, AIR, NOX_AIR, DARK_AIR, JUMA_AIR, BEAST_AIR, LOLA_AIR, NATURAL, SET, BURST, DARK, POOL, comboOf, noxAir } from './moves.js';
+import { MOVES, HEAVY, AIR, NOX_AIR, DARK_AIR, JUMA_AIR, BEAST_AIR, LOLA_AIR, NATURAL, SET, BURST, DARK, POOL, AUTO, comboOf, noxAir } from './moves.js';
 import { spill } from './nox.js';
 import { kingOrder, shieldBlocks, strikeCourts, courtInPath, hurtFamiliar } from './court.js';
+import { hurtKingdom } from './kingdom.js';
 import { MAP } from './map.js';
 import { startSpecial, startStomp, throwCarried, startChase, endAct, startPlunge, startSwarm, startBite, startCharge } from './specials.js';
 import { isMelee, WEAPON_INFO, weaponSlot } from './weapons.js';
@@ -458,7 +459,9 @@ function blinkCut(g, a, mv) {
     if (!b.dead) markBlood(g, b);
     g.fx('shadowX', { x: b.x, y: b.y, delay: 0.1 });
   }
-  if (first) { a.turnTo = first.id; a.turnT = g.time + 0.14; }
+  // The Cat Kings' courts and kingdoms on the way are cut too.
+  if (strikeCourts(g, a, (px, py) => (px - x0) * face >= -4 && (px - x0) * face <= dist + 10 && Math.abs(py - y) <= mv.band + 9, mv.dmg[0], () => face)) first ||= true;
+  if (first?.id != null) { a.turnTo = first.id; a.turnT = g.time + 0.14; }
   g.sound(first ? 'slash' : 'whoosh', x1);
 }
 
@@ -497,6 +500,7 @@ function shockwave(g, a, mv, amount, already) {
     if (damage(g, b, amount * (0.4 + 0.4 * f), { x: b.x - s * 4, y: b.y + 12 }, a.id, mv.kind, { kb: { x: s * (2 + 6 * f), y: -3 - 4 * f }, knock: f > 0.35, part: Math.random() < 0.5 ? 'footF' : 'footB' })) struck = true;
   }
   for (const l of g.limbs) if (Math.abs(l.x - x) < mv.shock && Math.abs(l.y - y) < 40) Body.setVelocity(l.body, { x: l.body.velocity.x + Math.sign(l.x - x) * 3, y: l.body.velocity.y - 4 });
+  if (strikeCourts(g, a, (px, py) => Math.abs(px - x) < mv.shock && Math.abs(py - y) < 40, amount * 0.6, f => Math.sign(f.x - x) || a.face)) struck = true;
   g.fx('ring', { x, y, size: mv.shock, color: '#ffe6c8' });
   g.fx('land', { x, y, p: 1 });
   g.fx('dust', { x, y, n: 6 + Math.round(mv.shock / 10) });
@@ -582,7 +586,9 @@ export function cutCorpse(g, limb) {
 
 export function shoot(g, a) {
   let ang = a.aim ?? (a.face > 0 ? 0 : Math.PI);
-  if (a.bot || a.input.aimX === null) {
+  // A bot set on razing a kingdom aims at it.
+  if (a.bot && a.ai?.aimAt) ang = Math.atan2(a.ai.aimAt.y - (a.y + 5), a.ai.aimAt.x - a.x);
+  else if (a.bot || a.input.aimX === null) {
     const t = g.closest(a, 680);
     if (t && (a.bot || a.input.padAim == null)) ang = Math.atan2(t.y - (a.y + 5), t.x - a.x);
   }
@@ -639,10 +645,16 @@ export function stepBullets(g, dt) {
       if (t < bestT) { bestT = t; best = body; }
     }
     hazardBulletHit(g, b, nx, ny);
-    // A familiar of the Cat King's on the way, before anything else it would hit.
+    // A familiar of the Cat King's (or a rival's kingdom: its structure stops shots) on the way, before
+    // anything else it would hit.
     const fam = b.damage > 0 ? courtInPath(g, b, nx, ny) : null;
-    if (fam) {
-      if (fam.u <= bestT) { hurtFamiliar(g, fam.k, fam.f, b.damage * (b.kind === 'pellet' ? 1 : 0.8), b.owner, Math.sign(b.vx) || 1); removeBullet(g, b); continue; }
+    if (fam && fam.u <= bestT) {
+      const dir = Math.sign(b.vx) || 1;
+      if (fam.kg) hurtKingdom(g, fam.kg, fam.f, fam.f === fam.kg ? b.damage : b.damage * (b.kind === 'pellet' ? 1 : 0.8), b.owner, dir, b.kind === 'pellet' ? 'pellet' : 'shot');
+      else hurtFamiliar(g, fam.k, fam.f, b.damage * (b.kind === 'pellet' ? 1 : 0.8), b.owner, dir);
+      if (fam.kg && fam.f === fam.kg) g.fx('spark', { x: Math.round(b.x + (nx - b.x) * fam.u), y: Math.round(b.y + (ny - b.y) * fam.u), n: 3, a: Math.atan2(-b.vy, -b.vx) });
+      removeBullet(g, b);
+      continue;
     }
     b.px = b.x; b.py = b.y;
     if (best) {
@@ -709,9 +721,12 @@ function bulletHit(g, b, body, point) {
     }
     if (b.kind === 'knife') knifeHit(g, b, a, point, angle);
     else if (b.court) {
-      // The court's arrows: no freeze on the King far away, and they keep the rival reeling.
-      const dealt = damage(g, a, b.damage, point, b.owner, b.kind, { kb: { x: b.vx * 0.12, y: Math.min(0, b.vy * 0.05) - 0.8 }, dir: angle, solo: true });
-      if (dealt && !a.dead && !a.knocked && b.hold) { a.hitstun = Math.max(a.hitstun || 0, b.hold); a.hitstunMax = Math.max(a.hitstunMax || 0, a.hitstun); }
+      // The court's arrows: no freeze on the King far away, and they keep the rival reeling. A castle's
+      // archers' (gate) make them reel only once every so often, with the court's own blows.
+      const light = !!b.gate && g.time - (a.courtReelT ?? -9) < AUTO.stagger;
+      if (b.gate && !light) a.courtReelT = g.time;
+      const dealt = damage(g, a, b.damage, point, b.owner, b.kind, { kb: { x: b.vx * 0.12, y: Math.min(0, b.vy * 0.05) - 0.8 }, dir: angle, solo: true, light });
+      if (dealt && !a.dead && !a.knocked && b.hold && !light) { a.hitstun = Math.max(a.hitstun || 0, b.hold); a.hitstunMax = Math.max(a.hitstunMax || 0, a.hitstun); }
       if (dealt && !b.auto) { const k = g.actor(b.owner); if (k) { k.lastPrey = a.id; k.lastPreyT = g.time; } }
     }
     else damage(g, a, b.damage, point, b.owner, b.kind, { kb: { x: b.vx * 0.16, y: b.vy * 0.1 - 1 }, dir: angle });

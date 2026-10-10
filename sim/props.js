@@ -113,8 +113,8 @@ export function explode(g, x, y, owner, power = 1) {
     const amount = k * 68 * power;
     damage(g, a, amount, { x: a.x - dx * 6, y: a.y - dy * 6 }, owner, 'explosion', { kb: { x: dx * 13 * k, y: dy * 9 * k - 7 * k }, knock: true, overkill: amount > a.hp + 30, environment: true });
   }
-  // The Cat King's court is blown about too (all of them but its own King's).
-  strikeCourts(g, g.actor(owner) || null, (fx, fy) => Math.hypot(fx - x, fy - y) < R * 0.8, 40 * power, f => Math.sign(f.x - x) || 1);
+  // The Cat King's court is blown about too (all of them but its own King's), and his kingdom shaken.
+  strikeCourts(g, g.actor(owner) || null, (fx, fy) => Math.hypot(fx - x, fy - y) < R * 0.8, 40 * power, f => Math.sign(f.x - x) || 1, 'blast');
   for (const p of [...g.props]) {
     if (p.held || p.fixed) continue;
     const d = dist(p, { x, y });
@@ -207,6 +207,7 @@ export function extendedAttack(g, a) {
     }
   }
   for (const p of [...g.props]) if (p !== held && !p.fixed && dist(a, p) < range) damageProp(g, p, amount, a.id);
+  strikeCourts(g, a, (x, y) => Math.hypot(x - a.x, y - a.y) < range && (x - a.x) * a.face > -5, amount, () => a.face);
   for (const l of g.limbs) if (!l.attached && dist(a, l) < range && (l.x - a.x) * a.face > -5) Body.setVelocity(l.body, { x: a.face * 7, y: -4 });
   if (held && held.kind !== 'barrel') {
     held.held = false;

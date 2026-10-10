@@ -14,6 +14,7 @@ import { SPECIALS } from './moves.js';
 import { stepTimeStop } from './timestop.js';
 import { tickNox, spill, freeScythe, famSnapshot } from './nox.js';
 import { tickKings, courtSnapshot } from './court.js';
+import { tickKingdoms, kingdomSnapshot, fishSnapshot } from './kingdom.js';
 
 export { EMPTY_INPUT, FIGHTERS };
 
@@ -41,6 +42,8 @@ export class Game {
     this.timeStop = null; this.knives = []; this.barrages = [];
     // Pools of blood on the floors (sim/nox.js).
     this.pools = [];
+    // The Cat Kings' kingdoms and the fish their workers fetch (sim/kingdom.js).
+    this.kingdoms = []; this.fish = []; this.fishSpots = null;
     this.spawns = MAP.spawns;
     players.forEach((p, i) => this.addActor({ ...p, id: p.id ?? i, x: p.x ?? this.spawns[i % 4][0], y: p.y ?? this.spawns[i % 4][1] }));
     if (!players.length) this.addActor({ id: 0, type: 0, x: this.spawns[0][0], y: this.spawns[0][1], name: 'Você', bot: false });
@@ -235,6 +238,7 @@ export class Game {
     for (const a of this.actors) { stepActor(this, a, dt); if (this.timeStop) return; }
     tickNox(this, dt);
     tickKings(this, dt);
+    tickKingdoms(this, dt);
     stepBullets(this, dt);
     tickHazards(this, dt);
     tickProps(this, dt);
@@ -322,7 +326,7 @@ export class Game {
         freeze: r(a.freeze), frozen: r(a.frozen), shock: r(a.shock), weapon: a.weapon, ammo: a.ammo, holding: a.holding,
         burning: r(a.burning || 0), holdingLimb: a.holdingLimb || null, respawn: r(a.respawn), skid: r(a.skid || 0), landImpact: r(a.landT > 0 ? a.landImpact : 0),
         powerSeq: a.powerSeq, recoil: r(a.recoil || 0), stats: a.stats, form: a.form || null, formT: r(a.formT || 0),
-        wPose: a.wPose || null, wPoseT: r2(a.wPoseT || 0), skips: a.skips || 0, blood: r(a.blood || 0), fam: famSnapshot(a.fam, r, r2), court: courtSnapshot(a.court)
+        wPose: a.wPose || null, wPoseT: r2(a.wPoseT || 0), skips: a.skips || 0, blood: r(a.blood || 0), fam: famSnapshot(a.fam, r, r2), court: courtSnapshot(a.court), pk: a.pk ?? null
       })),
       props: this.props.map(p => ({ id: p.id, kind: p.kind, w: p.w, h: p.h, x: r(p.x), y: r(p.y), angle: r(p.angle * 100) / 100, hp: p.hp, armed: !!p.armed, fuse: p.fuse, burning: r(p.burning || 0), weapon: p.weapon, rocket: p.rocket > 0, chain: !!p.chain, look: p.look })),
       // Lola's laid knives also send where they point, how far out of her hand they are (k) and how
@@ -335,6 +339,8 @@ export class Game {
       fires: this.fires.map(f => ({ id: f.id, x: f.x, y: f.y, life: r(f.life) })),
       pins: this.pins.map(p => ({ x: p.x, y: p.y })),
       pools: this.pools.map(p => [r(p.x), p.y, r(p.amt), p.by]),
+      kingdoms: this.kingdoms.map(kingdomSnapshot),
+      fish: fishSnapshot(this.fish),
       hazards: hazardSnapshot(this)
     };
   }

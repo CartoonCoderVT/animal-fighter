@@ -26,6 +26,10 @@ const DEPOT = {
   ],
   ladders: [{ x: 186, top: 372, bottom: 492 }, { x: 774, top: 372, bottom: 492 }],
   spawns: [[246, 343], [714, 343], [390, 223], [570, 223]],
+  // The Cat King's kingdom (sim/kingdom.js): where no banner may go (by floor; no x0/x1: none of it), and
+  // the spots where fish turn up for his workers (on a floor's top).
+  plantBan: [{ node: 'floorL', x0: 0, x1: 150 }, { node: 'floorR', x0: 804, x1: 960 }],
+  fish: [[396, 492], [720, 492], [240, 372], [720, 372], [390, 252], [570, 252], [360, 135], [600, 135], [75, 240], [885, 240]],
   pit: { x0: 432, x1: 528, y0: 504, y1: 558, text: 'TRITURADO!' },
   windows: [{ x: 20, y: 18, w: 186, h: 128 }, { x: 246, y: 18, w: 148, h: 104 }, { x: 434, y: 18, w: 186, h: 128 }],
   conveyor: { x0: 165, x1: 372, y: 492, speed: 1.4, lever: { x: 141, y: 468 } },
@@ -88,6 +92,9 @@ const CASTLE = {
   ],
   ladders: [{ x: 186, top: 372, bottom: 492 }, { x: 774, top: 372, bottom: 492 }],
   spawns: [[246, 343], [714, 343], [390, 223], [570, 223]],
+  // No banner under the pendulums, on the left tower, by the cracked wall, the candles and the armor.
+  plantBan: [{ node: 'balcL' }, { node: 'balcR' }, { node: 'towerL' }, { node: 'floorL', x0: 0, x1: 120 }, { node: 'floorR', x0: 846, x1: 960 }, { node: 'gallery', x0: 306, x1: 330 }, { node: 'gallery', x0: 630, x1: 654 }],
+  fish: [[390, 492], [660, 492], [300, 372], [660, 372], [405, 252], [555, 252], [360, 135], [600, 135], [120, 240], [885, 117]],
   pit: { x0: 432, x1: 528, y0: 504, y1: 558, text: 'ESPETADO!' },
   windows: [{ x: 22, y: 18, w: 56, h: 120 }, { x: 178, y: 26, w: 46, h: 96 }, { x: 416, y: 26, w: 46, h: 96 }, { x: 562, y: 18, w: 56, h: 120 }],
   // The great clock on the back wall over the gallery (view pixels): its hands tell real match time.
