@@ -158,7 +158,7 @@ const GRID = { g: null, clear() { return (this.g ||= new Grid()).clear(); } };
 let mkCanvas = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
 const RGBC = new Map();
 const rgbOf = hex => { let v = RGBC.get(hex); if (!v) { const n = parseInt(hex.slice(1, 7), 16); v = [(n >> 16) & 255, (n >> 8) & 255, n & 255]; RGBC.set(hex, v); } return v; };
-function finish(G) {
+function finish(G, ink = INK) {
   const N = GW * GH, out = new Array(N).fill(null), Rr = G.R, L = G.L;
   for (let i = 0; i < N; i++) if (Rr[i]) {
     // The rim: what faces up (open sky above it) catches the light.
@@ -170,8 +170,8 @@ function finish(G) {
   const solid = i => !!Rr[i];
   for (let i = GW; i < N - GW; i++) {
     if (Rr[i]) continue;
-    if (G.P[i] === -1 && (solid(i - 1) || solid(i + 1) || solid(i - GW) || solid(i + GW))) { out[i] = INK; continue; }
-    if (solid(i - 1) || solid(i + 1) || solid(i - GW) || solid(i + GW)) out[i] = INK;
+    if (G.P[i] === -1 && (solid(i - 1) || solid(i + 1) || solid(i - GW) || solid(i + GW))) { out[i] = ink; continue; }
+    if (solid(i - 1) || solid(i + 1) || solid(i - GW) || solid(i + GW)) out[i] = ink;
   }
   let x0 = GW, y0 = GH, x1 = -1, y1 = -1;
   for (let y = 0; y < GH; y++) for (let x = 0; x < GW; x++) if (out[y * GW + x]) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
@@ -183,7 +183,7 @@ function finish(G) {
     if (!hex) continue;
     const [r, gg, b] = rgbOf(hex), k = (y * w + x) * 4;
     d[k] = r; d[k + 1] = gg; d[k + 2] = b; d[k + 3] = 255;
-    mask[y * w + x] = hex === INK ? 2 : 1;
+    mask[y * w + x] = hex === ink ? 2 : 1;
   }
   g.putImageData(img, 0, 0);
   return { canvas: c, flipped: null, x0: x0 - OX, y0: y0 - OY, w, h, mask, pts: G.pts, tints: {} };
@@ -265,6 +265,10 @@ function head(G, K, c, o, { ears = true, mask = null } = {}) {
   if (e === 'blink') { G.set(ex, ey + 1, E, 2); G.set(ex - 1, ey + 1, E, 2); G.set(fx, ey + 1, E, 2); }
   else if (e === 'happy') { G.set(ex - 1, ey + 1, E, 2); G.set(ex, ey, E, 2); G.set(ex + 1, ey + 1, E, 2); G.set(fx, ey, E, 2); G.set(fx - 1, ey + 1, E, 2); }
   else if (e === 'angry') { G.set(ex, ey + 1, E, 2); G.set(ex - 1, ey, E, 2); G.set(ex, ey, E, 2); G.set(fx, ey + 1, E, 2); G.set(fx + 1, ey, E, 2); }
+  // Struck: squeezed shut (> <).
+  else if (e === 'pain') { G.set(ex - 1, ey, E, 2); G.set(ex, ey + 1, E, 2); G.set(ex - 1, ey + 2, E, 2); G.set(fx, ey, E, 2); G.set(fx - 1, ey + 1, E, 2); }
+  // Knocked out: x x.
+  else if (e === 'ko') { G.set(ex - 1, ey, E, 2); G.set(ex + 1, ey, E, 2); G.set(ex, ey + 1, E, 2); G.set(ex - 1, ey + 2, E, 2); G.set(ex + 1, ey + 2, E, 2); G.set(fx - 1, ey, E, 2); G.set(fx, ey + 1, E, 2); G.set(fx - 1, ey + 2, E, 2); }
   else { G.set(ex, ey, E, K.eyeL ?? 2); G.set(ex, ey + 1, E, 2); G.set(fx, ey, E, 2); G.set(fx, ey + 1, E, 2); }
   G.pt('eye', ex, ey);
   G.pt('eyeF', fx, ey);
@@ -302,6 +306,30 @@ function dagger(G, K, hand, a, len = 3) {
   G.end();
 }
 
+// The bow held at bh, aimed along ba: a curved stave lit at its tips. Returns its two tips.
+function bowOf(G, K, bh, ba, r = 4.4) {
+  const nrm = ba + Math.PI / 2, tips = [];
+  for (let i = -4; i <= 4; i++) {
+    const u = i / 4, bend = (1 - u * u) * 2.4 - 0.6;
+    const x = bh[0] + Math.cos(nrm) * u * r + Math.cos(ba) * bend, y = bh[1] + Math.sin(nrm) * u * r + Math.sin(ba) * bend;
+    if (i === -4 || i === 4) tips.push([x, y]);
+    G.set(x, y, K.wood, Math.abs(i) >= 3 ? 4 : i < 0 ? 3 : 2);
+  }
+  return tips;
+}
+// The mage's staff held at st along sa (its crystal at that end).
+function staffOf(G, K, st, sa) {
+  const c = Math.cos(sa), s = Math.sin(sa);
+  const top = [st[0] + c * 9, st[1] + s * 9], foot = [st[0] - c * 6, st[1] - s * 6];
+  G.begin();
+  G.line(foot[0], foot[1], top[0], top[1], K.wood, (u) => (u > 0.5 ? 3 : 2));
+  const [cx, cy] = along(top[0], top[1], sa, 1.5);
+  G.set(cx, cy - 1, K.gem, 4); G.set(cx - 1, cy, K.gem, 3); G.set(cx, cy, K.gem, 4); G.set(cx + 1, cy, K.gem, 2); G.set(cx, cy + 1, K.gem, 2);
+  G.set(top[0] - 1, top[1], K.trim, 3); G.set(top[0] + 1, top[1], K.trim, 2);
+  G.end();
+  G.pt('gem', cx, cy);
+}
+
 // The kite shield, centred on c, turned by rot (radians, clockwise; 0 upright, its point down): a red
 // field lit on its left, a gold rim and the royal crest (a little gold crown).
 function shieldOf(G, K, c, rot, w, h) {
@@ -335,7 +363,7 @@ const BUILD = {
     G.begin(); for (let x = -2; x <= 2; x++) G.set(c.bx + x, c.by + 1, K.trim, x === 0 ? 4 : 2); G.end();
     // The sword over his body but under his head: raised, it shows over the helmet and before his
     // face, and never crosses his eyes.
-    sword(G, K, o.hand, o.wpn, o.len || 6, o.gold);
+    if (!o.bare) sword(G, K, o.hand, o.wpn, o.len || 6, o.gold);
     head(G, K, c, o, { ears: false });
     const { hx, hy } = c;
     G.begin();
@@ -382,16 +410,13 @@ const BUILD = {
     G.set(hx - 6, hy + 1, K.main, 1); G.set(hx - 6, hy + 2, K.main, 1); G.set(hx - 7, hy + 2, K.main, 1);
     G.end();
     // The bow in the far paw, held out; the string to the near paw when drawn.
-    const bh = o.bowHand, ba = o.bowA ?? 0, draw = o.draw || 0, r = 4.4;
+    const bh = o.bowHand, ba = o.bowA ?? 0, draw = o.draw || 0;
     G.begin();
     G.line(c.bx, c.by - 1, bh[0], bh[1], K.main, 2);
-    const nrm = ba + Math.PI / 2, tips = [];
-    for (let i = -4; i <= 4; i++) {
-      const u = i / 4, bend = (1 - u * u) * 2.4 - 0.6;
-      const x = bh[0] + Math.cos(nrm) * u * r + Math.cos(ba) * bend, y = bh[1] + Math.sin(nrm) * u * r + Math.sin(ba) * bend;
-      if (i === -4 || i === 4) tips.push([x, y]);
-      G.set(x, y, K.wood, Math.abs(i) >= 3 ? 4 : i < 0 ? 3 : 2);
-    }
+    G.end();
+    if (o.bare) { G.begin(); G.set(bh[0], bh[1], K.fur, 3); G.end(); arm(G, Kb, c, o.hand); return; }
+    G.begin();
+    const tips = bowOf(G, K, bh, ba);
     G.set(bh[0], bh[1], K.fur, 3);
     G.end();
     const pull = draw > 0 ? o.hand : [(tips[0][0] + tips[1][0]) / 2 - Math.cos(ba) * 0.6, (tips[0][1] + tips[1][1]) / 2 - Math.sin(ba) * 0.6];
@@ -417,7 +442,7 @@ const BUILD = {
     G.line(hx - 7, hy - 0.5 + fl, hx - 9, hy + 0.5 + fl * 2, K.main, 1);
     G.line(hx - 4, hy + 1.5, hx - 6, hy + 2.5 + fl, K.main, 1);
     G.end();
-    if (o.armB) dagger(G, K, o.armB, o.wpnB ?? o.wpn, 3);
+    if (o.armB && !o.bare) dagger(G, K, o.armB, o.wpnB ?? o.wpn, 3);
     const c = cat(G, K, o);
     head(G, K, c, o, {
       mask: (mx, my) => {
@@ -425,7 +450,7 @@ const BUILD = {
       }
     });
     G.begin(); for (let x = -2; x <= 2; x++) G.set(c.bx + x, c.by + 1, K.main, x > 0 ? 3 : 2); G.end();
-    dagger(G, K, o.hand, o.wpn, 4);
+    if (!o.bare) dagger(G, K, o.hand, o.wpn, 4);
     arm(G, K, c, o.hand);
     G.pt('tip', o.hand[0] + Math.cos(o.wpn) * 4, o.hand[1] + Math.sin(o.wpn) * 4);
   },
@@ -455,15 +480,7 @@ const BUILD = {
     G.end();
     G.pt('hat', hx - 3 - bend, hy - 11);
     // The staff in the near paw: its crystal up by the hat.
-    const st = o.staff, sa = o.staffA ?? -90 * DEG, c = Math.cos(sa), s = Math.sin(sa);
-    const top = [st[0] + c * 9, st[1] + s * 9], foot = [st[0] - c * 6, st[1] - s * 6];
-    G.begin();
-    G.line(foot[0], foot[1], top[0], top[1], K.wood, (u) => (u > 0.5 ? 3 : 2));
-    const [cx, cy] = along(top[0], top[1], sa, 1.5);
-    G.set(cx, cy - 1, K.gem, 4); G.set(cx - 1, cy, K.gem, 3); G.set(cx, cy, K.gem, 4); G.set(cx + 1, cy, K.gem, 2); G.set(cx, cy + 1, K.gem, 2);
-    G.set(top[0] - 1, top[1], K.trim, 3); G.set(top[0] + 1, top[1], K.trim, 2);
-    G.end();
-    G.pt('gem', cx, cy);
+    if (!o.bare) staffOf(G, K, o.staff, o.staffA ?? -90 * DEG);
     G.begin();
     G.line(bx + 1, -7 + dy, o.hand[0], o.hand[1], K.main, 3);
     G.set(o.hand[0], o.hand[1], K.fur, 3);
@@ -489,7 +506,7 @@ const BUILD = {
     }
     G.set(hx - 1, hy - 4, K.trim, 3); G.set(hx, hy - 4, K.trim, 3); G.set(hx - 2, hy - 4, K.trim, 3); G.set(hx - 1, hy - 5, K.trim, 4);
     G.end();
-    if (!o.noShield) shieldOf(G, K, o.sh, o.shRot || 0, o.shW ?? 3.5, o.shH ?? 10);
+    if (!o.noShield && !o.bare) shieldOf(G, K, o.sh, o.shRot || 0, o.shW ?? 3.5, o.shH ?? 10);
     if (o.showArm) arm(G, Kb, c, o.hand);
   }
 };
@@ -526,6 +543,8 @@ function aimBow(o, a, u, rel = 0) {
 const STRIKE = 0.3;
 // When the simulation blinks the assassin away (sim/court.js: 0.06 s into a stab or a mercy).
 const BLINK = 0.06;
+// How long a blow's flash lasts (sim/court.js: f.hurt starts there and runs down to 0).
+const HURT = 0.25;
 const ACT = {
   soldier: {
     slash(o, s) {
@@ -697,40 +716,77 @@ const HERO = {
 };
 
 // What a familiar looks like this frame: the pose (all small whole numbers, so the sprite cache
-// hits), where the sprite sits relative to its feet (dx, dy) and the cues for the glow layer.
+// hits), where the sprite sits relative to its feet (dx, dy), whether it glances back (flip) and the
+// cues for the glow layer. mem: what track() keeps of it (stride and bounce phases, the King's speed).
+// They are never still: in rank they bounce on their toes, weapons up, glancing about, and hop about
+// their place; with the King on the move they run flat out.
 function poseFor(k, F, t, idx, mem) {
   const ph = t + idx * 0.37, vx = F.vx || 0, sp = Math.abs(vx);
   const breath = Math.sin(ph * 2.6) > 0.55 ? 1 : 0;
   const blink = (ph * 0.7) % 4.3 < 0.12;
-  const twitch = (ph * 0.9 + idx) % 5.1 < 0.15 ? 1 : 0;
-  const o = { legs: 'stand', eye: blink ? 'blink' : 'open', ear: twitch, tail: Math.round(Math.sin(ph * 1.8) * 1.5), dy: breath };
-  let dy = 0, cue = {};
+  const twitch = (ph * 1.7 + idx) % 2.3 < 0.12 ? 1 : 0;
+  const o = { legs: 'stand', eye: blink ? 'blink' : 'open', ear: twitch, tail: Math.round(Math.sin(ph * 3.4) * 1.5), dy: breath };
+  let dy = 0, dx = 0, flip = false, cue = {};
   const acting = F.st === 'act' && ACT[k]?.[F.act];
   const hero = F.st === 'hero';
   const moving = !acting && !hero && sp > 0.12;
-  const run = sp > 0.6 || F.st === 'back';
-  const cph = mem?.ph ?? t * (run ? 12 : 7);
+  // Is the King going somewhere (then they run or walk with him), or are they fidgeting in rank?
+  const kingGo = (mem?.kv ?? (sp > 0.12 ? 1 : 0)) > 0.5;
+  const run = F.st === 'back' || (moving && sp > 0.6 && kingGo);
+  const hopping = moving && !run && !kingGo && !F.air;
+  const ready = !acting && !hero && !moving && !F.air;
+  const cph = mem?.ph ?? t * (run ? 16 : 10);
+  const bu = ((((mem?.bph ?? t * (hopping ? 6 : 3.4) + idx * 0.29)) % 1) + 1) % 1;
   if (k === 'mage') {
-    // He floats: a slow bob, the hem swaying; moving, he leans in and the hem trails.
-    dy = Math.round(Math.sin(ph * 2.2) * 1.2) - (F.air ? 1 : 0);
+    // He floats: a quick restless bob, the hem swaying; moving, he leans in and the hem trails.
+    dy = Math.round(Math.sin(ph * 4.4) * 1.3) - (F.air ? 1 : 0);
     o.dy = 0;
-    o.hem = moving ? -Math.sign(vx * (F.f || 1)) : Math.round(Math.sin(ph * 2.2 + 1));
+    o.hem = moving ? -Math.sign(vx * (F.f || 1)) : Math.round(Math.sin(ph * 4.4 + 1));
     o.lean = moving ? 1 : 0;
   } else if (F.air && !acting && !hero) {
     const rising = (mem?.vy ?? 0) < -0.3;
     o.legs = rising ? 'jump' : 'fall'; o.dy = 0; o.tail = rising ? -1 : 1; o.ear = rising ? 0 : 2;
+  } else if (run) {
+    o.legs = cycle(true, cph); o.dy = 0; o.lean = 1; o.tail = -2; o.ear = 2;
+  } else if (hopping) {
+    // A quick hop about its place: off its toes, tucked, down again with a squash.
+    dy = -Math.round(Math.sin(bu * Math.PI) * 2.4);
+    o.legs = bu < 0.12 || bu > 0.88 ? 'land' : bu < 0.5 ? 'jump' : 'fall'; o.dy = 0; o.tail = bu < 0.5 ? -1 : 1; o.ear = bu < 0.5 ? 0 : 2;
   } else if (moving) {
-    o.legs = cycle(run, cph); o.dy = 0; o.lean = run ? 1 : 0;
-    if (run) { o.tail = -2; o.ear = 2; }
+    o.legs = cycle(false, cph); o.dy = 0;
+  } else if (ready) {
+    // Bouncing on its toes (the shield-bearer, heavy, shifts his weight instead).
+    if (k === 'shield') o.dy = bu < 0.5 ? 0 : 1;
+    else { dy = bu > 0.2 && bu < 0.55 ? -1 : 0; o.dy = bu > 0.62 && bu < 0.8 ? 1 : 0; }
+    // Now and then a glance back over the shoulder.
+    if (k !== 'shield' && k !== 'mage' && (ph * 0.41 + idx * 0.23) % 1 < 0.08) flip = true;
   }
   rest(k, o);
-  if (k === 'soldier') { o.plume = moving ? 1 : Math.sin(ph * 2) > 0.7 ? 1 : 0; if (moving && run) { o.hand = [3, BY(o) - 1]; o.wpn = -20 * DEG; } }
-  if (k === 'archer') o.cape = moving ? 1 : 0;
-  if (k === 'assassin') {
-    o.ties = moving ? 1 : Math.round(Math.sin(ph * 3));
-    if (!moving && !F.air) { o.legs = 'crouch'; o.dy = 0; rest(k, o); }
+  if (k === 'soldier') {
+    o.plume = moving ? 1 : Math.sin(ph * 4.5) > 0.4 ? 1 : 0;
+    if (run) { o.hand = [3, BY(o) - 1]; o.wpn = -20 * DEG; }
+    // Sword up on guard, twitching between guards.
+    else if (ready || hopping) { o.hand = [4, BY(o) - 1]; o.wpn = [-40, -25, -55, -30][Math.floor(ph * 2.3) % 4] * DEG; }
   }
-  if (k === 'shield') { o.eye = blink ? 'blink' : 'angry'; if (F.air) o.sh = [5, BY(o) - 1]; }
+  if (k === 'archer') {
+    o.cape = moving ? 1 : 0;
+    // An arrow nocked, half drawn, the bow sweeping for a mark.
+    if (ready) aimBow(o, [-6, -16, 2, -10][Math.floor(ph * 1.7) % 4] * DEG, 0.45);
+  }
+  if (k === 'assassin') {
+    o.ties = moving ? 1 : Math.round(Math.sin(ph * 6));
+    if (ready) {
+      o.legs = 'crouch'; rest(k, o);
+      // Flipping a dagger in its paw.
+      if (Math.floor(ph * 2.6) % 3 === 1) { o.hand = [3, BY(o)]; o.wpn = -40 * DEG; }
+    }
+  }
+  if (k === 'mage' && ready) { o.hand = [4, BY(o) - 2 - (Math.floor(ph * 3) % 2)]; o.staff = o.hand; }
+  if (k === 'shield') {
+    o.eye = blink ? 'blink' : 'angry';
+    if (F.air) o.sh = [5, BY(o) - 1];
+    else if (ready) o.sh = [6, BY(o) + 0.5 - (Math.floor(ph * 2.4) % 2)];
+  }
   if (acting) {
     const A = actInfo(k, F.act), p = clamp01((F.t || 0) / A.dur), s = stageOf(p, A.hits);
     if (k !== 'mage') o.dy = 0;
@@ -745,12 +801,20 @@ function poseFor(k, F, t, idx, mem) {
   } else if (hero) {
     cue = HERO[k](o, ph) || {};
     if (k !== 'mage') o.dy = breath;
-  }
+  } else if (run && sp > 2.5) cue.ghost = 1;
   if (F.st === 'appear') {
     const at = F.t || 0;
     if (at < 0.12) cue.tint = '#ffffff';
     else dy -= Math.round(Math.sin(clamp01((at - 0.12) / 0.28) * Math.PI) * 3);
     o.eye = 'happy';
+  }
+  // Struck: eyes squeezed shut, head thrown back, a shiver (and the flash, drawn over it).
+  const hurt = F.hurt > 0 && F.st !== 'dead' ? clamp01(F.hurt / HURT) : 0;
+  if (hurt) {
+    if (hurt > 0.3) o.eye = 'pain';
+    if (hurt > 0.45 && !acting && k !== 'mage') o.lean = -1;
+    if (hurt > 0.35) dx = Math.floor(F.hurt * 60) % 2 ? 1 : -1;
+    cue.hurt = hurt; flip = false;
   }
   if (o.eye === 'blink' && cue.act) o.eye = 'angry';
   // Only what changes the picture goes in the key: ears show on the assassin alone (the others wear
@@ -759,7 +823,7 @@ function poseFor(k, F, t, idx, mem) {
   if (k !== 'assassin') o.ear = 0;
   if (cue.act) o.tail = k === 'mage' ? 0 : -1;
   if (k === 'mage') o.tail = o.tail > 0 ? 1 : 0;
-  return { o, dx: 0, dy, cue };
+  return { o, dx, dy, flip, cue };
 }
 
 // ---- sprite cache ----------------------------------------------------------------------------
@@ -797,15 +861,61 @@ function flippedOf(s) {
   }
   return s.flipped;
 }
-// A flat-colored copy (the white pop), only its outline in a color (rim: the decree's gold rim), or
-// a dithered copy, every other pixel and the outline left out (rim = 'dither': afterimages).
+// What flies off a fallen familiar, centred on (0, 0) and turned to a8 eighths of a turn: the
+// soldier's sword, the archer's bow, a dagger, the mage's staff, the kite shield.
+const WEAPON = {
+  soldier(G, K, a) { sword(G, K, along(0, 0, a + Math.PI, 3), a, 6); },
+  archer(G, K, a) {
+    G.begin(); const tips = bowOf(G, K, along(0, 0, a + Math.PI, 1), a); G.end();
+    G.begin(); G.line(tips[0][0], tips[0][1], tips[1][0], tips[1][1], K.string, 2); G.end();
+  },
+  assassin(G, K, a) { dagger(G, K, along(0, 0, a + Math.PI, 1.5), a, 4); },
+  mage(G, K, a) { staffOf(G, K, along(0, 0, a + Math.PI, 2), a); },
+  shield(G, K, a) { shieldOf(G, K, [0, 0], a, 3.5, 10); }
+};
+export function weaponSprite(k, a8) {
+  const key = 'W|' + k + '|' + a8;
+  let s = SPRITES.get(key);
+  if (s === undefined) {
+    const G = GRID.clear();
+    WEAPON[k](G, KIT[k], (a8 * Math.PI) / 4);
+    s = finish(G);
+    SPRITES.set(key, s);
+  }
+  return s;
+}
+// The little ghost a fallen familiar gives up: a white cat's head, eyes peacefully shut, trailing a
+// wisp, outlined in lavender (it is drawn as light).
+const GHOST = { fur: R('#ece6ff'), belly: R('#ffffff'), pink: R('#ffc4d8'), eyeR: R('#6a5a9a') };
+export function ghostSprite() {
+  let s = SPRITES.get('ghost');
+  if (s === undefined) {
+    const G = GRID.clear(), F = GHOST.fur;
+    G.begin();
+    G.poly([[-3, -8], [3, -8], [2.4, -5], [0.6, -3], [-1.2, -1.6], [-3, -1], [-2.2, -2.6], [-3.2, -4.6]], F, (x, y) => (y < -6 ? 3 : x > 0 ? 1 : 2));
+    G.end();
+    head(G, GHOST, { hx: 0, hy: -10 }, { eye: 'happy', ear: 0 });
+    s = finish(G, '#5a4a92');
+    SPRITES.set('ghost', s);
+  }
+  return s;
+}
+
+// A flat-colored copy (the white pop), only its outline in a color (rim: the decree's gold rim), a
+// dithered copy, every other pixel and the outline left out (rim = 'dither': afterimages), or a
+// copy washed over with a color, its shading kept (rim = 'wash': the red of a blow).
 function tintOf(s, color, rim = false) {
-  const key = (rim === 'dither' ? 'd' : rim ? 'r' : 't') + color;
+  const key = (rim === 'dither' ? 'd' : rim === 'wash' ? 'w' : rim ? 'r' : 't') + color;
   if (!s.tints[key]) {
     const c = mkCanvas(s.w, s.h), g = c.getContext('2d');
     if (rim === 'dither') {
       g.fillStyle = color;
       for (let y = 0; y < s.h; y++) for (let x = 0; x < s.w; x++) if (s.mask[y * s.w + x] === 1 && ((x + y) & 1) === 0) g.fillRect(x, y, 1, 1);
+    } else if (rim === 'wash') {
+      g.drawImage(s.canvas, 0, 0);
+      g.globalCompositeOperation = 'source-atop';
+      g.globalAlpha = 0.55;
+      g.fillStyle = color; g.fillRect(0, 0, s.w, s.h);
     } else if (rim) {
       g.fillStyle = color;
       for (let y = 0; y < s.h; y++) for (let x = 0; x < s.w; x++) if (s.mask[y * s.w + x] === 2) g.fillRect(x, y, 1, 1);
@@ -814,13 +924,30 @@ function tintOf(s, color, rim = false) {
       g.globalCompositeOperation = 'source-in';
       g.fillStyle = color; g.fillRect(0, 0, s.w, s.h);
     }
-    s.tints[key] = { canvas: c, flipped: null, x0: s.x0, y0: s.y0, w: s.w, h: s.h, tints: {} };
+    s.tints[key] = { canvas: c, flipped: null, x0: s.x0, y0: s.y0, w: s.w, h: s.h, tints: {}, mask: s.mask };
   }
   return s.tints[key];
 }
 function blit(g, s, x, y, f = 1, scale = 1) {
   if (f >= 0) g.drawImage(s.canvas, Math.round(x + s.x0 * scale), Math.round(y + s.y0 * scale), s.w * scale, s.h * scale);
   else g.drawImage(flippedOf(s), Math.round(x - (s.x0 + s.w) * scale), Math.round(y + s.y0 * scale), s.w * scale, s.h * scale);
+}
+
+// A sprite turned a whole number of quarter turns (rot, clockwise) about a pivot py pixels over its
+// feet, the pivot at canvas pixel (x, y): pixel-exact, no smoothing.
+function blitRot(g, s, x, y, f, rot, py) {
+  const img = f >= 0 ? s.canvas : flippedOf(s), X0 = f >= 0 ? s.x0 : -(s.x0 + s.w);
+  if (!rot) { g.drawImage(img, Math.round(x + X0), Math.round(y + s.y0 + py)); return; }
+  g.save();
+  g.translate(Math.round(x), Math.round(y));
+  g.rotate((rot * Math.PI) / 2);
+  g.drawImage(img, X0, s.y0 + py);
+  g.restore();
+}
+// How far below the pivot the lowest pixel of s lies once turned rot quarter turns.
+function lowest(s, f, rot, py) {
+  const X0 = f >= 0 ? s.x0 : -(s.x0 + s.w);
+  return rot === 1 ? X0 + s.w : rot === 3 ? -X0 : rot === 2 ? -(s.y0 + py) : s.y0 + s.h + py;
 }
 
 // ---- effect palettes -------------------------------------------------------------------------
@@ -831,7 +958,8 @@ const FXC = {
   magic: { core: '#ffffff', hot: '#f0dcff', mid: '#b878ff', deep: '#5a2aa8', ink: '#12062a' },
   leaf: { core: '#ffffff', hot: '#eaffd8', mid: '#9ae070', deep: '#3a8a3a', ink: '#0a1a0a' },
   fire: { core: '#fff6c4', hot: '#ffd25c', mid: '#ff9a35', deep: '#e3532d', ink: '#97302e' },
-  smoke: ['#2a2238', '#3a3050', '#4e4466', '#16101e']
+  smoke: ['#2a2238', '#3a3050', '#4e4466', '#16101e'],
+  hurt: { core: '#ffffff', hot: '#ffe2e8', mid: '#ff5a74', deep: '#a8284a', ink: '#2a0814' }
 };
 const KIND_FX = { soldier: FXC.steel, archer: FXC.leaf, assassin: FXC.blood, mage: FXC.magic, shield: FXC.gold };
 
@@ -893,12 +1021,24 @@ let LIVE = null;
 // The order they are drawn in: the mage at the back, the shield last.
 const ORDER = [3, 1, 2, 0, 4];
 // One familiar as drawCourt placed it (popping in white, fading out on a blink).
-function blitRec(g, r, ox, oy, alpha) {
-  const s = r.q.cue.tint ? tintOf(r.s, r.q.cue.tint) : r.s;
-  g.globalAlpha = alpha * (r.q.cue.fade ? 1 - r.q.cue.fade * 0.8 : 1);
-  blit(g, s, r.x + ox, r.y + oy, r.f);
+// Struck, it flashes white, then blinks washed in red until the blow's flash runs out; a fallen one
+// tumbles (turned in quarter turns about its middle), its weapon flying off on its own.
+function blitRec(g, r, ox, oy, alpha, tint = null) {
+  const cue = r.q.cue, hu = cue.hurt || 0;
+  const s = tint ? tintOf(r.s, tint) : cue.tint ? tintOf(r.s, cue.tint) : hu > 0.72 ? tintOf(r.s, '#ffffff') : hu > 0 && Math.floor(hu * 12) % 2 ? tintOf(r.s, '#ff3050', 'wash') : r.s;
+  g.globalAlpha = alpha * (cue.fade ? 1 - cue.fade * 0.8 : 1) * (r.alpha ?? 1);
+  if (r.rot !== undefined) {
+    for (const w of r.bits || []) blitRot(g, tint ? tintOf(w.s, tint) : w.s, w.x + ox, w.y + oy, 1, 0, 0);
+    blitRot(g, s, r.x + ox, r.y + oy, r.f, r.rot, PIVOT);
+  } else blit(g, s, r.x + ox, r.y + oy, r.f);
   g.globalAlpha = 1;
 }
+// A fallen familiar's last moments (s after it fell): thrown back the way it was struck, tumbling,
+// its weapon flung off spinning; down, a bounce, a flicker, gone in a puff; a little ghost with a halo
+// rising from where it lay.
+const DIE = { fly: 0.36, bounce: 0.1, flicker: 0.5, end: 0.64, ghost0: 0.56, ghost1: 1.5 };
+// The pivot a fallen one tumbles about: the middle of its body, this far over its feet.
+const PIVOT = 6;
 const FEET = 17 * S;
 export class CourtFX {
   constructor(renderer = null) {
@@ -906,6 +1046,8 @@ export class CourtFX {
     this.fx = [];
     this.parts = [];
     this.mem = new Map();
+    this.kmem = new Map();
+    this.dies = [];
     this.drawn = new Map();
     this.bullets = [];
     // How fast game time runs against the dt update() is handed (the LAB's slow motion is not in
@@ -914,7 +1056,7 @@ export class CourtFX {
     LIVE = this;
   }
 
-  reset() { this.fx.length = 0; this.parts.length = 0; this.mem.clear(); this.drawn.clear(); this.bullets.length = 0; this.rate = 1; this.clock = { t: null, gt: null, acc: 0, gacc: 0 }; }
+  reset() { this.fx.length = 0; this.parts.length = 0; this.mem.clear(); this.kmem.clear(); this.dies.length = 0; this.drawn.clear(); this.bullets.length = 0; this.rate = 1; this.clock = { t: null, gt: null, acc: 0, gacc: 0 }; }
 
   // Particles: k 'spark' (glowing, with a streak), 'smoke' (a puff that grows and fades), 'ember',
   // 'mote' (a gold speck rising); x, y view pixels, v in px/s.
@@ -972,6 +1114,26 @@ export class CourtFX {
         this.smoke(x, y - 6, app ? 6 : 10, rnd, { r: 5, life: 0.5, up: 16, cols: ['#d8d0e8', '#a89cc0', '#7a6e94', '#efe8f8'] });
         for (let i = 0; i < 6; i++) { const an = rnd() * Math.PI * 2; this.part('spark', x + Math.cos(an) * 4, y - 6 + Math.sin(an) * 4, Math.cos(an) * 40, Math.sin(an) * 40 - 20, 0.4, [P.core, P.hot, P.mid][i % 3], { drag: 0.05 }); }
         this.fx.push({ k: app ? 'appear' : 'poof', x, y: y - 6, P, t: 0, life: app ? 0.4 : 0.3 });
+        break;
+      }
+      case 'courtHurt': {
+        // A familiar struck: a little white-hot pow at its body, sparks and tufts of its fur flung
+        // the way it was knocked.
+        const sd = e.f || 1, P = FXC.hurt, K = KIT[e.k];
+        this.fx.push({ k: 'hurt', x, y, f: sd, P, t: 0, life: 0.14 });
+        this.sparks(x, y, 5, P, rnd, { a: sd > 0 ? -0.4 : Math.PI + 0.4, spread: 2.2, sp: 90, life: 0.22, g: 220 });
+        if (K) for (let j = 0; j < 2; j++) this.part('fleck', x + (rnd() - 0.5) * 4, y + (rnd() - 0.5) * 4, sd * (30 + rnd() * 40), -40 - rnd() * 40, 0.35 + rnd() * 0.2, K.fur[3], { g: 320, drag: 0.3 });
+        break;
+      }
+      case 'courtDie': {
+        // Kept a moment for the familiar it goes with (which way it was thrown); a bigger pow.
+        this.dies.push({ x: e.x ?? 0, y: e.y ?? 0, k: e.k, f: e.f || 0, age: 0 });
+        if (this.dies.length > 40) this.dies.shift();
+        const sd = e.f || 1, P = FXC.hurt, K = KIT[e.k], cy = y - Math.round(9 * S);
+        this.fx.push({ k: 'star', x, y: cy, P, t: 0, life: 0.16, big: true });
+        this.fx.push({ k: 'ring', x, y: cy, P, t: 0, life: 0.28, r: 14 });
+        this.sparks(x, cy, 10, KIND_FX[e.k] || FXC.gold, rnd, { a: sd > 0 ? -0.5 : Math.PI + 0.5, spread: 2.6, sp: 130, life: 0.35, g: 260 });
+        if (K) for (let j = 0; j < 4; j++) this.part('fleck', x + (rnd() - 0.5) * 6, cy + (rnd() - 0.5) * 6, sd * (20 + rnd() * 60), -50 - rnd() * 50, 0.4 + rnd() * 0.3, K.fur[j % 2 ? 2 : 3], { g: 320, drag: 0.3 });
         break;
       }
       case 'decree': {
@@ -1040,26 +1202,114 @@ export class CourtFX {
       p.x += p.vx * dt; p.y += p.vy * dt;
     }
     this.parts = this.parts.filter(p => p.t < p.life);
+    for (const d of this.dies) d.age += dt;
+    if (this.dies.length) this.dies = this.dies.filter(d => d.age < 1.5);
   }
 
   // Per familiar: how far it has walked (its stride phase), how fast it is rising or falling, and
   // where it was the last few frames (for afterimages). Updated once per frame of game time.
   track(a, t) {
     const C = a.court;
+    // How fast the King himself is going (world units a step): with him on the move they run, with
+    // him still they fidget and hop about their ranks.
+    let km = this.kmem.get(a.id);
+    if (!km || t < km.t - 0.5) { km = { t, x: a.x, v: 0 }; this.kmem.set(a.id, km); }
+    const kdt = Math.min(0.1, t - km.t);
+    if (kdt > 0) { km.v = km.v * 0.6 + Math.min(20, Math.abs(a.x - km.x) / (kdt * 60)) * 0.4; km.x = a.x; km.t = t; }
     for (let i = 0; i < C.length; i++) {
       const F = C[i], key = a.id + ':' + i;
       let m = this.mem.get(key);
-      if (!m || t < m.t - 0.5 || F.st === 'gone') { m = { t, x: F.x, y: F.y, vy: 0, ph: 0, hist: [], ht: 0 }; this.mem.set(key, m); }
+      if (!m || t < m.t - 0.5 || F.st === 'gone') { m = { t, x: F.x, y: F.y, vy: 0, ph: 0, bph: i * 0.29, kv: 0, hist: [], ht: 0, death: null }; this.mem.set(key, m); }
+      m.kv = km.v;
+      if (F.st === 'dead') {
+        if (!m.death) m.death = this.deathOf(a, F);
+        else if (!m.death.matched && (F.t || 0) < 0.2) { const e = this.takeDie(F); if (e) { m.death.s = e.f || m.death.s; m.death.matched = true; } }
+      } else m.death = null;
       const dt = Math.min(0.1, Math.max(0, t - m.t));
       if (dt <= 0) continue;
       const vy = (F.y - m.y) / (dt * 60);
       m.vy = m.vy * 0.5 + vy * 0.5;
-      const sp = Math.abs(F.vx || 0), run = sp > 0.6 || F.st === 'back';
-      m.ph += dt * (run ? 13 : 7) * (sp > 0.12 || F.st === 'back' ? 1 : 0);
+      // Stride and bounce: the stride runs backwards when it shuffles back without turning round.
+      const sp = Math.abs(F.vx || 0), back = F.st === 'back', run = back || (sp > 0.6 && km.v > 0.5);
+      m.ph += dt * (run ? 16 : 10) * (sp > 0.12 || back ? Math.sign((F.vx || 0) * (F.f || 1)) || 1 : 0);
+      m.bph += dt * (sp > 0.12 && km.v <= 0.5 ? 6 : 3.4);
       m.ht += dt;
       if (m.ht >= 1 / 30) { m.ht = 0; m.hist.push({ x: F.x * S, y: F.y * S, f: F.f || 1, s: null, dy: 0 }); if (m.hist.length > 5) m.hist.shift(); }
       m.x = F.x; m.y = F.y; m.t = t;
     }
+  }
+
+  // A familiar just fell: where (view px), which way it was thrown (the 'courtDie' event that goes with
+  // it, else away from where it faced) and the floor it lands on (the mage floats; one struck in the
+  // air drops toward the King's feet).
+  deathOf(a, F) {
+    const e = this.takeDie(F), x = F.x * S, y = F.y * S;
+    const kingFeet = ((a.y ?? F.y) + 17) * S;
+    const floor = y + (F.air ? Math.max(0, Math.min(40, kingFeet - y)) : F.k === 'mage' ? Math.round(15 * S) : 0);
+    return { x, y, floor, s: e?.f || -(F.f || 1) || 1, f: (F.f || 1) >= 0 ? 1 : -1, matched: !!e, puffed: false, at: null };
+  }
+  takeDie(F) {
+    const i = this.dies.findIndex(e => e.k === F.k && Math.abs(e.x - F.x) < 14 && Math.abs(e.y - F.y) < 14);
+    return i < 0 ? null : this.dies.splice(i, 1)[0];
+  }
+
+  // A fallen familiar this frame: its tumbling body and flying weapon as a record drawCourt and
+  // drawCourtKeep blit like any other (null once it is gone). Spawns its puff once, as it vanishes.
+  deathFigure(a, i, t) {
+    const F = a.court[i], k = F.k || KINDS[i], T = F.t || 0;
+    if (!BUILD[k]) return null;
+    const m = this.mem.get(a.id + ':' + i), D = m?.death;
+    // Gone: a puff of smoke and sparkles where it lay (once, even if a long frame skipped past it).
+    if (D && !D.puffed && D.last && T >= DIE.end - 0.05 && T < DIE.end + 0.4) {
+      D.puffed = true;
+      const rnd = seeded((a.id + 1) * 977 + i * 131 + Math.floor(D.x)), P = KIND_FX[k] || FXC.gold, [px, py] = D.last;
+      this.smoke(px, py - 1, 9, rnd, { r: 6, life: 0.5, up: 14, cols: ['#e8e2f4', '#b8acd0', '#8a7ea8', '#fff8ff'] });
+      for (let j = 0; j < 7; j++) { const an = rnd() * Math.PI * 2; this.part('spark', px + Math.cos(an) * 4, py + Math.sin(an) * 3, Math.cos(an) * 46, Math.sin(an) * 30 - 24, 0.4, [P.core, P.hot, P.mid][j % 3], { drag: 0.05 }); }
+      this.fx.push({ k: 'poof', x: px, y: py, P, t: 0, life: 0.3 });
+      for (const w of D.bits || []) this.smoke(w[0], w[1], 3, rnd, { r: 3, life: 0.35, up: 10, cols: ['#d8d0e8', '#a89cc0'] });
+    }
+    if (T >= DIE.end) return null;
+    const G = D || this.deathOf(a, F), s = G.s, f = G.f;
+    // The body: bare-pawed, x x eyes, curled up in the air, sprawled once down.
+    const flying = T < DIE.fly, u = Math.min(1, T / DIE.fly);
+    const o = { legs: flying ? 'tuck' : 'split', eye: 'ko', ear: k === 'assassin' ? 2 : 0, bare: true, tail: flying ? -1 : 1, dy: 0 };
+    rest(k, o);
+    const by = BY(o);
+    if (k === 'mage') { o.hand = [3, by - 5]; o.handB = [-2, by - 5]; o.hem = flying ? -1 : 0; }
+    else if (k === 'archer') { o.hand = [3, by - 4]; o.bowHand = [5, by - 3]; }
+    else if (k === 'shield') { o.hand = [4, by - 4]; o.showArm = true; }
+    else { o.hand = [4, by - 4]; if (o.armB) o.armB = [-3, by - 4]; }
+    const spr = familiarSprite(k, o);
+    // Quarter turns, the way it was thrown; it lands on its side, head first.
+    const q = flying ? Math.min(5, Math.floor(u * 6)) : 5, rot = (((q * s) % 4) + 4) % 4;
+    const restY = G.floor - lowest(spr, f, (((5 * s) % 4) + 4) % 4, PIVOT), y0 = G.y - PIVOT;
+    let x, y;
+    if (flying) {
+      x = G.x + s * 22 * ease(u);
+      y = lerp(y0, restY, u) - 15 * 4 * u * (1 - u);
+    } else {
+      const v = clamp01((T - DIE.fly) / DIE.bounce);
+      x = G.x + s * (22 + 3 * ease(v));
+      y = restY - Math.sin(v * Math.PI) * 3;
+    }
+    // (never through the floor, whichever way up it is)
+    const r = { k, F, q: { o, cue: {} }, s: spr, f, x: Math.round(x), y: Math.round(Math.min(y, G.floor - lowest(spr, f, rot, PIVOT))), t, rot, bits: [] };
+    if (T < 0.06) r.q.cue.tint = '#ffffff';
+    if (T > DIE.flicker) r.alpha = Math.floor(T * 30) % 2 ? 0.35 : 1;
+    // Its weapon (the assassin's two daggers): flung up off it, spinning, clattering down.
+    const n = k === 'assassin' ? 2 : 1;
+    for (let j = 0; j < n; j++) {
+      const dir = j ? s * 0.9 : -s * (k === 'shield' ? 0.4 : 0.6), wu = Math.min(1, T / 0.46), hi = k === 'shield' ? 16 : 26;
+      const spin = j ? s : -s, land = k === 'shield' || k === 'archer' ? 2 : 0;
+      const a8 = wu < 1 ? (((Math.floor(T / 0.035) * spin + (k === 'shield' ? 0 : 7)) % 8) + 8) % 8 : land;
+      const ws = weaponSprite(k, a8);
+      const wy0 = G.y - 7, wFloor = G.floor - (ws.y0 + ws.h);
+      let wx = G.x + f * 3 + dir * 26 * wu, wy = lerp(wy0, wFloor, wu) - hi * 4 * wu * (1 - wu);
+      if (wu >= 1) { const v = clamp01((T - 0.46) / 0.08); wx += dir * 3 * v; wy = wFloor - Math.sin(v * Math.PI) * 2; }
+      r.bits.push({ s: ws, x: Math.round(wx), y: Math.round(Math.min(wy, wFloor)) });
+    }
+    if (D) { D.last = [r.x, r.y]; D.bits = r.bits.map(w => [w.x, w.y]); }
+    return r;
   }
 
   // One familiar's pose and sprite this frame, and where it goes (view px without shake).
@@ -1069,8 +1319,8 @@ export class CourtFX {
     const m = this.mem.get(a.id + ':' + i);
     const q = poseFor(k, F, t, i, m);
     const s = familiarSprite(k, q.o);
-    const f = (F.f || 1) >= 0 ? 1 : -1;
-    const x = Math.round(F.x * S), y = Math.round(F.y * S) + q.dy;
+    const f = ((F.f || 1) >= 0 ? 1 : -1) * (q.flip ? -1 : 1);
+    const x = Math.round(F.x * S) + q.dx, y = Math.round(F.y * S) + q.dy;
     if (m && m.hist.length) { const h = m.hist[m.hist.length - 1]; if (!h.s) { h.s = s; h.f = f; h.dy = q.dy; } }
     return { k, F, q, s, f, x, y, t };
   }
@@ -1087,7 +1337,7 @@ export class CourtFX {
       // Little contact shadows on the floor (the mage's well under him).
       g.fillStyle = '#0a0612';
       for (const F of C) {
-        if (!F || F.st === 'gone' || (F.air && F.k !== 'mage')) continue;
+        if (!F || F.st === 'gone' || F.st === 'dead' || (F.air && F.k !== 'mage')) continue;
         const sx = Math.round(F.x * S + ox), sy = Math.round(F.y * S + oy) + (F.k === 'mage' ? Math.round(12 * S) : 0);
         g.globalAlpha = F.k === 'mage' ? 0.22 : 0.35;
         g.fillRect(sx - 3, sy - 1, 7, 1); g.fillRect(sx - 2, sy, 5, 1);
@@ -1097,9 +1347,10 @@ export class CourtFX {
     for (const i of ORDER) {
       const F = C[i];
       if (!F || F.st === 'gone') continue;
-      const inFront = F.st === 'act' || F.k === 'shield';
+      const dead = F.st === 'dead';
+      const inFront = F.st === 'act' || F.k === 'shield' || dead;
       if (inFront !== !!front) continue;
-      const r = this.figure(a, i, t);
+      const r = dead ? this.deathFigure(a, i, t) : this.figure(a, i, t);
       if (!r?.s) continue;
       r.front = !!front;
       recs.list[i] = r;
@@ -1159,8 +1410,12 @@ export class CourtFX {
     for (let i = 0; i < C.length; i++) {
       const F = C[i];
       if (!F || F.st === 'gone') continue;
-      const r = recs && recs.t === t && recs.list[i] ? recs.list[i] : this.figure(a, i, t);
+      const rec = recs && recs.t === t ? recs.list[i] : null;
+      if (F.st === 'dead') { this.drawGhost(g, a, i, F, rec, ox, oy); continue; }
+      const r = rec || this.figure(a, i, t);
       if (!r?.s) continue;
+      // The white of a blow, glowing (only over the ones in front: behind, a fighter may hide them).
+      if (r.front && (r.q.cue.hurt || 0) > 0.72) blitRec(g, r, ox, oy, 0.8, '#ffffff');
       const m = this.mem.get(a.id + ':' + i);
       // Afterimages along a dash: dithered, fainter the older, only where it has really moved.
       if (r.q.cue.ghost && m) {
@@ -1182,6 +1437,25 @@ export class CourtFX {
         g.globalAlpha = 1;
       }
     }
+  }
+
+  // A fallen one on the emissive layer: the white flash of the blow that felled it, then its little
+  // ghost rising from where it lay, swaying, a gold halo over its head, fading as it goes.
+  drawGhost(g, a, i, F, r, ox, oy) {
+    const T = F.t || 0;
+    if (T < 0.08 && r) blitRec(g, r, ox, oy, 0.9, '#ffffff');
+    if (T < DIE.ghost0 || T > DIE.ghost1) return;
+    const D = this.mem.get(a.id + ':' + i)?.death, base = D?.last || [F.x * S, F.y * S - PIVOT];
+    const gu = (T - DIE.ghost0) / (DIE.ghost1 - DIE.ghost0), gs = ghostSprite();
+    const x = Math.round(base[0] + Math.sin(gu * 9 + i) * 2 + ox), y = Math.round(base[1] + 3 - ease(gu) * 28 + oy);
+    const al = gu < 0.12 ? gu / 0.12 : gu > 0.55 ? 1 - (gu - 0.55) / 0.45 : 1;
+    g.globalAlpha = al * 0.8;
+    blit(g, gs, x, y, D?.f ?? 1);
+    const hy = y + gs.y0 - 2, hx = x + (D?.f ?? 1) * 0;
+    g.globalAlpha = al;
+    g.fillStyle = '#ffd860'; g.fillRect(hx - 1, hy - 1, 3, 1); g.fillRect(hx - 2, hy, 1, 1); g.fillRect(hx + 2, hy, 1, 1);
+    g.fillStyle = '#fff6c8'; g.fillRect(hx - 1, hy + 1, 3, 1);
+    g.globalAlpha = 1;
   }
 
   // The King's golden aura through his decree: a halo of rays turning behind him, a ring of light
@@ -1332,6 +1606,12 @@ export class CourtFX {
           const n = Math.ceil(Math.hypot(q.x2 - q.x, q.y2 - q.y) / 2);
           for (let i = 0; i <= n; i += 1) { const v = i / n; if ((i + Math.floor(t * 40)) % 3) dot(i % 2 ? FXC.magic.deep : FXC.magic.mid, q.x + (q.x2 - q.x) * v, q.y + (q.y2 - q.y) * v + Math.sin(v * Math.PI) * -6); }
           g.globalAlpha = 1;
+          break;
+        }
+        case 'hurt': {
+          // A small pow: a white star rimmed in red, two short streaks flung the way it was struck.
+          glint(g, q.P, q.x, q.y, Math.max(1, Math.round(4 * (1 - u))) + 1, ox, oy);
+          if (u < 0.6) for (const d of [-1, 1]) for (let j = 2; j < 5; j++) dot(j < 3 ? q.P.hot : q.P.mid, q.x + q.f * j, q.y + d * Math.round(j * 0.6));
           break;
         }
         case 'bolt': this.drawBolt(g, q, u, ox, oy, t); break;
@@ -1598,7 +1878,7 @@ export function courtLights(state, t) {
     if (!a.court || a.dead) continue;
     if (a.act === 'decree') out.push({ x: a.x * S, y: (a.y + 4) * S, r: 70 + Math.sin(t * 6) * 6, color: '#ffd860', i: 0.9 });
     const m = a.court.find(F => F.k === 'mage');
-    if (m && m.st !== 'gone') {
+    if (m && m.st !== 'gone' && m.st !== 'dead') {
       const casting = m.st === 'act';
       out.push({ x: (m.x + (m.f || 1) * 6) * S, y: (m.y - 26) * S, r: casting ? 34 : 16, color: '#c070ff', i: casting ? 1.0 : 0.45, noRim: !casting });
     }
