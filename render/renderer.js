@@ -3,7 +3,8 @@
 import { VIEW_W, VIEW_H, S, clamp, rnd } from '../engine/const.js';
 import { P, hexToRgb } from '../engine/palette.js';
 import { drawText } from '../engine/font.js';
-import { MAP } from '../sim/map.js';
+import { MAP, MAPS, useMap } from '../sim/map.js';
+import { drawCastleHazards, drawCastleProp, castleLights } from './castle-render.js';
 import { surfaceY } from '../sim/physics.js';
 import { World } from './world.js';
 import { Lighting, cookie } from './lighting.js';
@@ -18,11 +19,14 @@ import { Secondary } from './secondary.js';
 import { drawBloodArt, drawMarks } from './blood-art.js';
 import { NoxHero, JumaHero, FrogHero } from './hero.js';
 import * as HEROES from './hero.js';
+import { LolaHero } from './lola-hero.js';
 import { MOVES, COMBOS, comboOf } from '../sim/moves.js';
 import { castFor, composeChars, composeTubes, paletteFor, tailPoints, snapDeg, ANCHOR, JOINT } from './pixel-data.js';
 import { BITS_PAL, TAIL_PIECE, BUD, REGROW, regrowStage, PUDDLE, bitCanvas, turn } from './axo-bits.js';
 import { FIGHTERS, lookOf, styleOf } from '../sim/fighters.js';
 import { isMelee, WEAPON_INFO } from '../sim/weapons.js';
+import { LolaFX, handKnives, embeddedKnife } from './lola-art.js';
+import { worldPhase } from '../sim/moves.js';
 
 const mk = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
 const X = v => Math.round(v * S);
@@ -32,7 +36,7 @@ const FIG_W = 96, FIG_H = 80, FIG_X = 48, FIG_Y = 62;
 const WEAPON_SCALE = 0.7;
 // Nox's eye in head cells from the head pivot; the hand at the tip of the near arm.
 const EYE = [2, -6], HAND = [0, 3];
-const DEMO_ACT = ['pounce', 'ball', 'sky', 'morph', 'beam', 'inhale'];
+const DEMO_ACT = ['plant', 'ball', 'world', 'morph', 'beam', 'inhale'];
 // Juma's transformations, timed by the form she is turning into: when she swells, when she pops.
 const titanMorph = a => a.act === 'morph' && a.morphTo === 'titan';
 const MORPH_T = { beast: { swell: 0.12, pop: 0.6, end: 1.0 }, titan: { swell: 0.15, pop: 1.15, end: 1.7 } };
@@ -53,7 +57,7 @@ function morphJitter(a, time) {
 }
 const JUMA_TRAIL = { null: '#ffd27a', beast: '#ff7a2a', titan: '#ff4a1a' };
 // Specials the menu preview carries forward across the pedestal.
-const DEMO_MOVES = ['pounce', 'ball', 'sky', 'bite'];
+const DEMO_MOVES = ['ball', 'bite'];
 
 // The axolotl's minions. Seeds (lost parts in flight), buds and bubbles are drawn as small sprites;
 // clones and demons go through the fighters' pipeline.
@@ -104,6 +108,22 @@ function contactShadow(w) {
   return c;
 }
 
+// Lights that never move, baked into the light map with the moonlight (per arena).
+const STATIC_LIGHTS = {
+  depot: [
+    { x: 320, y: 220, r: 100, color: '#ff6f9c', i: 0.75, occlude: true, tag: 'on' },
+    { x: 91, y: 288, r: 40, color: '#4dff9a', i: 0.6 },
+    { x: 46, y: 140, r: 34, color: '#7fe8ff', i: 0.5 },
+    { x: 588, y: 140, r: 34, color: '#7fe8ff', i: 0.5 },
+    { x: 320, y: 352, r: 64, color: '#ff4a2a', i: 0.55 }
+  ],
+  // The castle: a cold glow off the spikes in the pit and the clock face.
+  castle: [
+    { x: 320, y: 360, r: 50, color: '#6a4aa0', i: 0.4 },
+    { x: 320, y: 46, r: 46, color: '#c8b070', i: 0.35 }
+  ]
+};
+
 export class Renderer {
   constructor(display) {
     this.display = display;
@@ -122,6 +142,7 @@ export class Renderer {
     this.world = new World();
     this.light = new Lighting();
     this.fx = new FX();
+    this.lola = new LolaFX(this);
     this.previews = new Map();
     this.secondary = new Secondary();
     this.simTime = null;
@@ -146,18 +167,49 @@ export class Renderer {
     this.impact = null;
     this.focusLines = [];
     this.trails = new Map();
-    this.light.setStatic([
-      { x: 320, y: 220, r: 100, color: '#ff6f9c', i: 0.75, occlude: true, tag: 'on' },
-      { x: 91, y: 288, r: 40, color: '#4dff9a', i: 0.6 },
-      { x: 46, y: 140, r: 34, color: '#7fe8ff', i: 0.5 },
-      { x: 588, y: 140, r: 34, color: '#7fe8ff', i: 0.5 },
-      { x: 320, y: 352, r: 64, color: '#ff4a2a', i: 0.55 }
-    ]);
+    // The arena's art and fixed lights, by map id. The castle's art is loaded and painted in the
+    // background at start (render/castle-world.js, render/castle-art.js).
+    this.worlds = { depot: this.world };
+    this.arena = 'depot';
+    this.castleArt = null;
+    this.light.setStatic(STATIC_LIGHTS.depot);
+    import('./castle-art.js').then(m => { this.castleArt = m; }).catch(e => console.warn('castle art', e));
+    // DARK NOX's aura, eyes and transformation (render/dark-nox.js).
+    this.darkNox = null; this.darkNoxMod = null;
+    import('./dark-nox.js').then(m => { this.darkNoxMod = m; this.darkNox = new m.DarkNoxFX(this); }).catch(e => console.warn('dark nox', e));
+    import('./castle-world.js').then(m => { this.worlds.castle = new m.CastleWorld(); }).catch(e => console.warn('castle world', e));
+    // The Cat King's court, his crown, cape and scepter, and his entrance on the select screen.
+    this.court = null; this.courtMod = null; this.kingArt = null; this.KingHero = null;
+    import('./court-art.js').then(m => { this.courtMod = m; this.court = new m.CourtFX(this); }).catch(e => console.warn('court art', e));
+    import('./king-art.js').then(m => { this.kingArt = m; }).catch(e => console.warn('king art', e));
+    import('./king-hero.js').then(m => { this.KingHero = m.KingHero; }).catch(e => console.warn('king hero', e));
+    // His kingdom: the banner, the house and the castle it grows into, its aura, fish and units.
+    this.kingdom = null; this.kingdomMod = null;
+    import('./kingdom-art.js').then(m => { this.kingdomMod = m; this.kingdom = new m.KingdomFX(this); }).catch(e => console.warn('kingdom art', e));
     this.resize();
+  }
+
+  // Switch the art, the moonlight and the fixed lights to another arena (once its art is ready).
+  useArena(id) {
+    if (!Object.hasOwn(MAPS, id)) id = 'depot';
+    // The arena's geometry follows the state at once (an online guest has no Game of its own to set
+    // it); its art, lights and effects switch over once they have loaded.
+    useMap(id);
+    if (this.arena === id || !this.worlds[id]) return;
+    this.arena = id;
+    this.world = this.worlds[id];
+    this.light.setMap();
+    this.light.setStatic(STATIC_LIGHTS[id] || []);
+    this.fx.setMap();
+    this.fx.reset();
   }
 
   resetMatch() {
     this.fx.reset();
+    this.lola.reset();
+    this.darkNox?.reset?.();
+    this.court?.reset?.();
+    this.kingdom?.reset?.();
     this.figCache.clear();
     this.secondary.clear();
     this.trails.clear();
@@ -273,6 +325,18 @@ export class Renderer {
       }
     } else { fx = VIEW_W / 2; fy = VIEW_H / 2; }
     if (on && (state.slowmo || state.drama)) zoomT *= 1.08;
+    // ZA WARUDO: in on Lola for the cut-in, then the stopped world around her and her rivals.
+    const ts = state.timeStop, lola = ts && state.actors.find(a => a.id === ts.owner);
+    if (on && lola) {
+      if (worldPhase(ts.t) === 'intro') { fx = X(lola.x); fy = X(lola.y) - 12; zoomT = 2.1; }
+      else {
+        const pts = [[X(lola.x), X(lola.y)], ...state.actors.filter(a => (ts.targets || []).includes(a.id) && !a.dead).map(a => [X(a.x), X(a.y)])];
+        let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+        for (const [x, y] of pts) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+        zoomT = clamp(Math.min(VIEW_W / (x1 - x0 + 200), VIEW_H / (y1 - y0 + 150)), 1.1, 1.75);
+        fx = (x0 + x1) / 2; fy = (y0 + y1) / 2 - 10;
+      }
+    }
     const k = 1 - Math.exp(-dt * 4.5);
     c.x += (fx - c.x) * k; c.y += (fy - c.y) * k;
     c.zoom += (zoomT - c.zoom) * (1 - Math.exp(-dt * 1.6));
@@ -294,10 +358,10 @@ export class Renderer {
   hype(e, settings) {
     const c = this.cam, p = e.p || 1, x = X(e.x ?? 0), y = X(e.y ?? 0);
     // Nox's big moments shake and punch in too: the burst, the requiem, the bounce, the beam.
-    const PUNCH = { supernova: 0.05, requiemBurst: 0.07, groundBounce: 0.025, bloodBeam: 0.03, morphPop: e.titan ? 0.1 : 0.07, wallSplat: 0.05, quake: p >= 6 ? 0.03 : 0, thunderclap: 0.07, clap: 0.025, xolotlCast: 0.06, sacrifice: 0.05, pororoca: 0.02, geyser: 0.02 };
+    const PUNCH = { kgLevel: 0.04, kgFall: 0.06, supernova: 0.05, requiemBurst: 0.07, groundBounce: 0.025, bloodBeam: 0.03, morphPop: e.titan ? 0.1 : 0.07, wallSplat: 0.05, quake: p >= 6 ? 0.03 : 0, worldEnd: 0.08, thunderclap: 0.07, clap: 0.025, xolotlCast: 0.06, sacrifice: 0.05, pororoca: 0.02, geyser: 0.02 };
     if (PUNCH[e.fx] && this.visible(x, y, 20)) {
       c.punch = Math.max(c.punch, PUNCH[e.fx]);
-      if ((e.fx === 'requiemBurst' || e.fx === 'morphPop' || e.fx === 'thunderclap') && settings.shake !== false) {
+      if ((e.fx === 'requiemBurst' || e.fx === 'morphPop' || e.fx === 'thunderclap' || e.fx === 'worldEnd') && settings.shake !== false) {
         this.lastImpact = this.time;
         this.focusLines.push({ x, y, life: 0.3, max: 0.3, seed: (e.id || 1) * 7, p: 3 });
         this.impact = { x, y, frames: e.fx === 'requiemBurst' || e.titan ? 4 : 3, n: 0, seed: e.id || 1, clash: e.fx === 'requiemBurst' };
@@ -305,10 +369,10 @@ export class Renderer {
       // Xolotl's cast: the lines rush in on the axolotl.
       if (e.fx === 'xolotlCast' && settings.shake !== false) this.focusLines.push({ x, y: y - 20, life: 0.35, max: 0.35, seed: (e.id || 1) * 7, p: 3 });
     }
-    const TRAUMA = { quake: 0.03 * p, morphPop: e.titan ? 0.7 : 0.45, thunderclap: 0.55, clap: 0.15, wallSplat: 0.32, roar: 0.12, armor: 0.03, supernova: 0.35, requiemBurst: 0.5, groundBounce: 0.16, bloodBeam: 0.2, bloodSpikes: 0.07, requiemCut: 0.03, shadowX: 0.05, hit: 0.035 + 0.035 * p, impact: e.ko ? 0.4 : 0.12 + 0.06 * p, explosion: 0.5, clang: e.big ? 0.12 : 0.05, clash: 0.18, land: p >= 0.9 ? 0.08 : 0, parry: 0.12, xolotlCast: 0.35, sacrifice: 0.4, demonMorph: 0.08, geyser: 0.12, pororoca: 0.15, bubblePop: 0.03, toothMarks: 0.06 };
+    const TRAUMA = { kgPlant: 0.15, kgLevel: 0.3, kgFall: 0.45, kgHit: 0.03, worldStart: 0.35, worldEnd: 0.6, timeSkip: 0.04, knifeHit: 0.02, quake: 0.03 * p, morphPop: e.titan ? 0.7 : 0.45, thunderclap: 0.55, clap: 0.15, wallSplat: 0.32, roar: 0.12, armor: 0.03, supernova: 0.35, requiemBurst: 0.5, groundBounce: 0.16, bloodBeam: 0.2, bloodSpikes: 0.07, requiemCut: 0.03, shadowX: 0.05, hit: 0.035 + 0.035 * p, impact: e.ko ? 0.4 : 0.12 + 0.06 * p, explosion: 0.5, clang: e.big ? 0.12 : 0.05, clash: 0.18, land: p >= 0.9 ? 0.08 : 0, parry: 0.12, xolotlCast: 0.35, sacrifice: 0.4, demonMorph: 0.08, geyser: 0.12, pororoca: 0.15, bubblePop: 0.03, toothMarks: 0.06 };
     const t = TRAUMA[e.fx];
     if (!t) return;
-    const seen = this.visible(x, y, e.fx === 'explosion' ? 60 : 4);
+    const seen = e.fx === 'worldStart' || e.fx === 'worldEnd' || this.visible(x, y, e.fx === 'explosion' ? 60 : 4);
     if (!seen) return;
     this.trauma = Math.min(1, this.trauma + t);
     if (e.fx === 'explosion') this.flashT = Math.max(this.flashT, 0.35);
@@ -368,7 +432,7 @@ export class Renderer {
     // The frog's (and whatever style he borrowed besides these) are slime green.
     const st = styleOf(a), juma = st === 3, beast = juma && !!a.form, titan = juma && a.form === 'titan';
     // The axolotl's are pink, its demons' embers.
-    const c = juma ? (titan ? { c1: '#ffe08a', c2: '#ff4a1a' } : beast ? { c1: '#ffb070', c2: '#ff6a2a' } : { c1: '#fff1c8', c2: '#ffd27a' }) : st === 4 ? {} : st === 6 ? (a.form === 'demon' ? { c1: '#ffd040', c2: '#ff5a1a' } : { c1: '#fff4f6', c2: '#ff8fa8' }) : { c1: '#e8ffd0', c2: '#9be05a' };
+    const c = juma ? (titan ? { c1: '#ffe08a', c2: '#ff4a1a' } : beast ? { c1: '#ffb070', c2: '#ff6a2a' } : { c1: '#fff1c8', c2: '#ffd27a' }) : st === 4 ? {} : st === 2 ? { c1: '#eef6ff', c2: '#7fb4ff' } : st === 6 ? (a.form === 'demon' ? { c1: '#ffd040', c2: '#ff5a1a' } : { c1: '#fff4f6', c2: '#ff8fa8' }) : { c1: '#e8ffd0', c2: '#9be05a' };
     if (last && last.name !== name && this.simDt > 0) {
       const dust = (x, dir, n) => this.fx.burst('dust', x, f.hy - 1, n, { a: dir > 0 ? -0.35 : Math.PI + 0.35, spread: 0.7, s: beast ? 2 : 1.5, life: beast ? 0.6 : 0.45, colors: ['#8a7f95', '#6a6078', '#a89cb8'], g: -0.02, drag: 0.9, size: 2 });
       if (/X2?$/.test(name)) {
@@ -388,11 +452,11 @@ export class Renderer {
     const FAST = ['pounce', 'kickoff', 'slam', 'chase', 'stomp', 'requiem', 'charge', 'leap', 'meteor', 'bite', 'frenzy'];
     for (const f of figures) {
       const a = f.a, list = this.trails.get(a.id) || [];
-      const fast = FAST.includes(a.act) || a.dodge > 0 || a.perfectT > 0 || (a.attack > 0 && ['dashAtk', 'spike', 'shadowCut', 'nAirScythe', 'nAirVortex', 'scytheGuillotine', 'scytheSpin', 'scytheReap', 'jBolt', 'jRake', 'jPounceUp', 'jFlurry', 'jAirSpin', 'jAirDive', 'jCross', 'bHammer', 'bUpper', 'bAirSmash', 'bClap', 'bAirClaw', 'tHook', 'tUpper', 'tAirClaw', 'tAirSmash', 'xSlide', 'xPororoca', 'xMaw', 'xAirFlop'].includes(a.attackKind));
+      const fast = FAST.includes(a.act) || a.dodge > 0 || a.perfectT > 0 || (a.attack > 0 && ['dashAtk', 'spike', 'shadowCut', 'nAirScythe', 'nAirVortex', 'scytheGuillotine', 'scytheSpin', 'scytheReap', 'jBolt', 'jRake', 'jPounceUp', 'jFlurry', 'jAirSpin', 'jAirDive', 'jCross', 'bHammer', 'bUpper', 'bAirSmash', 'bClap', 'bAirClaw', 'tHook', 'tUpper', 'tAirClaw', 'tAirSmash', 'xSlide', 'xPororoca', 'xMaw', 'xAirFlop', 'lDance', 'lBehind', 'lRise', 'lSkip', 'lAirSpin', 'lAirDive', 'lRain', 'lAirRing'].includes(a.attackKind));
       f.trail = list;
       if (fast && dt > 0 && (list.stepT = (list.stepT || 0) + dt) > 0.05) {
         list.stepT = 0;
-        list.push({ s: f.info.sprite, o: f.info.overlay, x: f.hx, y: f.hy, face: a.face || 1, life: 0.2, tint: a.perfectT > 0 ? '#bfe8ff' : styleOf(a) === 4 ? '#e2445c' : a.type === 3 ? JUMA_TRAIL[a.form || null] : a.type === 6 ? (a.form === 'demon' ? '#ff5a1a' : '#ff9cb8') : null });
+        list.push({ s: f.info.sprite, o: f.info.overlay, x: f.hx, y: f.hy, face: a.face || 1, life: 0.2, tint: a.perfectT > 0 ? '#bfe8ff' : styleOf(a) === 4 ? '#e2445c' : a.type === 3 ? JUMA_TRAIL[a.form || null] : a.type === 6 ? (a.form === 'demon' ? '#ff5a1a' : '#ff9cb8') : a.type === 2 ? '#7fb4ff' : null });
       }
       for (const g of list) g.life -= dt;
       while (list.length && list[0].life <= 0) list.shift();
@@ -440,6 +504,7 @@ export class Renderer {
     for (const f of figures) {
       sil.globalCompositeOperation = 'copy';
       sil.drawImage(f.fc.body.c, 0, 0);
+      if (f.a.type === 0 && !f.a.dead && this.kingArt) { sil.globalCompositeOperation = 'source-over'; this.kingArt.drawRegalia(sil, f, ox - f.x, oy - f.y, state.time ?? 0, 'keep'); }
       sil.globalCompositeOperation = 'source-in';
       sil.fillStyle = fg;
       sil.fillRect(0, 0, FIG_W, FIG_H);
@@ -470,15 +535,26 @@ export class Renderer {
     const st = state.time ?? t;
     this.simDt = this.simTime === null ? 0 : Math.max(0, Math.min(0.1, st - this.simTime));
     this.simTime = st;
+    this.useArena(state.map || 'depot');
+    // The depot's own fixtures (its sign, the cargo, the press...) only in the depot.
+    this.depot = (state.map || 'depot') === 'depot';
     this.fx.gore = settings.gore ?? 2;
     this.fx.limit = settings.particles === false ? 300 : 900;
     const events = state.fxQueue ? state.fxQueue.splice(0) : (state.events || []).filter(e => e.type === 'fx' && e.id > this.fx.lastId);
-    for (const e of events) { this.fx.event(e); this.hype(e, settings); if (!state.fxQueue) this.fx.lastId = Math.max(this.fx.lastId, e.id); }
+    for (const e of events) { this.fx.event(e); this.lola.event(e); this.darkNox?.event(e); this.court?.event(e); this.kingdom?.event(e); this.hype(e, settings); if (!state.fxQueue) this.fx.lastId = Math.max(this.fx.lastId, e.id); }
     this.updateCamera(state, dt, settings, localId);
     const hz = state.hazards || null;
-    this.spawnAmbientFx(state, hz, dt);
-    // Effects run on game time: they slow down with the dramatic slow motion and the LAB's.
-    this.fx.update(dt * (state.drama ? 0.35 : 1) * Math.min(1, state.timeScale ?? 1));
+    // Effects run on game time: they slow down with the dramatic slow motion and the LAB's, and
+    // hang where they are while Lola holds time still (no new ones either). Hers run on.
+    if (!state.timeStop) {
+      this.spawnAmbientFx(state, hz, dt);
+      this.fx.update(dt * (state.drama ? 0.35 : 1) * Math.min(1, state.timeScale ?? 1));
+    }
+    this.lola.update(dt * (state.drama && !state.timeStop ? 0.35 : 1));
+    this.lola.watch(state);
+    this.darkNox?.update(dt * (state.drama ? 0.35 : 1));
+    if (!state.timeStop) this.court?.update(dt * (state.drama ? 0.35 : 1));
+    if (this.kingdom) { this.kingdom.localId = localId; if (!state.timeStop) this.kingdom.update(dt * (state.drama ? 0.35 : 1), state); }
 
     const [ox, oy] = this.shakeOffset(dt, settings);
     const rich = settings.particles !== false && !this.autoLow;
@@ -506,6 +582,7 @@ export class Renderer {
       if (dirty) fc.body.g.putImageData(fc.img, 0, 0);
       for (const k of ['eye', 'hand']) { info[k].x += fx - FIG_X; info[k].y += fy - FIG_Y; }
       figures.push(f);
+      if (a.type === 2 && a.act !== 'blink') this.lola.remember(a, info);
     }
     // The axolotl's clones go through the same pipeline: lit, rimmed and shadowed like fighters.
     for (const m of minions) {
@@ -514,7 +591,7 @@ export class Renderer {
       if (f) figures.push(f);
     }
     this.updateTrails(figures, this.simDt);
-    for (const f of figures) if (f.a.type >= 3 || styleOf(f.a) >= 3) this.keyFx(f);
+    for (const f of figures) if (f.a.type >= 2 || styleOf(f.a) >= 2) this.keyFx(f);
 
     // Lights are gathered up front: rims and wall shadows need them.
     const L = this.light;
@@ -533,27 +610,53 @@ export class Renderer {
     lg.globalAlpha = 1;
     lg.clearRect(0, 0, VIEW_W, VIEW_H);
     lg.drawImage(this.world.wall, ox, oy);
+    this.world.drawClock?.(lg, state.time ?? t, ox, oy);
     lg.drawImage(this.fx.wallDecals, ox, oy);
-    this.drawNeonBoard(lg, ox, oy, false, t);
+    if (this.depot) this.drawNeonBoard(lg, ox, oy, false, t);
     if (rich) this.drawWallShadows(lg, figures, hz, ox, oy);
     lg.drawImage(this.world.back, ox, oy);
     if (hz) this.drawLamps(lg, hz, ox, oy);
-    this.drawCargoChain(lg, state, ox, oy);
+    if (this.depot) this.drawCargoChain(lg, state, ox, oy);
     lg.drawImage(this.world.solids, ox, oy);
     lg.drawImage(this.fx.floorDecals, ox, oy);
+    // The Cat King's banners, houses and castles (the platforms' lips stay in front of them).
+    this.kingdom?.drawStructures(lg, state, ox, oy);
     lg.drawImage(this.world.fronts, ox, oy);
-    if (hz) this.drawHazards(lg, hz, ox, oy, t);
+    if (hz) { if (hz.map === 'castle') drawCastleHazards(lg, hz, ox, oy, state.time ?? t, this.castleArt); else this.drawHazards(lg, hz, ox, oy, t); }
+    // The pools of blood on the floors (Nox drinks them).
+    // (A remote game sends them as [x, y, amt, by]; the local game holds them as objects.)
+    if (state.pools?.length && this.darkNox?.drawPools) this.darkNox.drawPools(lg, state.pools.map(p => (Array.isArray(p) ? p : [p.x, p.y, p.amt, p.by])), state.actors, ox, oy, state.time ?? t);
     this.drawContactShadows(lg, state, ox, oy);
     for (const p of state.props) this.drawProp(lg, p, ox, oy, t);
+    this.kingdom?.drawFish(lg, state, ox, oy);
     this.drawLimbs(lg, state, ox, oy, t);
+    this.lola.drawLit(lg, state, ox, oy);
     this.drawAxoBits(lg, minions, figures, ox, oy, st0);
     this.drawTrails(lg, figures, ox, oy);
+    if (this.darkNox) for (const f of figures) if (f.a.type === 4 && (f.a.form === 'dark' || f.a.act === 'darkRise' || f.a.act === 'darkFade')) this.darkNox.drawBack(lg, f, ox, oy, state.time ?? t);
+    // The Cat King's court behind him, and his cape.
+    const kings = state.actors.filter(a => a.court);
+    this.kingdom?.drawUnits(lg, state, ox, oy, false);
+    if (this.court) for (const a of kings) this.court.drawCourt(lg, a, ox, oy, state.time ?? t, false);
+    const blink = f => (f.a.invincible > 0.1 && Math.floor(t * 12) % 2 ? 0.55 : 1);
+    if (this.kingArt) for (const f of figures) if (f.a.type === 0 && !f.a.dead) { lg.globalAlpha = blink(f); this.kingArt.drawRegalia(lg, f, ox, oy, state.time ?? t, 'back'); lg.globalAlpha = 1; }
     for (const f of figures) {
       if (f.a.invincible > 0.1 && Math.floor(t * 12) % 2) lg.globalAlpha = 0.55;
       lg.drawImage(f.fc.body.c, f.x, f.y);
       lg.globalAlpha = 1;
       if (f.a.type === 5) this.drawTongue(lg, f.a, f.info.frame, f.hx + ox, f.hy + oy);
     }
+    // His crown and scepter, then the court in front of him (the shield on guard, whoever is striking),
+    // and their arrows.
+    if (this.kingArt) for (const f of figures) if (f.a.type === 0 && !f.a.dead) { lg.globalAlpha = blink(f); this.kingArt.drawRegalia(lg, f, ox, oy, state.time ?? t, 'front'); lg.globalAlpha = 1; }
+    if (this.court) {
+      for (const a of kings) this.court.drawCourt(lg, a, ox, oy, state.time ?? t, true);
+    }
+    // The kingdom's units striking, hopping and on the towers, and the dust and rubble of its moments.
+    this.kingdom?.drawUnits(lg, state, ox, oy, true);
+    if (this.court) for (const b of state.bullets || []) if (b.kind === 'arrow' || b.kind === 'magic') this.court.drawBullet(lg, b, ox, oy, state.time ?? t);
+    // DARK NOX's scythe flying on its own, over the fighters.
+    if (this.darkNox?.drawFamiliar) for (const a of state.actors) if (a.fam) this.darkNox.drawFamiliar(lg, a, ox, oy, state.time ?? t, false);
     this.fx.drawLit(lg, ox, oy);
 
     // ---- lighting
@@ -568,7 +671,12 @@ export class Renderer {
 
     // ---- fighters keep part of their own color so they read against the set
     lg.globalAlpha = 0.45;
+    // (the Cat King's kingdom, court and regalia too, in the lit pass's order so nothing shows through)
+    this.kingdom?.drawKeep(lg, state, ox, oy, figures);
+    if (this.court) for (const a of state.actors) if (a.court) this.court.drawCourtKeep?.(lg, a, ox, oy, state.time ?? t, figures);
+    if (this.kingArt) for (const f of figures) if (f.a.type === 0 && !f.a.dead) this.kingArt.drawRegalia(lg, f, ox, oy, state.time ?? t, 'back');
     for (const f of figures) lg.drawImage(f.fc.body.c, f.x, f.y);
+    if (this.kingArt) for (const f of figures) if (f.a.type === 0 && !f.a.dead) this.kingArt.drawRegalia(lg, f, ox, oy, state.time ?? t, 'front');
     lg.globalAlpha = 1;
     for (const f of figures) if (f.info.smear) this.drawSmear(lg, f.a, f.info.smear.frame, f.info.smear.sm, f.hx + ox, f.hy + oy, f.a.face || 1, 1);
     if (state.limbs?.length) this.drawLimbs(lg, state, ox, oy, t, 0.38);
@@ -628,6 +736,7 @@ export class Renderer {
     }
     sg.drawImage(this.world.fg, Math.round(ox * 1.3), Math.round(oy * 1.3));
     this.fx.drawGlyphs(sg, ox, oy);
+    this.lola.worldPass(sg, state, figures, ox, oy);
     if (debug) this.drawDebug(sg, state, ox, oy);
     this.drawFocusLines(sg, dt);
     if (this.impact) {
@@ -672,18 +781,23 @@ export class Renderer {
       else f = { ...f, frame: { ...frame, tail: false } };
     }
     const variant = variantOf(a, this.time);
-    const sprites = only ? { s: this.customSprite(a, f, variant, only), overlay: null } : figureSprite(a, f, variant, chains), flash = morphFlash(a);
+    const sprites = only ? { s: this.customSprite(a, f, variant, only), overlay: null } : figureSprite(a, f, variant, chains), flash = morphFlash(a) || (a.type === 2 && this.lola.flashOf(a.id));
     const s = flash ? tintOf(sprites.s, flash) : sprites.s, overlay = sprites.overlay && flash ? tintOf(sprites.overlay, flash) : sprites.overlay;
     const severed = a.severed || [];
     const hand = figurePoint(frame, 'armF', HAND[0], HAND[1], fx, fy, face, scale, ch);
-    const behind = a.weapon === 'extinguisher', bats = a.act === 'swarm';
+    // Nox as a swarm of bats, Lola between two places in a skip: nothing to draw.
+    const behind = a.weapon === 'extinguisher', bats = a.act === 'swarm' || a.act === 'blink';
+    const knives = a.type === 2 && !bats && !a.weapon;
     if (behind && !severed.includes('armF')) this.drawWeapon(g, a, frame, hand, face, scale);
+    if (knives) handKnives(g, a, f, fx, fy, face, scale, this.time, 'back');
     if (overlay && !bats) drawFigure(g, overlay, fx, fy, face, scale);
     if (!bats) drawFigure(g, s, fx, fy, face, scale);
+    if (knives) handKnives(g, a, f, fx, fy, face, scale, this.time, 'front');
     if (!behind && a.weapon && !severed.includes('armF')) this.drawWeapon(g, a, frame, hand, face, scale);
     for (const e of a.embedded || []) {
       if (severed.includes(e.part)) continue;
       const p = figurePoint(frame, e.part, 0, e.part === 'head' ? -5 : e.part === 'body' ? -4 : 2, fx, fy, face, scale);
+      if (e.kind === 'knife') { embeddedKnife(g, p.x, p.y, (e.a || 0) * face); continue; }
       const da = (e.a || 0) * face + Math.PI;
       for (let i = 0; i < 5; i++) { g.fillStyle = i < 2 ? '#3e2c2c' : i === 4 ? '#ffffff' : '#c9d3de'; g.fillRect(Math.round(p.x + Math.cos(da) * (i - 1)), Math.round(p.y + Math.sin(da) * (i - 1)), 1, 1); }
     }
@@ -1202,6 +1316,7 @@ export class Renderer {
   }
 
   drawProp(lg, p, ox, oy, t) {
+    if (drawCastleProp(lg, p, ox, oy, t, this.castleArt)) return;
     if (p.kind === 'glass') {
       const x = X(p.x - p.w / 2) + ox, y = X(p.y - p.h / 2) + oy, w = X(p.w), h = X(p.h);
       lg.fillStyle = 'rgba(150,210,230,0.22)'; lg.fillRect(x, y, w, h);
@@ -1325,12 +1440,14 @@ export class Renderer {
       add(light);
       add({ x, y, r: 20, color: '#ffe8c0', i: 0.7, noRim: true });
     }
-    if (hz && (hz.press.state === 'warn' || hz.press.state === 'slam')) add({ x: 600, y: 206, r: 110, color: '#ff3a3a', i: 0.6 + Math.sin(t * 18) * 0.4, kind: 'point', occlude: true });
+    if (hz?.map === 'castle') for (const l of castleLights(state, hz, state.time ?? t, this.castleArt)) add(l);
+    if (hz?.press && (hz.press.state === 'warn' || hz.press.state === 'slam')) add({ x: 600, y: 206, r: 110, color: '#ff3a3a', i: 0.6 + Math.sin(t * 18) * 0.4, kind: 'point', occlude: true });
     for (const f of state.fires || []) add({ x: X(f.x), y: X(f.y) - 8, r: 64, color: '#ff9a45', i: 0.85 + Math.sin(t * 31 + f.x) * 0.15, occlude: true });
     for (const a of state.actors) if (!a.dead && a.swallowedBy == null && a.burning > 0) add({ x: X(a.x), y: X(a.y) - 6, r: 50, color: '#ff9a45', i: 0.8 });
     for (const p of state.props) if (p.rocket || p.burning > 0) add({ x: X(p.x), y: X(p.y), r: 54, color: '#ffae5a', i: 0.8 });
-    for (const b of state.bullets || []) add({ x: X(b.x), y: X(b.y), r: b.word ? 22 : 14, color: b.word ? b.color : '#ffe2a0', i: 0.6, noRim: !!b.word });
-    if (hz) {
+    // Lola's knives give a small cold light; other shots a warm one.
+    for (const b of state.bullets || []) if (b.kind !== 'arrow') add(b.kind === 'knife' ? { x: X(b.x), y: X(b.y), r: 10, color: '#cfe4ff', i: 0.45, noRim: true } : { x: X(b.x), y: X(b.y), r: b.word ? 22 : 14, color: b.word ? b.color : '#ffe2a0', i: 0.6, noRim: !!b.word });
+    if (hz?.cable) {
       const end = hz.cable[hz.cable.length - 1];
       if (Math.random() < 0.6) add({ x: X(end[0]), y: X(end[1]), r: 30, color: '#8af0ff', i: 0.5 + Math.random() * 0.4 });
       if (hz.puddle.live) add({ x: X((MAP.puddle.x0 + MAP.puddle.x1) / 2), y: X(MAP.puddle.y) - 4, r: 60, color: '#6ad8ff', i: 0.8 * Math.random() + 0.2 });
@@ -1352,6 +1469,11 @@ export class Renderer {
       if (!f.minion && axoOf(f.a, state.time ?? t)?.demon > 0) add({ x: f.hx - (f.a.face || 1) * 5, y: f.hy - 16, r: 36, color: '#ff6a1a', i: 0.6 + 0.15 * Math.sin(t * 17) });
       if (f.a.act === 'burst') add({ x: f.hx, y: f.hy - 8, r: 44, color: '#fff2a0', i: 1.3 * Math.min(1, (f.a.actT || 0) / 0.3) });
     }
+    if (this.darkNoxMod) for (const f of figures) if (f.a.type === 4 && (f.a.form === 'dark' || f.a.act === 'darkRise')) for (const l of this.darkNoxMod.darkLights(f, t) || []) add(l);
+    if (this.darkNoxMod?.familiarLights) for (const a of state.actors) if (a.fam) for (const l of this.darkNoxMod.familiarLights(a, t, this.fx.gore) || []) add(l);
+    if (this.courtMod?.courtLights) for (const l of this.courtMod.courtLights(state, t) || []) add(l);
+    if (this.kingdomMod?.kingdomLights && (state.kingdoms?.length || this.kingdom?.fx.length)) for (const l of this.kingdomMod.kingdomLights(state, state.time ?? t, this.kingdom) || []) add(l);
+    if (this.kingArt?.regaliaLights) for (const f of figures) if (f.a.type === 0 && !f.a.dead) for (const l of this.kingArt.regaliaLights(f, t) || []) add(l);
     for (const m of state.minions || []) if (kindOf(m) === 'bud') add({ x: X(m.x), y: X(m.y + (m.foot ?? 0)) - 3, r: 16, color: '#ff9cc0', i: 0.35, noRim: true });
     for (const f of figures) if (styleOf(f.a) === 4 && f.info?.eye) {
       if (f.a.type === 4) add({ x: f.info.eye.x, y: f.info.eye.y, r: 10, color: '#ff4f6e', i: 0.7, noRim: true });
@@ -1367,12 +1489,14 @@ export class Renderer {
       const x = X(l.x) + ox, y = X(l.y) + oy + 5;
       eg.fillStyle = '#fff4d0'; eg.fillRect(x - 2, y, 5, 2); eg.fillStyle = '#ffffff'; eg.fillRect(x - 1, y, 3, 1);
     }
-    if (this.neonOn(t)) this.drawNeonBoard(eg, ox, oy, true, t);
-    drawText(eg, 'SAÍDA', 78 + ox, 283 + oy, { color: '#5affa4' });
-    eg.fillStyle = '#5fd8f0'; eg.fillRect(40 + ox, 135 + oy, 12, 9); eg.fillRect(582 + ox, 135 + oy, 12, 9);
-    eg.fillStyle = '#ff3a2a'; eg.fillRect(318 + ox, 357 + oy, 4, 2);
-    if (hz && (hz.press.state === 'warn' || hz.press.state === 'slam') && Math.floor(t * 8) % 2) { eg.fillStyle = '#ff4a4a'; eg.fillRect(597 + ox, 201 + oy, 6, 4); }
-    if (hz) {
+    if (this.depot) {
+      if (this.neonOn(t)) this.drawNeonBoard(eg, ox, oy, true, t);
+      drawText(eg, 'SAÍDA', 78 + ox, 283 + oy, { color: '#5affa4' });
+      eg.fillStyle = '#5fd8f0'; eg.fillRect(40 + ox, 135 + oy, 12, 9); eg.fillRect(582 + ox, 135 + oy, 12, 9);
+      eg.fillStyle = '#ff3a2a'; eg.fillRect(318 + ox, 357 + oy, 4, 2);
+    }
+    if (hz?.press && (hz.press.state === 'warn' || hz.press.state === 'slam') && Math.floor(t * 8) % 2) { eg.fillStyle = '#ff4a4a'; eg.fillRect(597 + ox, 201 + oy, 6, 4); }
+    if (hz?.cable) {
       const [ex, ey] = hz.cable[hz.cable.length - 1];
       if (Math.random() < 0.5) { eg.fillStyle = Math.random() < 0.5 ? '#ffffff' : '#9af6ff'; eg.fillRect(X(ex) + ox + Math.round(rnd(-2, 2)), X(ey) + oy + Math.round(rnd(-2, 2)), 1, 1); }
       if (hz.puddle.live && Math.random() < 0.5) {
@@ -1381,6 +1505,7 @@ export class Renderer {
       }
     }
     for (const b of state.bullets || []) {
+      if (b.kind === 'knife' || ((b.kind === 'arrow' || b.kind === 'magic') && this.court)) continue;
       const x = X(b.x) + ox, y = X(b.y) + oy;
       if (b.word) drawText(eg, b.word, x, y - 5, { color: b.color, outline: '#1a1424', align: 'center' });
       else {
@@ -1399,6 +1524,18 @@ export class Renderer {
     for (const f of figures) if (f.a.type === 4 && f.info?.eye && !(f.a.severed || []).includes('head')) { eg.fillStyle = '#ff6f86'; eg.fillRect(Math.round(f.info.eye.x) + ox, Math.round(f.info.eye.y) + oy, 1, 1); }
     const st = state.time ?? t;
     for (const f of figures) if (f.a.type === 3) this.drawJuma(eg, f, ox, oy, st);
+    if (this.darkNox) {
+      for (const f of figures) if (f.a.type === 4 && (f.a.form === 'dark' || f.a.act === 'darkRise' || f.a.act === 'darkFade')) this.darkNox.drawFront(eg, f, ox, oy, st);
+      this.darkNox.drawEffects(eg, ox, oy, st);
+      if (this.darkNox.drawFamiliar) for (const a of state.actors) if (a.fam) this.darkNox.drawFamiliar(eg, a, ox, oy, st, true);
+      if (state.pools?.length && this.darkNox.drawPoolsGlow) this.darkNox.drawPoolsGlow(eg, state.pools.map(p => (Array.isArray(p) ? p : [p.x, p.y, p.amt, p.by])), state.actors, ox, oy, st);
+    }
+    if (this.kingdom) { this.kingdom.drawGlow(eg, state, ox, oy); this.kingdom.drawEffects(eg, ox, oy); }
+    if (this.court) {
+      for (const a of state.actors) if (a.court) this.court.drawCourtGlow(eg, a, ox, oy, st);
+      if (this.kingArt) for (const f of figures) if (f.a.type === 0 && !f.a.dead) this.kingArt.drawRegalia(eg, f, ox, oy, st, 'glow');
+      this.court.drawEffects(eg, ox, oy, st);
+    }
     for (const f of figures) {
       if (styleOf(f.a) === 4 && f.a.act === 'swarm') this.drawSwarm(eg, f, ox, oy, st);
       if (styleOf(f.a) === 4) {
@@ -1415,7 +1552,7 @@ export class Renderer {
         // Dragged behind him at a run, its head scrapes sparks off the floor.
         if (sc && f.a.ground && Math.abs(f.a.vx || 0) > 3 && sc.y >= f.hy + oy - 3 && this.simDt > 0 && Math.random() < 0.6) this.fx.burst('spark', sc.x - ox, f.hy - 1, 1, { a: (f.a.face || 1) > 0 ? Math.PI + 0.4 : -0.4, spread: 0.8, s: 1.8, life: 0.25, colors: ['#ffffff', '#ffd0a0', this.fx.pal().light], g: 0.1, b: 0.3, em: true });
       }
-      if (f.a.bloodMark) drawMarks(eg, f.a, f.hx + ox, f.hy + oy - 31, st, this.fx.gore);
+      if (f.a.bloodMark) drawMarks(eg, f.a, f.hx + ox, f.hy + oy - (f.a.type === 2 ? 34 : 31), st, this.fx.gore);
     }
     // The axolotl: whatever burns on its demons and on its gills, the cores of buds, bubble shine.
     for (const f of figures) if (f.glow) for (const [x, y, c] of f.glow) { eg.fillStyle = c; eg.fillRect(f.x + x, f.y + y, 1, 1); }
@@ -1426,7 +1563,12 @@ export class Renderer {
     }
     this.fx.drawHemo(eg, ox, oy, t);
     this.fx.drawEmissive(eg, ox, oy, t);
+    // In stopped time Lola's effects are drawn in color over the gray world instead (worldPass).
+    if (!state.timeStop) this.lola.drawEmissive(eg, state, ox, oy);
   }
+
+  // Screen-space overlays drawn over the HUD (ZA WARUDO's cut-in, bars and captions).
+  drawOverlay(g, state) { if (state) this.lola.drawOverlay(g, state); }
 
   // How strongly Juma glows: swelling through the transformation, a smoulder as the beast, a
   // blaze as the titan; and as the fury bar nears full, she starts to burn.
@@ -1545,7 +1687,7 @@ export class Renderer {
       if (p.rocket) fx.burst('fire', X(p.x) - Math.sin(p.angle) * -8, X(p.y) + Math.cos(p.angle) * 10, 3, { a: p.angle + Math.PI / 2, spread: 0.4, s: 2.4, life: 0.35, colors: [P.fire0, P.fire1, P.fire2], g: 0, size: 2, em: true });
       if (p.burning > 0 && Math.random() < 0.6) fx.burst('fire', X(p.x) + rnd(-5, 5), X(p.y) - 4, 1, { a: -Math.PI / 2, spread: 0.6, s: 0.8, life: 0.5, colors: [P.fire0, P.fire1, P.fire2], g: -0.04, size: 2, em: true });
     }
-    if (hz) {
+    if (hz?.cable) {
       const [ex, ey] = hz.cable[hz.cable.length - 1];
       if (Math.random() < 0.12) fx.burst('spark', X(ex), X(ey), 2, { s: 1.6, life: 0.25, colors: [P.zap0, P.zap1], g: 0.1, b: 0.3, em: true });
     }
@@ -1573,10 +1715,12 @@ export class Renderer {
     return this.menuSec.get(key);
   }
 
-  // A fighter's entrance and hero pose on the select screen (t: seconds since picked). Nox and Juma
-  // have their own; the others play their moves.
+  // A fighter's entrance and hero pose on the select screen (t: seconds since picked). Nox, Lola,
+  // Juma, the frog and Xolo have their own; the others play their moves.
   drawHero(g, type, x, y, t, { density = 2, dt = 1 / 60, key = 'hero' + type } = {}) {
     if (type === 4) { (this.noxHero ||= new NoxHero(this)).draw(g, x, y, t, { density, dt, gore: this.fx.gore }); return; }
+    if (type === 2) { (this.lolaHero ||= new LolaHero(this)).draw(g, x, y, t, { density, dt }); return; }
+    if (type === 0 && this.KingHero) { (this.kingHero ||= new this.KingHero(this)).draw(g, x, y, t, { density, dt }); return; }
     if (type === 3) { (this.jumaHero ||= new JumaHero(this)).draw(g, x, y, t, { density, dt }); return; }
     if (type === 5) { (this.frogHero ||= new FrogHero(this)).draw(g, x, y, t, { density, dt }); return; }
     if (type === 6 && HEROES.XoloHero) { (this.xoloHero ||= new HEROES.XoloHero(this)).draw(g, x, y, t, { density, dt }); return; }
@@ -1628,11 +1772,15 @@ export class Renderer {
     const sprites = figureSprite(a, f, '', chains), flash = morphFlash(a);
     const s = flash ? tintOf(sprites.s, flash) : sprites.s, overlay = sprites.overlay && flash ? tintOf(sprites.overlay, flash) : sprites.overlay;
     x += morphJitter(a, p.t) * density;
+    if (type === 2 && !dim) handKnives(g, a, f, x, y, face, density, p.t, 'back');
+    if (type === 0 && this.kingArt) this.kingArt.drawMenuRegalia(g, a, f, x, y, p.t, { face, scale: density, layer: 'back', sprite: s, dim });
     if (overlay) drawFigure(g, overlay, x, y, face, density);
     drawFigure(g, s, x, y, face, density);
     if (type === 5) this.drawTongue(g, a, f.frame, x, y, density);
+    if (type === 2 && !dim) handKnives(g, a, f, x, y, face, density, p.t, 'front');
     if (f.ball) this.drawBall(g, x, y, density, p.t);
     if (styleOf(a) === 4 && !dim) drawBloodArt(g, a, f.frame, x, y, p.t, { scale: density, gore: this.fx.gore });
+    if (type === 0 && this.kingArt) this.kingArt.drawMenuRegalia(g, a, f, x, y, p.t, { face, scale: density, layer: 'front', sprite: s, dim });
     if (dim > 0) {
       const prev = g.globalAlpha;
       g.globalAlpha = prev * dim;

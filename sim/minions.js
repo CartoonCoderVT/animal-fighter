@@ -13,6 +13,7 @@ import { MOVES } from './moves.js';
 import { clamp, rnd } from '../engine/const.js';
 import { damage } from './combat.js';
 import { knockdown, ragdollOf } from './ragdoll.js';
+import { strikeCourts } from './court.js';
 
 // Clone numbers. h is half the body height: the feet sit h below the center.
 // leash: how far from its owner a clone goes after rivals (owner to rival); reach: how far from the
@@ -675,6 +676,7 @@ function stepBurst(g, m, owner) {
     if (damage(g, b, R.dmg, { x: b.x - s * 4, y: b.y }, owner.id, 'ember', { kb: { x: s * 4, y: -4 }, src: m, killKind: 'xolotl' }) > 0 && !b.dead) { b.burning = Math.max(b.burning || 0, R.burn); b.char = Math.min(1, (b.char || 0) + 0.06); }
   }
   blastMinions(g, m.team, owner.id, m.x, m.y, R.r, R.r, R.dmg, 'ember');
+  strikeCourts(g, owner, (x, y) => Math.hypot(x - m.x, (y - m.y) * 1.3) < R.r + 6, R.dmg, f => Math.sign(f.x - m.x) || m.face, 'blast');
   g.fx('sacrifice', { x: m.x, y: m.y + m.h, r: R.r });
   g.shake = Math.max(g.shake, 5);
   g.sound('sizzle', m.x);

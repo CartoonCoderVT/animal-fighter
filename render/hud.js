@@ -1,4 +1,5 @@
-// In-match HUD drawn on the 640x360 grid after the world: fighter cards, floating tags, kill feed.
+// In-match HUD drawn on the 640x360 grid after the world: fighter cards (the Cat King's with his court's pips),
+// floating tags, the little health bars over his familiars, kill feed.
 import { VIEW_W, VIEW_H, S, clamp } from '../engine/const.js';
 import { P } from '../engine/palette.js';
 import { drawText, measure } from '../engine/font.js';
@@ -6,13 +7,38 @@ import { FIGHTERS, lookOf, styleOf, BELLY } from '../sim/fighters.js';
 import { TOUCH_BUTTONS } from '../engine/input.js';
 import { WEAPON_INFO } from '../sim/weapons.js';
 import { seeded } from '../engine/const.js';
-import { SPECIALS } from '../sim/moves.js';
+import { SPECIALS, DARK } from '../sim/moves.js';
+import * as MOVES from '../sim/moves.js';
+import { MAPS } from '../sim/map.js';
+import { bloodMeter } from './dark-nox.js';
 
 const X = v => Math.round(v * S);
+// The Cat King's court (sim/court.js), in COURT order: each one's color in his card (bright, dim),
+// its full health, and how high its head stands over its feet (view px) for its little health bar.
+const COURT_KINDS = ['soldier', 'archer', 'assassin', 'mage', 'shield'];
+const COURT_COL = {
+  soldier: ['#9eaee0', '#3e4868'], archer: ['#6ccc5c', '#244a28'], assassin: ['#a878f0', '#3a2a5e'],
+  mage: ['#5c96ff', '#1e2e66'], shield: ['#f2c35b', '#5a4220']
+};
+const COURT_TOP = { soldier: 21, archer: 19, assassin: 17, mage: 24, shield: 18 };
+const courtMax = k => MOVES.COURT_HP?.[k] || 20;
+const courtBack = k => { const r = MOVES.COURT_RESPAWN; return (typeof r === 'object' ? r?.[k] : r) || 9; };
+// The King's kingdom (sim/kingdom.js) in his card: what stands, 7x7 (a banner, a house with cat ears, a
+// castle); its little health bars over it and its units (how high their heads stand, view px).
+const KG_GLYPH = {
+  1: ['#......', '#####..', '######.', '#####..', '#......', '#......', '##.....'],
+  2: ['.#...#.', '.##.##.', '#######', '.#####.', '.##.##.', '.##.##.', '.#####.'],
+  3: ['#.#.#.#', '#######', '.#####.', '.#####.', '.##.##.', '.##.##.', '.#####.']
+};
+const KG_TOP = { worker: 11, knight: 15, archer: 13 };
+const KG_STRUCT_TOP = lv => (MOVES.KINGDOM?.h?.[lv] ?? 60);
+// A tiny cat's head, 5x4: [x, y] of its pixels (the ears, the face, the chin) and its two eyes.
+const PIP = [[0, 0], [4, 0], [0, 1], [1, 1], [2, 1], [3, 1], [4, 1], [0, 2], [2, 2], [4, 2], [1, 3], [2, 3], [3, 3]];
+const PIP_EYES = [[1, 2], [3, 2]];
 const DEATH_TAG = {
   shatter: 'GELO', grind: 'FOSSO', crush: 'PRENSA', explosion: 'BUM', fire: 'FOGO', shock: 'CHOQUE', fall: 'QUEDA', decap: 'CABEÇA', bleed: 'SANGUE',
   impact: 'ARREMESSO', bullet: 'TIRO', pellet: 'TIRO', thrown: 'LÂMINA', claw: 'GARRAS', whip: 'RABADA', kick: 'COICE', paw: 'PATADA',
-  fang: 'MORDIDA', bite: 'MORDIDA', roar: 'RUGIDO', sonic: 'GRITO', blood: 'HEMOMANCIA', hemo: 'PERFURANTE', scythe: 'FOICE', stomp: 'PISÃO', slam: 'PISÃO DO CÉU',
+  fang: 'MORDIDA', bite: 'MORDIDA', roar: 'RUGIDO', sonic: 'GRITO', blood: 'HEMOMANCIA', hemo: 'PERFURANTE', scythe: 'FOICE', stomp: 'PISÃO', slam: 'ESMAGADO', knife: 'FACAS',
   blade: 'FACA', katana: 'KATANA', spear: 'LANÇA', pipe: 'CANO', axe: 'MACHADO', hammer: 'MARRETA',
   // Xolo: its own blows, its clones' and its demons'.
   gill: 'GUELRA', fin: 'CAUDA', gulp: 'GOLE', bubble: 'BOLHA', belly: 'BARRIGADA', nibble: 'MORDIDA', ember: 'BRASA', clone: 'BROTO', xolotl: 'XOLOTL'
@@ -28,7 +54,7 @@ export const RAGE_COLORS = {
 // Xolo's brood on its card: one pip per clone slot, a head seen from the front, 5 wide, with its
 // fan of three gills on each side. g/G gill tips and stalks (flames on a demon), h top light, b
 // skin, s chin, e eye, m mouth (the inside of the maw on a demon), t tooth.
-const PIP = {
+const XPIP = {
   mini: ['g.......g', '.G.hhh.G.', 'gGbebebGg', '.GbbmbbG.', 'g.sssss.g'],
   demon: ['g.......g', '.G.hhh.G.', 'gGbebebGg', '.GtmtmtG.', 'g.smtms.g']
 };
@@ -37,7 +63,7 @@ const PIP_PAL = {
   demon: { g: '#ffd040', G: '#ff5a1a', h: '#ff5a4a', b: '#c8203a', s: '#6a1024', e: '#fff6a0', t: '#fff2dc', m: '#160006' }
 };
 const PIP_W = 9, PIP_H = 5;
-const inPip = (x, y) => x >= 0 && y >= 0 && x < PIP_W && y < PIP_H && PIP.mini[y][x] !== '.';
+const inPip = (x, y) => x >= 0 && y >= 0 && x < PIP_W && y < PIP_H && XPIP.mini[y][x] !== '.';
 // The head's pixels, its rim (for the empty and the coming pips) and the dark outline around it.
 const PIP_IN = [], PIP_RIM = [], PIP_OUT = [];
 for (let y = -1; y <= PIP_H; y++) {
@@ -74,8 +100,9 @@ export class HUD {
     this.rage = new Map();
     this.cdLast = new Map();
     this.cdMax = new Map();
+    this.courtSeen = new Map();
   }
-  reset() { this.feed.length = 0; this.lastHp.clear(); this.rage.clear(); this.cdLast.clear(); this.cdMax.clear(); }
+  reset() { this.feed.length = 0; this.lastHp.clear(); this.rage.clear(); this.cdLast.clear(); this.cdMax.clear(); this.courtSeen.clear(); this.kgSeen?.clear(); }
   kill(e) {
     this.feed.unshift({ killer: e.killer, victim: e.victim, kind: e.kind, life: 5 });
     this.feed.length = Math.min(this.feed.length, 5);
@@ -87,8 +114,8 @@ export class HUD {
       if (a.dead || a.swallowedBy != null) continue;
       const f = FIGHTERS[a.type];
       const p = this.r.worldToView(a.x, a.y), z = VIEW_W / this.r.cam.sw;
-      // Juma's bigger forms carry their tag higher, over their heads.
-      const tall = a.knocked ? 0 : a.form === 'titan' ? 12 : a.form === 'beast' ? 5 : 0;
+      // Juma's bigger forms carry their tag higher, over their heads; Lola's ears stand taller than the others.
+      const tall = a.knocked ? 0 : a.form === 'titan' ? 12 : a.form === 'beast' ? 5 : a.type === 2 ? 4 : 0;
       const x = Math.round(p.x), y = Math.round(p.y - ((a.knocked ? 10 : 14) + tall) * z - 6);
       const local = a.id === localId;
       const name = (local ? '▼ ' : '') + a.name;
@@ -122,6 +149,8 @@ export class HUD {
         drawText(g, 'HITS!', x + 18 + (chain > 9 ? 2 : 1) * (big ? 18 : 12), y - 16, { color: '#fff1d6', outline: '#1a0c14' });
       }
     }
+    this.courtBars(g, state, dt, time);
+    this.kingdomBars(g, state, dt, time);
     // Rivals outside the camera view get an arrow on the screen edge.
     for (const a of state.actors) {
       if (a.dead || a.id === localId || mode === 'sandbox' || a.swallowedBy != null) continue;
@@ -152,13 +181,14 @@ export class HUD {
       panel(g, cx, 6, cw, 26, { accent, fill: local ? '#1d1430e6' : '#120d1ed9', edge: local ? '#6a5490' : '#3b3052' });
       g.save();
       g.beginPath(); g.rect(cx + 3, 8, 22, 22); g.clip();
-      // The titan towers out of the frame: lower her so the face shows.
+      // The titan towers out of the frame: lower her so the face shows (Lola's bow a little).
       const titan = a.form === 'titan';
-      this.r.drawPreview(g, a.type, cx + (titan ? 5 : 13), titan ? 45 : 34, { density: 1, key: 'hud' + a.id, dt: 0, form: lookOf(a) });
+      this.r.drawPreview(g, a.type, cx + (titan ? 5 : 13), titan ? 45 : a.type === 2 ? 38 : 34, { density: 1, key: 'hud' + a.id, dt: 0, form: lookOf(a) });
       g.restore();
       if (a.dead) { g.fillStyle = 'rgba(10,6,16,0.6)'; g.fillRect(cx + 3, 8, 22, 22); drawText(g, Math.max(1, Math.ceil(a.respawn)) + '', cx + 14, 14, { color: '#f0d2b0', align: 'center', outline: '#0b0812' }); }
       drawText(g, a.name, cx + 29, 9, { color: local ? '#fff1c8' : '#d8cde8' });
       const cd = clamp(1 - a.abilityCd / f.cooldown, 0, 1);
+      const king = a.type === 0 && a.court?.length;
       if (a.type === 3) {
         // Juma's card carries her fury bar under her life, and the K cooldown under that.
         bar(g, cx + 29, 19, 58, 3, a.hp / a.maxHp, a.hp < a.maxHp * 0.3 ? '#ee6b6b' : '#8fd694');
@@ -173,7 +203,25 @@ export class HUD {
         this.xoloK(g, a, cx + 29, 30, 58, demon, time);
       } else {
         bar(g, cx + 29, 21, 58, 3, a.hp / a.maxHp, a.hp < a.maxHp * 0.3 ? '#ee6b6b' : '#8fd694');
-        bar(g, cx + 29, 27, 58, 1, cd, cd >= 1 ? '#f2c35b' : '#8a7aa8');
+        if (a.type === 2) this.watchMeter(g, cx + 29, 27, cd, time);
+        // Nox's meter is the blood he has drunk; as DARK NOX, the time he has left in that form (it
+        // holds while he is dead, and burns faster to the eye in its last seconds).
+        else if (a.type === 4) {
+          const dark = a.form === 'dark', k = dark ? clamp((a.formT || 0) / DARK.time, 0, 1) : clamp((a.blood || 0) / (DARK.max || 100), 0, 1);
+          bloodMeter(g, cx + 29, 27, 58, k, { time, dark, full: !dark && k >= 1, gore: this.r.fx?.gore ?? 2, paused: dark && !!a.dead, low: dark && (a.formT || 0) < 5, secs: dark && !a.weapon ? a.formT || 0 : null });
+        } else if (king) {
+          // The Cat King: a shorter special bar, and his court beside it, one little head each. With his
+          // kingdom standing the bar is its fish toward the next level (its health once it is a castle),
+          // and its glyph and health line sit under his kills.
+          const kg = state.kingdoms?.find(k => k.by === a.id && k.st !== 'fall');
+          if (kg) {
+            const hk = kg.mx > 0 ? clamp(kg.hp / kg.mx, 0, 1) : 0;
+            if (kg.lv < 3) bar(g, cx + 29, 27, 26, 1, kg.need > 0 ? kg.res / kg.need : 1, '#ffd76a', '#3a2c1a', kg.need > 0 && kg.need <= 10 ? kg.need : 0);
+            else bar(g, cx + 29, 27, 26, 1, hk, hk < 0.3 ? '#ee6b6b' : '#ffd76a');
+            this.kingdomGlyph(g, cx + 100, 20, kg, a.abilityCd <= 0 && !a.dead, hk, time);
+          } else bar(g, cx + 29, 27, 26, 1, cd, cd >= 1 ? '#f2c35b' : '#8a7aa8');
+          this.courtPips(g, cx + 59, 26, a, time);
+        } else bar(g, cx + 29, 27, 58, 1, cd, cd >= 1 ? '#f2c35b' : '#8a7aa8');
         // The frog's belly: who he has inside and how long they have left in there.
         if (a.type === 5 && a.belly != null) {
           const v = state.actors.find(b => b.id === a.belly);
@@ -186,7 +234,8 @@ export class HUD {
           g.fillRect(cx + 92 + (k % 5) * 5, 10 + Math.floor(k / 5) * 5, 4, 4);
         }
       }
-      if (a.weapon) drawText(g, WEAPON_INFO[a.weapon] ? WEAPON_INFO[a.weapon].name.slice(0, 4) : a.weapon === 'extinguisher' ? 'EXT' : a.ammo + '', cx + cw - 4, 20, { color: '#e8c590', align: 'right' });
+      const glyph = a.type === 0 && state.kingdoms?.some(k => k.by === a.id && k.st !== 'fall');
+      if (a.weapon) drawText(g, WEAPON_INFO[a.weapon] ? WEAPON_INFO[a.weapon].name.slice(0, 4) : a.weapon === 'extinguisher' ? 'EXT' : a.ammo + '', glyph ? cx + 97 : cx + cw - 4, 20, { color: '#e8c590', align: 'right' });
       cx += cw + gap;
     }
     // kill feed
@@ -230,6 +279,9 @@ export class HUD {
       const k = (countdown - 0.7) % 1;
       const scale = n > 0 ? 6 : 5;
       drawText(g, label, VIEW_W / 2, VIEW_H / 2 - 30, { color: n > 0 ? '#f2c35b' : '#ff8f6a', outline: '#1a1020', shadow: '#402b43', scale, align: 'center', alpha: n > 0 ? clamp(k * 3, 0, 1) : 1 });
+      // Where the fight is.
+      const arena = MAPS[state.map] || MAPS.depot;
+      drawText(g, `${arena.name} · ${arena.subtitle}`, VIEW_W / 2, VIEW_H / 2 + 22, { color: '#cbb6d8', outline: '#1a1020', align: 'center' });
     }
     if (touch) { const me = state.actors.find(a => a.id === localId); this.drawTouch(g, me && styleOf(me)); }
   }
@@ -345,7 +397,7 @@ export class HUD {
   // One head pip at (x, y): its look, the rows it fills from (a bud fills up from the chin), how far
   // it has sunk (melting), all white (a flash), and whether it has its eyes yet.
   pip(g, x, y, look, { from = 0, sink = 0, white = false, flash = false, eyes = true, time = 0, slot = 0 } = {}) {
-    const rows = PIP[look], pal = PIP_PAL[look];
+    const rows = XPIP[look], pal = PIP_PAL[look];
     // A demon's gill flames lick: their tips swap shades a few times a second.
     const lick = look === 'demon' && (Math.floor(time * 9) + slot) % 2;
     for (let r = Math.max(from, 0); r < PIP_H; r++) {
@@ -389,6 +441,144 @@ export class HUD {
       if (rnd() > 0.14) continue;
       g.fillStyle = rnd() < 0.5 ? '#ff8a1e' : '#ffd040';
       g.fillRect(x + i, y - (rnd() < 0.25 ? 2 : 1), 1, 1);
+    }
+  }
+
+  // A tiny health bar over each familiar of a Cat King's court that is not at full health: it shows
+  // when it is struck and fades a moment after (it stays, fainter, while it is badly hurt), green,
+  // then yellow, then red, the health just lost draining away in pale pink.
+  courtBars(g, state, dt, time) {
+    const live = new Set();
+    for (const a of state.actors) {
+      if (!a.court?.length || a.dead) continue;
+      for (let i = 0; i < a.court.length; i++) {
+        const F = a.court[i], k = F.k || COURT_KINDS[i], key = a.id + ':' + i;
+        live.add(key);
+        const max = courtMax(k), hp = Math.max(0, Math.min(max, F.hp ?? max));
+        let m = this.courtSeen.get(key);
+        if (!m) { m = { lag: hp, hurtAt: -9 }; this.courtSeen.set(key, m); }
+        if (F.hurt > 0) m.hurtAt = time;
+        m.lag = hp > m.lag ? hp : m.lag + (hp - m.lag) * Math.min(1, dt * 5);
+        if (F.st === 'dead' || F.st === 'gone' || F.st === 'appear' || hp >= max) { m.lag = hp; continue; }
+        const k01 = hp / max, since = time - m.hurtAt;
+        let alpha = since < 1.1 ? 1 : since < 1.5 ? 1 - (since - 1.1) / 0.4 : 0;
+        if (k01 <= 0.34) alpha = Math.max(alpha, 0.75);
+        if (alpha <= 0.02) continue;
+        const p = this.r.worldToView(F.x, F.y), z = VIEW_W / this.r.cam.sw;
+        const x = Math.round(p.x) - 4, y = Math.round(p.y - (COURT_TOP[k] + 4) * z);
+        if (x < -10 || x > VIEW_W + 2 || y < -4 || y > VIEW_H) continue;
+        g.globalAlpha = alpha;
+        g.fillStyle = '#0b0812'; g.fillRect(x - 1, y - 1, 10, 4);
+        g.fillStyle = '#2a2036'; g.fillRect(x, y, 8, 2);
+        g.fillStyle = '#ffc8d4'; g.fillRect(x, y, Math.round(8 * clamp(m.lag / max, 0, 1)), 2);
+        const low = k01 <= 0.34, blinkOff = low && k01 <= 0.2 && Math.floor(time * 6) % 2, fw = Math.max(1, Math.round(8 * k01));
+        g.fillStyle = blinkOff ? '#ff9a9a' : low ? '#ee6b6b' : k01 <= 0.6 ? '#f2c35b' : '#8fd694';
+        g.fillRect(x, y, fw, 2);
+        g.fillStyle = 'rgba(255,255,255,0.35)'; g.fillRect(x, y, fw, 1);
+        g.globalAlpha = 1;
+      }
+    }
+    if (this.courtSeen.size > live.size) for (const key of this.courtSeen.keys()) if (!live.has(key)) this.courtSeen.delete(key);
+  }
+
+  // The King's court in his card: five tiny cat heads in COURT order, each in its own color, lit from
+  // the chin up as far as its health goes; struck, it flashes white; fallen, dark; about to come back,
+  // blinking; popping back in, white.
+  courtPips(g, x, y, a, time) {
+    for (let i = 0; i < 5; i++) {
+      const F = a.court[i], k = F?.k || COURT_KINDS[i], [lit, dim] = COURT_COL[k] || COURT_COL.soldier;
+      const px = x + i * 6, max = courtMax(k);
+      // The outline: the head's pixels pushed one each way, in ink; in gold while the kingdom's aura
+      // strengthens it (brighter the stronger, twinkling at the castle's).
+      const st = F?.st, dead = !F || a.dead || st === 'gone' || st === 'dead', b = dead ? 0 : F?.b | 0;
+      g.fillStyle = b >= 3 && Math.floor(time * 6 + i) % 5 === 0 ? '#fff2a8' : b >= 2 ? '#ffc838' : b === 1 ? '#a8782a' : '#0b0812';
+      for (const [u, v] of PIP) { g.fillRect(px + u - 1, y + v, 3, 1); g.fillRect(px + u, y + v - 1, 1, 3); }
+      let k01 = dead ? 0 : clamp((F.hp ?? max) / max, 0, 1), col = lit;
+      if (st === 'dead' && !a.dead && courtBack(k) - (F.t || 0) < 1.5 && Math.floor(time * 8) % 2) { k01 = 1; col = lit; }
+      if (!dead && (F.hurt > 0.12 || (st === 'appear' && (F.t || 0) < 0.2))) { k01 = 1; col = '#ffffff'; }
+      // Lit from the chin up (row 3 first, the ears last), the rest in its dim color, dark when gone.
+      const rows = k01 <= 0 ? 0 : Math.max(1, Math.ceil(k01 * 4 - 0.01));
+      for (const [u, v] of PIP) {
+        g.fillStyle = 3 - v < rows ? col : dead ? '#1c1626' : dim;
+        g.fillRect(px + u, y + v, 1, 1);
+      }
+      g.fillStyle = dead && rows === 0 ? '#3a304a' : '#0b0812';
+      for (const [u, v] of PIP_EYES) g.fillRect(px + u, y + v, 1, 1);
+    }
+  }
+
+  // The King's kingdom in his card: its glyph (gold with his recall home ready), a health line under it
+  // (red when low, white while it is being struck).
+  kingdomGlyph(g, x, y, kg, ready, hk, time) {
+    const rows = KG_GLYPH[kg.lv] || KG_GLYPH[1];
+    const building = kg.st === 'up' && Math.floor(time * 6) % 2;
+    g.fillStyle = '#0b0812';
+    rows.forEach((r, v) => { for (let u = 0; u < 7; u++) if (r[u] === '#') { g.fillRect(x + u - 1, y + v, 3, 1); g.fillRect(x + u, y + v - 1, 1, 3); } });
+    g.fillStyle = building ? '#fff2a8' : ready ? '#ffd76a' : '#8a7aa8';
+    rows.forEach((r, v) => { for (let u = 0; u < 7; u++) if (r[u] === '#') g.fillRect(x + u, y + v, 1, 1); });
+    const w = Math.max(hk > 0 ? 1 : 0, Math.round(9 * hk));
+    g.fillStyle = '#0b0812'; g.fillRect(x - 2, y + 7, 11, 3);
+    g.fillStyle = '#2a2036'; g.fillRect(x - 1, y + 8, 9, 1);
+    g.fillStyle = kg.hurt > 0 && Math.floor(time * 16) % 2 ? '#ffffff' : hk < 0.3 ? '#ee6b6b' : '#8fd694';
+    g.fillRect(x - 1, y + 8, w, 1);
+  }
+
+  // Little health bars over a kingdom's structure (24x2) and its units (10x1) while they are hurt: they
+  // show when struck and fade a moment after (staying, fainter, while badly hurt), as the court's do.
+  kingdomBars(g, state, dt, time) {
+    if (!state.kingdoms?.length) { if (this.kgSeen?.size) this.kgSeen.clear(); return; }
+    const seen = this.kgSeen ||= new Map(), live = new Set(), z = VIEW_W / this.r.cam.sw;
+    const one = (key, hp, max, hurt, vx, vy, w, h, hide) => {
+      live.add(key);
+      let m = seen.get(key);
+      if (!m) { m = { lag: hp, hurtAt: -9 }; seen.set(key, m); }
+      if (hurt > 0) m.hurtAt = time;
+      m.lag = hp > m.lag ? hp : m.lag + (hp - m.lag) * Math.min(1, dt * 5);
+      if (hide || hp >= max) { m.lag = hp; return; }
+      const k01 = clamp(hp / max, 0, 1), since = time - m.hurtAt;
+      let alpha = since < 1.1 ? 1 : since < 1.5 ? 1 - (since - 1.1) / 0.4 : 0;
+      if (k01 <= 0.34) alpha = Math.max(alpha, 0.75);
+      if (alpha <= 0.02) return;
+      const x = Math.round(vx - w / 2), y = Math.round(vy - h);
+      if (x < -w || x > VIEW_W || y < -4 || y > VIEW_H) return;
+      g.globalAlpha = alpha;
+      g.fillStyle = '#0b0812'; g.fillRect(x - 1, y - 1, w + 2, h + 2);
+      g.fillStyle = '#2a2036'; g.fillRect(x, y, w, h);
+      g.fillStyle = '#ffc8d4'; g.fillRect(x, y, Math.round(w * clamp(m.lag / max, 0, 1)), h);
+      const low = k01 <= 0.34, blinkOff = low && k01 <= 0.2 && Math.floor(time * 6) % 2;
+      g.fillStyle = blinkOff ? '#ff9a9a' : low ? '#ee6b6b' : k01 <= 0.6 ? '#f2c35b' : '#8fd694';
+      g.fillRect(x, y, Math.max(1, Math.round(w * k01)), h);
+      if (h > 1) { g.fillStyle = 'rgba(255,255,255,0.35)'; g.fillRect(x, y, Math.max(1, Math.round(w * k01)), 1); }
+      g.globalAlpha = 1;
+    };
+    for (const kg of state.kingdoms) {
+      const q = this.r.worldToView(kg.x, kg.y - KG_STRUCT_TOP(kg.lv) - 8);
+      one('kg' + kg.id, Math.max(0, kg.hp), kg.mx || 1, kg.hurt, q.x, q.y, 24, 2, kg.st === 'fall');
+      for (const u of kg.u || []) {
+        const max = MOVES.KINGDOM?.[u.k]?.hp || 10, p = this.r.worldToView(u.x, u.y);
+        one('kg:' + u.id, Math.max(0, u.hp ?? max), max, u.hurt, p.x, p.y - ((KG_TOP[u.k] || 12) + 3) * z, 10, 1, u.st === 'dead' || u.st === 'appear');
+      }
+    }
+    if (seen.size > live.size) for (const key of seen.keys()) if (!live.has(key)) seen.delete(key);
+  }
+
+  // Lola's super charges slowly: twelve ticks of a clock fill one by one, and once they are all lit
+  // they glint in gold and a little watch beside them swings.
+  watchMeter(g, x, y, k, time) {
+    const full = k >= 1, lit = Math.floor(k * 12);
+    for (let i = 0; i < 12; i++) {
+      const on = i < lit, glint = full && Math.floor(time * 10) % 12 === i;
+      g.fillStyle = '#0b0812'; g.fillRect(x + i * 5 - 1, y - 1, 5, 3);
+      g.fillStyle = glint ? '#ffffff' : full ? '#ffd23a' : on ? '#6aa8f0' : '#2a2036';
+      g.fillRect(x + i * 5, y, 3, 1);
+    }
+    // The tick being wound fills in as it charges.
+    if (!full) { g.fillStyle = '#9cd0ff'; g.fillRect(x + lit * 5, y, Math.round((k * 12 - lit) * 3), 1); }
+    if (full) {
+      const sw = Math.round(Math.sin(time * 5) * 1.4), wx = x - 4 + sw, wy = y - 3;
+      g.fillStyle = '#0b0812'; g.fillRect(wx - 1, wy - 1, 5, 5);
+      g.fillStyle = '#ffd23a'; g.fillRect(wx, wy, 3, 3);
+      g.fillStyle = '#fff8e8'; g.fillRect(wx + 1, wy + 1, 1, 1);
     }
   }
 

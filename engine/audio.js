@@ -58,6 +58,19 @@ const SFX = {
   quake: { wave: 'sine', f0: 52, f1: 24, dur: 0.6, noise: N(200, 0.6, 'lowpass', 60), vol: 1 },
   // A flurry of wings and squeaks.
   bats: { wave: 'square', f0: 2600, f1: 1500, dur: 0.12, noise: N(1800, 0.3, 'bandpass', 600), vol: 0.45 },
+  // Lola: the thin zing of a knife cut, a knife thrown, a knife biting into a wall; the skip through
+  // time (a zip up and a click); the clock's tick and tock; the watch's lid.
+  cut: { wave: 'triangle', f0: 2400, f1: 900, dur: 0.07, noise: N(5200, 0.09, 'highpass'), vol: 0.55 },
+  knife: { wave: 'sine', f0: 3100, f1: 4200, dur: 0.06, noise: N(4200, 0.07, 'bandpass', 7000), vol: 0.35 },
+  knifeStick: { wave: 'square', f0: 320, f1: 140, dur: 0.04, noise: N(2600, 0.05, 'bandpass'), vol: 0.4 },
+  skip: { wave: 'sine', f0: 600, f1: 2400, dur: 0.08, noise: N(3000, 0.06, 'highpass'), vol: 0.4 },
+  tick: { wave: 'square', f0: 2900, f1: 2700, dur: 0.018, noise: N(6000, 0.02, 'highpass'), vol: 0.35 },
+  tock: { wave: 'square', f0: 1900, f1: 1800, dur: 0.022, noise: N(4000, 0.025, 'highpass'), vol: 0.3 },
+  watch: { partials: [[2400, 0.4, 0.12], [3600, 0.25, 0.08]], noise: N(5000, 0.03, 'highpass'), vol: 0.5 },
+  // ZA WARUDO: a click, a deep boom that swells and a bell, and the music drops out while time is
+  // stopped. Time moving again: a rush up into a boom.
+  zawarudo: { wave: 'sawtooth', f0: 58, f1: 26, dur: 1.4, noise: N(180, 1.2, 'lowpass', 60), partials: [[523, 0.3, 1.6], [784, 0.2, 1.3], [1046, 0.12, 1.1], [92, 0.6, 1.8]], vol: 1, duck: 4.6 },
+  timeResume: { wave: 'sine', f0: 140, f1: 1100, dur: 0.35, noise: N(400, 0.5, 'bandpass', 3000), partials: [[60, 0.7, 0.6], [880, 0.2, 0.4]], vol: 0.9 },
   // The frog: the long suck of air, the gulp going down, the spit, the croak and the wet slap.
   inhale: { wave: 'sine', f0: 180, f1: 90, dur: 0.6, noise: N(900, 0.7, 'bandpass', 300), vol: 0.5 },
   gulp: { wave: 'sine', f0: 260, f1: 70, dur: 0.22, noise: N(500, 0.18, 'lowpass', 150), vol: 0.75 },
@@ -180,6 +193,15 @@ export class Sound {
     let dur = this.voice(spec, t, out);
     for (const [at, v] of spec.seq || []) dur = Math.max(dur, at + this.voice(v, t + at, out));
     setTimeout(() => out.disconnect(), (dur + 0.1) * 1000);
+    // The music drops out under some sounds (Lola's stopped time) and comes back after.
+    if (spec.duck && this.musicGain) {
+      const m = this.musicGain.gain, full = this.musicVolume * 0.5;
+      m.cancelScheduledValues(t);
+      m.setValueAtTime(m.value, t);
+      m.linearRampToValueAtTime(0.0001, t + 0.15);
+      m.setValueAtTime(0.0001, t + spec.duck);
+      m.linearRampToValueAtTime(full, t + spec.duck + 0.4);
+    }
   }
 
   // One voice of a sound, scheduled at t into node. Returns how long it rings.

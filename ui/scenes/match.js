@@ -118,6 +118,7 @@ export class MatchScene {
     const paused = s.game?.paused && this.countdown <= 0;
     const figures = s.renderer.render(st, { localId: s.localId, settings: paused ? { ...s.settings, shake: false } : s.settings, debug: this.tools.rig, dt: paused ? 0 : dt });
     s.hud.draw(g, st, figures, { localId: s.localId, mode: this.mode, dt, touch: s.input.touchMode && s.stack.length === 1, countdown: this.countdownNow(), time: this.t });
+    s.renderer.drawOverlay(g, st);
     if (this.mode === 'sandbox') {
       for (const b of this.toolBar) {
         const on = this.tools[b.id];

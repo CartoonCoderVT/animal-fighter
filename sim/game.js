@@ -1,5 +1,5 @@
 import { createEngine, buildStatic, Bodies, Body, Composite, Constraint, Events, Query, CAT, MASK, ALL_ONEWAY } from './physics.js';
-import { MAP, buildNav } from './map.js';
+import { MAP, buildNav, useMap } from './map.js';
 import { FIGHTERS } from './fighters.js';
 import { EMPTY_INPUT } from '../engine/input.js';
 import { rnd, dist } from '../engine/const.js';
@@ -10,13 +10,20 @@ import { installHazards, tickHazards, hazardSnapshot } from './hazards.js';
 import { stepRagdolls, settleLimits, knockdown, ragdollOf } from './ragdoll.js';
 import { HALF_H, BODY_W } from '../render/rig.js';
 import { MELEE, isMelee } from './weapons.js';
+import { SPECIALS } from './moves.js';
+import { stepTimeStop } from './timestop.js';
+import { tickNox, spill, freeScythe, famSnapshot } from './nox.js';
+import { tickKings, courtSnapshot } from './court.js';
+import { tickKingdoms, kingdomSnapshot, fishSnapshot } from './kingdom.js';
 import { stepMinions, syncMinions, minionSnapshot } from './minions.js';
 import { axoInit, axoSnapshot } from './axolotl.js';
 
 export { EMPTY_INPUT, FIGHTERS };
 
 export class Game {
-  constructor({ players = [], mode = 'solo', localId = 0, settings = {}, onEvent = () => {}, killsToWin = 5 } = {}) {
+  constructor({ players = [], mode = 'solo', localId = 0, settings = {}, onEvent = () => {}, killsToWin = 5, map = 'depot' } = {}) {
+    // The arena: everything below reads it from MAP.
+    this.map = useMap(map).id;
     this.mode = mode;
     this.localId = localId;
     this.settings = settings;
@@ -33,6 +40,12 @@ export class Game {
     this.time = 0; this.seq = 0; this.nextId = 100;
     this.winner = null; this.winPending = null; this.paused = false;
     this.shake = 0; this.hitstop = 0; this.flash = 0; this.slowmo = 0; this.drama = 0; this.slowAcc = 0; this.timeScale = 1; this.scaleAcc = 0; this.grab = null;
+    // Lola's ZA WARUDO: while set, only she and her knives move (sim/timestop.js).
+    this.timeStop = null; this.knives = []; this.barrages = [];
+    // Pools of blood on the floors (sim/nox.js).
+    this.pools = [];
+    // The Cat Kings' kingdoms and the fish their workers fetch (sim/kingdom.js).
+    this.kingdoms = []; this.fish = []; this.fishSpots = null;
     this.spawns = MAP.spawns;
     players.forEach((p, i) => this.addActor({ ...p, id: p.id ?? i, x: p.x ?? this.spawns[i % 4][0], y: p.y ?? this.spawns[i % 4][1] }));
     if (!players.length) this.addActor({ id: 0, type: 0, x: this.spawns[0][0], y: this.spawns[0][1], name: 'Você', bot: false });
@@ -50,12 +63,13 @@ export class Game {
     const a = {
       id, type, x, y, name: name || f.name, bot, team, originalTeam: team, hp: f.hp, maxHp: f.hp, body, face: x > 480 ? -1 : 1,
       move: 0, ground: false, vx: 0, vy: 0, dead: false, kills: 0, deaths: 0, attack: 0, attackCd: 0, attackKind: null, attackSeq: 0,
-      abilityCd: 0, buff: 0, hurt: 0, invincible: 1.5, iframes: 0, dodgeCd: 0, dodge: 0, dodgeKind: null, stun: 0, combo: 0, comboTimer: 0,
+      // Lola's ZA WARUDO charges slowly: she starts a match with it half wound.
+      abilityCd: type === 2 ? SPECIALS[2].cd / 2 : 0, buff: 0, hurt: 0, invincible: 1.5, iframes: 0, dodgeCd: 0, dodge: 0, dodgeKind: null, stun: 0, combo: 0, comboTimer: 0,
       wounds: {}, partDmg: {}, severed: [], broken: {}, stumps: [], embedded: [], bleed: 0, char: 0, freeze: 0, frozen: 0, shock: 0,
       weapon: null, ammo: 0, holding: null, lastInput: EMPTY_INPUT(), input: EMPTY_INPUT(), queued: {},
       respawn: 0, lastHit: null, lastHitTime: -9, jumpGrace: 0, jumpBuffer: 0, airJumps: 0, drop: {}, knocked: false, knock: 0, getup: 0,
       aim: 0, burning: 0, stats: { damage: 0, kills: 0, limbs: 0 }, powerSeq: 0, act: null, actT: 0, gliding: false,
-      form: null, rage: 0, morphTo: null, frenzy: null, biteCd: 0, chargeCd: 0, carry: null,
+      form: null, formT: 0, rage: 0, morphTo: null, frenzy: null, biteCd: 0, chargeCd: 0, skipCd: 0, setCd: 0, carry: null, wPose: null,
       copy: null, belly: null, bellyT: 0, swallowedBy: null, axo: type === 6 ? axoInit() : null
     };
     body.plugin.actor = a;
@@ -80,7 +94,7 @@ export class Game {
   closest(a, max = Infinity) { return this.enemies(a).sort((b, c) => dist(a, b) - dist(a, c)).find(b => dist(a, b) < max); }
 
   fx(type, data) {
-    const e = { id: ++this.eventId, time: this.time, type: 'fx', fx: type, ...data };
+    const e = { id: ++this.eventId, time: this.time, seq: this.seq, type: 'fx', fx: type, ...data };
     if (this.fxQueue.length > 600) this.fxQueue.splice(0, 200);
     this.fxQueue.push(e);
     this.netEvents.push(e);
@@ -88,7 +102,7 @@ export class Game {
   text(x, y, text, color) { this.effects.push({ kind: 'text', x, y, text, color, life: 1 }); }
   sound(name, x = null) {
     this.onEvent({ type: 'sound', name, x });
-    this.netEvents.push({ id: ++this.eventId, time: this.time, type: 'sound', name, x });
+    this.netEvents.push({ id: ++this.eventId, time: this.time, seq: this.seq, type: 'sound', name, x });
   }
 
   // LAB hand: a soft spring from the cursor to whatever body is under it.
@@ -170,30 +184,43 @@ export class Game {
     Body.setVelocity(a.body, { x: 0, y: 0 });
     Body.setAngle(a.body, 0);
     if (!Composite.allBodies(this.engine.world).includes(a.body)) Composite.add(this.engine.world, a.body);
+    // Lola keeps whatever her watch had wound up when she went down; Nox the blood he had drunk, and
+    // DARK NOX stays DARK NOX (his clock waited while he was down).
+    // (and the Cat King his wait to plant again, or to go home)
+    const abilityCd = a.type === 2 || a.type === 0 ? Math.max(1, a.abilityCd) : 1;
+    const dark = a.form === 'dark', blood = a.blood || 0, formT = dark ? a.formT : 0;
     Object.assign(a, {
       x: spot[0], y: spot[1], hp: FIGHTERS[a.type].hp, maxHp: FIGHTERS[a.type].hp, dead: false, invincible: 1.7, wounds: {}, partDmg: {}, severed: [], broken: {}, stumps: [], embedded: [],
       bleed: 0, char: 0, freeze: 0, frozen: 0, shock: 0, stun: 0, burning: 0, weapon: null, buff: 0, team: a.originalTeam,
-      ai: null, attackCd: 0, holding: null, abilityCd: 1, knocked: false, knock: 0, getup: 0, dodge: 0, dodgeKind: null, climbing: false, drop: {},
+      ai: null, attackCd: 0, holding: null, abilityCd, knocked: false, knock: 0, getup: 0, dodge: 0, dodgeKind: null, climbing: false, drop: {},
       act: null, actT: 0, hits: null, gliding: false, holdingLimb: null, holdJoint: null, ghostClear: true, hitlag: 0, lagPos: null,
       parry: 0, parryLag: 0, counter: 0, perfectT: 0, chase: null, float: 0, airDodged: false, hitstun: 0, hitstunMax: 0, stunN: 0, bloodMark: 0, beamAir: false, bounced: false, bounceArm: 0, turnT: 0, batCd: 0, swarm: null,
-      form: null, rage: 0, morphTo: null, frenzy: null, biteCd: 0, chargeCd: 0, carry: null,
+      form: dark ? 'dark' : null, formT, rage: 0, morphTo: null, frenzy: null, biteCd: 0, chargeCd: 0, skipCd: 0, setCd: 0, carry: null, wPose: null, blood,
       copy: null, belly: null, bellyT: 0, swallowedBy: null, copied: false, wobble: 0, axo: a.type === 6 ? axoInit() : null, bubbled: 0, latchN: 0
     });
     this.fx('spawn', { x: a.x, y: a.y, color: FIGHTERS[a.type].color });
+    // His scythe forms again beside him.
+    if (dark) freeScythe(this, a, true);
   }
 
   step(dt = 1 / 60) {
     if (this.paused || this.winner !== null) return;
+    // Another game (the title screen's) may have played in another arena meanwhile.
+    useMap(this.map);
+    // One-way platforms that are gone for now (the castle's loose stone): placement checks skip them.
+    MAP.off = this.hz?.off || null;
     dt = 1 / 60;
     this.shake = Math.max(0, this.shake - dt * 25);
     this.flash = Math.max(0, this.flash - dt * 4);
+    // Stopped time: the clock, the physics and everyone else hold still; Lola goes on.
+    if (this.timeStop) { this.seq++; if (stepTimeStop(this, dt)) return; }
     if (this.slowmo > 0) {
       this.slowmo -= dt;
       if (this.slowmo <= 0 && this.winPending !== null) {
         this.winner = this.winPending;
         const w = this.actor(this.winner);
         this.onEvent({ type: 'win', winner: w?.name, id: this.winner });
-        this.netEvents.push({ id: ++this.eventId, time: this.time, type: 'win', winner: w?.name, wid: this.winner });
+        this.netEvents.push({ id: ++this.eventId, time: this.time, seq: this.seq, type: 'win', winner: w?.name, wid: this.winner });
         return;
       }
       this.slowAcc += 0.4;
@@ -213,7 +240,11 @@ export class Game {
     if (this.hitstop > 0) { this.hitstop -= dt; return; }
     if (this.grab) this.holdGrab();
 
-    for (const a of this.actors) stepActor(this, a, dt);
+    // The step Lola clicks her watch on ends right there: nothing else may move (or hit her).
+    for (const a of this.actors) { stepActor(this, a, dt); if (this.timeStop) return; }
+    tickNox(this, dt);
+    tickKings(this, dt);
+    tickKingdoms(this, dt);
     stepMinions(this, dt);
     stepBullets(this, dt);
     tickHazards(this, dt);
@@ -248,6 +279,8 @@ export class Game {
       l.life -= dt;
       l.x = l.body.position.x; l.y = l.body.position.y; l.angle = l.body.angle;
       l.bleed = Math.max(0, l.bleed - dt * 0.35);
+      // Severed parts drip onto the floor while they still bleed.
+      if (l.bleed > 1 && (l.drip = (l.drip ?? 0.3) - dt) <= 0) { l.drip = 0.5; spill(this, l.x, l.y, 0.4); }
       if (l.propGrace > 0 && (l.propGrace -= dt) <= 0) l.body.collisionFilter.mask = MASK.limb;
       l.shock = Math.max(0, (l.shock || 0) - dt);
       if (l.life <= 0 || l.y > 700) this.removeLimb(l);
@@ -262,8 +295,7 @@ export class Game {
     tickStatuses(this, dt);
     for (const e of this.effects) { e.life -= dt; if (e.kind === 'text') e.y -= dt * 20; }
     this.effects = this.effects.filter(e => e.life > 0);
-    const cutoff = this.time - 0.4;
-    if (this.netEvents.length > 240 || (this.netEvents[0] && this.netEvents[0].time < cutoff - 0.6)) this.netEvents = this.netEvents.filter(e => e.time >= cutoff).slice(-240);
+    if (this.netEvents.length > 240 || (this.netEvents[0] && this.netEvents[0].seq < this.seq - 60)) this.netEvents = this.netEvents.filter(e => e.seq >= this.seq - 24).slice(-240);
   }
 
   dropWeapons(dt) {
@@ -286,13 +318,13 @@ export class Game {
 
   snapshot() {
     const r = v => Math.round(v * 10) / 10, r2 = v => Math.round(v * 100) / 100;
-    const cutoff = this.time - 0.35;
+    // Events of the last 0.35 s of steps (by step, so stopped time does not pile them up).
     return {
-      events: this.netEvents.filter(e => e.time >= cutoff), seq: this.seq, time: this.time, mode: this.mode, winner: this.winner, shake: r(this.shake), flash: r(this.flash), slowmo: this.slowmo > 0, drama: this.drama > 0, countdown: r(this.countdown || 0),
+      events: this.netEvents.filter(e => e.seq >= this.seq - 21), seq: this.seq, time: this.time, mode: this.mode, map: this.map, winner: this.winner, shake: r(this.shake), flash: r(this.flash), slowmo: this.slowmo > 0, drama: this.drama > 0, countdown: r(this.countdown || 0),
       actors: this.actors.map(a => ({
         id: a.id, type: a.type, name: a.name, bot: a.bot, team: a.team, hp: r(a.hp), maxHp: a.maxHp, kills: a.kills, deaths: a.deaths,
         x: r(a.x), y: r(a.y), vx: r(a.vx), vy: r(a.vy), face: a.face, move: a.move, ground: a.ground, climbing: !!a.climbing, crouch: !!a.crouch,
-        dead: a.dead, attack: r(a.attack), attackKind: a.attackKind, attackSeq: a.attackSeq, abilityCd: r(a.abilityCd), hurt: r(a.hurt),
+        dead: a.dead, attack: r2(a.attack), attackKind: a.attackKind, attackSeq: a.attackSeq, abilityCd: r(a.abilityCd), hurt: r(a.hurt),
         invincible: r(a.invincible), dodge: r(a.dodge), dodgeKind: a.dodgeKind, stun: r(a.stun), knocked: a.knocked, getup: r(a.getup), aim: r(a.aim),
         act: a.act, combo: a.combo, gliding: a.gliding, chain: g_chain(this, a),
         parry: r(a.parry || 0), parryLag: r(a.parryLag || 0), perfectT: r(a.perfectT || 0), counter: r(a.counter || 0),
@@ -301,16 +333,24 @@ export class Game {
         wounds: a.wounds, severed: a.severed, broken: a.broken, stumps: a.stumps, embedded: a.embedded, bleed: r(a.bleed), char: r(a.char),
         freeze: r(a.freeze), frozen: r(a.frozen), shock: r(a.shock), weapon: a.weapon, ammo: a.ammo, holding: a.holding,
         burning: r(a.burning || 0), holdingLimb: a.holdingLimb || null, respawn: r(a.respawn), skid: r(a.skid || 0), landImpact: r(a.landT > 0 ? a.landImpact : 0),
-        powerSeq: a.powerSeq, recoil: r(a.recoil || 0), stats: a.stats, form: a.form || null, rage: r(a.rage || 0), morphTo: a.morphTo || null, rip: a.frenzy?.prey != null ? 1 : 0, slamN: a.slamN || 0,
+        powerSeq: a.powerSeq, recoil: r(a.recoil || 0), stats: a.stats, form: a.form || null, formT: r(a.formT || 0), rage: r(a.rage || 0), morphTo: a.morphTo || null, rip: a.frenzy?.prey != null ? 1 : 0, slamN: a.slamN || 0,
+        wPose: a.wPose || null, wPoseT: r2(a.wPoseT || 0), skips: a.skips || 0, blood: r(a.blood || 0), fam: famSnapshot(a.fam, r, r2), court: courtSnapshot(a.court), pk: a.pk ?? null,
         copy: a.copy ?? null, belly: a.belly ?? null, bellyT: r(a.bellyT || 0), swallowedBy: a.swallowedBy ?? null, wobble: r2(a.wobble || 0), copied: !!a.copied,
         axo: a.axo ? axoSnapshot(this, a) : null, bubbled: r2(a.bubbled || 0)
       })),
-      props: this.props.map(p => ({ id: p.id, kind: p.kind, w: p.w, h: p.h, x: r(p.x), y: r(p.y), angle: r(p.angle * 100) / 100, hp: p.hp, armed: !!p.armed, fuse: p.fuse, burning: r(p.burning || 0), weapon: p.weapon, rocket: p.rocket > 0, chain: !!p.chain })),
-      bullets: this.bullets.map(b => ({ id: b.id, x: r(b.x), y: r(b.y), px: r(b.px), py: r(b.py), word: b.word, color: b.color, vx: r(b.vx), vy: r(b.vy), kind: b.kind })),
+      props: this.props.map(p => ({ id: p.id, kind: p.kind, w: p.w, h: p.h, x: r(p.x), y: r(p.y), angle: r(p.angle * 100) / 100, hp: p.hp, armed: !!p.armed, fuse: p.fuse, burning: r(p.burning || 0), weapon: p.weapon, rocket: p.rocket > 0, chain: !!p.chain, look: p.look })),
+      // Lola's laid knives also send where they point, how far out of her hand they are (k) and how
+      // long they still hang.
+      bullets: this.bullets.map(b => ({ id: b.id, x: r(b.x), y: r(b.y), px: r(b.px), py: r(b.py), word: b.word, color: b.color, vx: r(b.vx), vy: r(b.vy), kind: b.kind, ...(b.set ? { set: 1, ang: r2(b.ang), k: r2(b.k), hold: r2(b.hold), hang: b.k < 1 || b.hold > 0 ? 1 : 0 } : null) })),
+      timeStop: this.timeStop && { owner: this.timeStop.owner, t: r2(this.timeStop.t), x: r(this.timeStop.x), y: r(this.timeStop.y), targets: this.timeStop.targets },
+      knives: this.knives.map(k => ({ id: k.id, x: r(k.x), y: r(k.y), ang: r2(k.ang), k: r2(k.k), ring: !!k.ring })),
       limbs: this.limbs.map(l => ({ id: l.id, type: l.type, form: l.form || null, part: l.part, x: r(l.x), y: r(l.y), angle: r(l.angle * 100) / 100, face: l.face, actor: l.actor, attached: l.attached, wounds: l.wounds, char: r(l.char || 0), frozen: l.frozen, bleed: r(l.bleed), embedded: l.embedded || null, shock: (l.shock || 0) > 0, life: r(l.life), cut: l.cut || null })),
       effects: this.effects.map(e => ({ ...e })),
       fires: this.fires.map(f => ({ id: f.id, x: f.x, y: f.y, life: r(f.life) })),
       pins: this.pins.map(p => ({ x: p.x, y: p.y })),
+      pools: this.pools.map(p => [r(p.x), p.y, r(p.amt), p.by]),
+      kingdoms: this.kingdoms.map(kingdomSnapshot),
+      fish: fishSnapshot(this.fish),
       minions: minionSnapshot(this),
       hazards: hazardSnapshot(this)
     };

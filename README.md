@@ -15,10 +15,26 @@ Briga de animais em pixel art com física, ragdolls e partidas online direto no 
 A/D mover · W/Espaço pular · S agachar · J ataque · K especial · Shift parry/esquiva · E pegar · L revoada (Nox) · Esc pausa.
 Também funciona com controle e toque.
 
+**Mingau, o Rei Gato**, não suja as patas: cinco gatinhos da corte lutam por ele (soldado, arqueiro, assassino, mago e escudeiro). Eles têm vida própria: protegem o rei a todo custo, atacam sozinhos e em turnos quem chega perto dele (o assassino corta quem estiver batendo no rei, o escudeiro se põe na frente e leva o golpe por ele) e nunca se afastam muito dele. Cada J é uma ordem: o soldado corta, o assassino some e aparece atrás, o arqueiro dispara, o mago chama um raio e o escudeiro lança o rival para o alto. **S+J** faz chover flechas, **lado+J** é a carga, e o escudeiro bloqueia tiros na frente do rei. O K é a **BANDEIRA REAL**: ele finca a bandeira no chão e ela forma uma área dourada que fortalece a corte. Gatinhos operários saem dela e buscam peixe pelo mapa (e batem em quem estiver no caminho); com peixe suficiente a bandeira vira uma **casa**, guardada por dois cavaleiros gatos, e depois um **castelo**, com arqueiros nas torres e a corte fortalecida no mapa todo. Ela só some se alguém a derrubar (quem derruba ganha vida; os rivais também podem comer os peixes). Com o reino de pé, o K leva o rei de volta para casa.
+
+**Lola** luta com facas e salta no tempo dentro dos combos (some e reaparece atrás, na frente ou acima do rival), deixando facas paradas no ar onde sumiu. No meio do combo ela monta padrões de bullet hell: **S+J** faz chover facas sobre o rival, um toque de **lado+J** ergue uma muralha de facas entre os dois e, no ar, um anel de facas se fecha em espiral. O K dela carrega devagar e para o tempo de verdade: **ZA WARUDO**.
+
+**Nox** faz sangrar com cada golpe e bebe o sangue, inclusive as poças que ficam no chão da arena. Com a barra cheia, **K** o transforma no **DARK NOX** por 30 segundos (e ele continua DARK mesmo se morrer): ele solta a foice, que voa sozinha como um familiar cortando quem chega perto, e luta com as garras num combo frenético em que a foice ataca junto.
+
 **Juma** não tem botão de transformação: cada pancada que ela leva enche a barra de **FÚRIA**. Cheia, ela vira a **FERA**; a barra zera, enche de novo e ela vira a **TITÃ**, enorme, com muita vida e que destrói tudo pelo caminho. Cada forma tem seus combos (lado+J, S+J, no ar) e seu K: frenesi, salto sísmico, e agarrar-e-esmagar ou palma-trovão.
 
 **Don Sapone**, o sapo mafioso de chapéu e charuto, funciona como o Kirby: segure **K** para sugar e engolir um rival vivo. Com alguém na pança ele vira uma aberração híbrida (sapo-gato, sapo-rato, sapo-coelha, sapo-jaguatirica, sapo-morcego) e luta com o estilo do engolido: combos, golpes no ar e, com **S+K**, o especial dele. **K** de novo cospe o rival como uma bala de canhão. Quem está dentro aperta todos os botões para escapar. As formas grandes da Juma não cabem na boca.
 
+**Xolo**, o axolote, regenera: cada parte que perde (cauda, braço ou pé) cai sem sangue, brota no chão e vira um **broto**, um mini Xolo (até 3), enquanto a parte cresce de novo. Os brotos seguem o Xolo, repetem seus golpes um instante depois, mordiscam os rivais, pulam em quem está caído (**S+J** no chão: Canibal) e podem ser pegos com **E** e arremessados com **J** (Estilingue). **S+K** arranca a própria cauda e planta um broto longe. O K é o **Despertar de Xolotl**: todo broto vivo vira um axolote demoníaco cheio de dentes por 6 segundos, que caça, morde e se agarra, e no fim explode em brasas. Sem brotos, o K é a **Bocarra**, uma mordida com o sorriso rasgado em presas.
+
+**Quebrar o combo:** apanhando, aperte **Shift** no momento certo do próximo golpe.
+
+## Arenas
+
+Escolha a arena na tela de lutadores (**M**) ou, online, na sala (o anfitrião escolhe).
+
+- **Depósito 07 · Turno da Noite**: esteira, prensa hidráulica, triturador, cabo elétrico e carga pendurada.
+- **Castelo · Salão do Relógio**: um salão gótico à meia-noite. Velas que soltam itens quando quebradas (corações, água benta, armas), um lustre que despenca se a corrente for cortada, pêndulos que varrem as sacadas, uma pedra solta sobre o fosso de estacas, armaduras que desmontam e deixam a arma... e alguns segredos para quem prestar atenção.
 ## Créditos
 
 Física: [Matter.js](https://brm.io/matter-js/) (MIT) · Rede: [PeerJS](https://peerjs.com/) (MIT). Licenças em `vendor/`.

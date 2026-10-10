@@ -203,6 +203,7 @@ export function knockdown(g, a, { velocity = { x: 0, y: -2 }, time = 1.6 } = {})
     return;
   }
   releaseHeld(g, a);
+  a.knockedAt = g.time;
   a.act = null;
   a.hits = null;
   a.hitlag = 0; a.lagPos = null;

@@ -1,6 +1,7 @@
 import { Bodies, Body, Composite, MASK, CAT, surfaceY } from './physics.js';
 import { rnd, dist, clamp } from '../engine/const.js';
 import { damage, armUsable, woundLimb } from './combat.js';
+import { strikeCourts } from './court.js';
 import { pushActor, breakJoint, pinLimb } from './ragdoll.js';
 import { pose } from '../render/rig.js';
 import { hazardInteract } from './hazards.js';
@@ -46,6 +47,8 @@ export function removeProp(g, p) {
 
 export function damageProp(g, p, amount, owner) {
   if (!g.props.includes(p) || p.held) return;
+  // Arena things with their own behaviour (the castle's candles, armor, walls...: sim/castle.js).
+  if (p.hit) { p.hit(g, p, amount, owner); return; }
   if (THROWABLES.includes(p.kind)) {
     p.hp -= amount;
     if (p.hp <= 0) {
@@ -111,6 +114,8 @@ export function explode(g, x, y, owner, power = 1) {
     const amount = k * 68 * power;
     damage(g, a, amount, { x: a.x - dx * 6, y: a.y - dy * 6 }, owner, 'explosion', { kb: { x: dx * 13 * k, y: dy * 9 * k - 7 * k }, knock: true, overkill: amount > a.hp + 30, environment: true });
   }
+  // The Cat King's court is blown about too (all of them but its own King's), and his kingdom shaken.
+  strikeCourts(g, g.actor(owner) || null, (fx, fy) => Math.hypot(fx - x, fy - y) < R * 0.8, 40 * power, f => Math.sign(f.x - x) || 1, 'blast');
   // Blasts tear through clones, the axolotl's own included.
   hitMinions(g, null, m => dist(m, { x, y }) < R, m => {
     const d = dist(m, { x, y }), k = 1 - d / (R * 1.15), dx = (m.x - x) / (d || 1);
@@ -208,6 +213,7 @@ export function extendedAttack(g, a) {
     }
   }
   for (const p of [...g.props]) if (p !== held && !p.fixed && dist(a, p) < range) damageProp(g, p, amount, a.id);
+  strikeCourts(g, a, (x, y) => Math.hypot(x - a.x, y - a.y) < range && (x - a.x) * a.face > -5, amount, () => a.face);
   for (const l of g.limbs) if (!l.attached && dist(a, l) < range && (l.x - a.x) * a.face > -5) Body.setVelocity(l.body, { x: a.face * 7, y: -4 });
   if (held && held.kind !== 'barrel') {
     held.held = false;
@@ -240,7 +246,7 @@ export function detonateCharges(g, a) {
   for (const p of charges) { removeProp(g, p); explode(g, p.x, p.y, a.id); }
 }
 
-const pickable = p => !p.held && !['glass', 'shard', 'cargo'].includes(p.kind) && !p.fixed;
+const pickable = p => !p.held && !['glass', 'shard', 'cargo', 'chandelier'].includes(p.kind) && !p.fixed && !p.decor;
 
 export function interact(g, a) {
   if (a.dead) return;
@@ -263,7 +269,9 @@ export function interact(g, a) {
   }
   if (hazardInteract(g, a)) return;
   if (!armUsable(a)) { g.text(a.x, a.y - 28, 'SEM MÃO PARA PEGAR', '#d7b5ba'); return; }
-  const near = g.props.filter(p => pickable(p) && dist(a, p) < 38).sort((b, c) => dist(a, b) - dist(a, c))[0];
+  // The Cat King does not carry weapons (his court fights for him), nor DARK NOX (his scythe does).
+  const noArms = a.type === 0 || (a.type === 4 && a.form === 'dark');
+  const near = g.props.filter(p => pickable(p) && dist(a, p) < 38 && !(noArms && WEAPON_PROPS.includes(p.kind))).sort((b, c) => dist(a, b) - dist(a, c))[0];
   // Downed fighters and corpses can be picked up and thrown.
   const body = g.limbs.filter(l => l.ragdoll && (l.part === 'body' || l.part === 'head') && dist(a, l) < 32 && !g.actors.some(o => o.holdingLimb === l.id))
     .filter(l => { const o = g.actor(l.actor); return !l.attached || (o && o.knocked && o.id !== a.id); })
@@ -290,7 +298,7 @@ export function interact(g, a) {
     const e = a.embedded.pop();
     damage(g, a, 4, { x: a.x, y: a.y }, a.id, 'bleed', { force: true, part: e.part, kb: { x: 0, y: 0 } });
     a.bleed = Math.min(6, a.bleed + 1.5);
-    if (e.kind === 'blade' && !a.weapon) { a.weapon = 'blade'; a.ammo = 999; }
+    if (e.kind === 'blade' && !a.weapon && !(a.type === 0 || (a.type === 4 && a.form === 'dark'))) { a.weapon = 'blade'; a.ammo = 999; }
     g.text(a.x, a.y - 28, 'ARRANCOU!', '#e99598');
     g.fx('blood', { x: a.x, y: a.y, dx: a.face * 2, dy: -2, n: 10, s: 3 });
     g.sound('squish', a.x);
@@ -384,6 +392,9 @@ export function propCollision(g, b1, b2, pair) {
     const p = body.plugin.prop;
     if (!p || p.held) continue;
     const a = other.plugin.actor, prop2 = other.plugin.prop, limb = other.plugin.limb;
+    // The castle's decor is not solid: something thrown into it breaks it, nothing else happens.
+    if (p.decor) { if (prop2 && !prop2.decor && body.isSensor && prop2.body.speed > 4) damageProp(g, p, 12, prop2.owner); continue; }
+    if (other.isSensor) continue;
     if (p.kind === 'glass') {
       if (a && a.body.speed > 4.5) damageProp(g, p, 60, a.id);
       if (prop2 && prop2.body.speed > 4) damageProp(g, p, 50, prop2.owner);
@@ -440,7 +451,7 @@ export function propCollision(g, b1, b2, pair) {
       limb.throwTime = 0;
     }
     // Ragdolls slammed into the level take impact damage.
-    if (otherBody.isStatic && limb.attached && limb.body.speed > 9) {
+    if (otherBody.isStatic && !otherBody.isSensor && limb.attached && limb.body.speed > 9) {
       const owner = g.actor(limb.actor);
       if (owner && !owner.dead && owner.knocked && g.time - (owner.slamAt || 0) > 0.25) {
         owner.slamAt = g.time;

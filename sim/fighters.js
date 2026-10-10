@@ -1,10 +1,11 @@
+import { DARK } from './moves.js';
 // stats: [DANO, MOBILIDADE, ESPECIAL] out of 5.
 export const FIGHTERS = [
   {
-    id: 'cat', name: 'Mingau', species: 'O GATO', role: 'AGILIDADE / GARRAS', word: 'MIAU.', color: '#f68268',
-    desc: 'Fofo até alguém respirar alto. Arranha em sequência e não solta mais.',
-    ability: 'Bote', icon: '>', stats: [3, 5, 4], hp: 120, speed: 5, weight: 0.9, cooldown: 6,
-    detail: 'J arranha; o terceiro lança e J de novo persegue no ar. S+J arranha baixo e derruba. K: bote, monta na cabeça e chuta.'
+    id: 'cat', name: 'Mingau', species: 'O REI GATO', role: 'COMANDO / CORTE', word: 'AJOELHEM.', color: '#f68268',
+    desc: 'Rei de coroa e cetro. Cinco gatinhos da corte o protegem a todo custo e atacam sozinhos.',
+    ability: 'BANDEIRA REAL', icon: '♛', stats: [3, 4, 5], hp: 90, speed: 5, weight: 0.9, cooldown: 15,
+    detail: 'J: a corte ataca um por vez. S+J flechas; lado+J carga. K: finca a bandeira: gatinhos buscam peixe e ela vira casa e castelo.'
   },
   {
     id: 'rat', name: 'Marola', species: 'O RATO', role: 'ALCANCE / ATROPELO', word: 'ALOHA.', color: '#7bcbbb',
@@ -13,10 +14,10 @@ export const FIGHTERS = [
     detail: 'J chicoteia de longe; o terceiro lança com o rabo. S+J é uma rasteira que derruba. K vira bola de hamster e atropela.'
   },
   {
-    id: 'rabbit', name: 'Lola', species: 'A COELHA', role: 'EMPURRÃO / ÁREA', word: 'LIVE!', color: '#d3a0df',
-    desc: 'Pernas de mola. Um coice dela manda qualquer um para o outro lado da sala.',
-    ability: 'Pisão do céu', icon: '▼', stats: [3, 4, 5], hp: 130, speed: 4.8, weight: 0.95, cooldown: 7,
-    detail: 'J chuta rápido; o terceiro é um chute-foguete que lança. S+J: coice duplo que empurra muito. K: pisão do céu.'
+    id: 'rabbit', name: 'Lola', species: 'A COELHA', role: 'FACAS / TEMPO', word: 'TIC-TAC.', color: '#6aa8f0',
+    desc: 'Coelha de laço azul com um relógio de bolso. Corta com facas e some antes de você piscar.',
+    ability: 'ZA WARUDO', icon: '◷', stats: [4, 5, 5], hp: 120, speed: 5.1, weight: 0.9, cooldown: 20,
+    detail: 'J: facas, dança de lâminas, some e reaparece atrás. Lado+J: salta no tempo. No combo: S+J chuva de facas, toque de lado+J muralha (no ar, anel). K: para o tempo.'
   },
   {
     id: 'ocelot', name: 'Juma', species: 'A JAGUATIRICA', role: 'FÚRIA / FERA / TITÃ', word: 'GRRR.', color: '#e6ba67',
@@ -27,8 +28,8 @@ export const FIGHTERS = [
   {
     id: 'bat', name: 'Nox', species: 'O MORCEGO BRANCO', role: 'VAMPIRO / HEMOMANCIA', word: 'SHHH.', color: '#9fb9ea',
     desc: 'Vampiro de cachecol vermelho. Faz do sangue garra, chicote e lança, e bebe o troco.',
-    ability: 'Sangue perfurante', icon: '⌁', stats: [4, 4, 5], hp: 110, speed: 5.1, weight: 0.8, cooldown: 6,
-    detail: 'J: garra, ceifa, ciclone, guilhotina, estacas. S+J no combo: rasteira. K: sangue perfurante; com 3 marcas: RÉQUIEM. Todo golpe rouba vida.'
+    ability: 'DARK NOX', icon: '⌁', stats: [4, 4, 5], hp: 110, speed: 5.1, weight: 0.8, cooldown: 6,
+    detail: 'Faz sangrar e bebe o sangue, até das poças. Barra cheia + K = DARK NOX por 30 s (nem a morte tira): a foice voa sozinha e comba junto.'
   },
   {
     id: 'frog', name: 'Don Sapone', species: 'O SAPO', role: 'ENGOLE / COPIA', word: 'CROAC.', color: '#8cc65a',
@@ -55,11 +56,11 @@ export const formOf = a => FORMS[a.form || null] || FORMS.null;
 // The fighting style a fighter is using: their own, or the one the frog swallowed. Moves, specials
 // and the habits that go with them follow the style; life, weight, speed and looks stay the fighter's.
 export const styleOf = a => a.copy ?? a.type;
-// The body a fighter is drawn with: Juma's forms, or the frog's borrowed looks ('c0'..'c4').
+// The body a fighter is drawn with: Juma's and Nox's forms, or the frog's borrowed looks ('c0'..'c6').
 export const lookOf = a => (a.type === 5 ? (a.copy != null && !(a.act === 'gulp' && !a.copied) ? 'c' + a.copy : null) : a.form || null);
 export const weightOf = a => FIGHTERS[a.type].weight * formOf(a).weight;
-// The frog waddles a little slower with someone in his belly.
-export const speedOf = a => FIGHTERS[a.type].speed * formOf(a).speed * (a.belly != null ? 0.88 : 1);
+// DARK NOX is quicker on his feet; the frog waddles a little slower with someone in his belly.
+export const speedOf = a => FIGHTERS[a.type].speed * formOf(a).speed * (a.form === 'dark' ? DARK.speed : 1) * (a.belly != null ? 0.88 : 1);
 // The frog's belly: how long a swallowed rival stays in on their own, and how much each button
 // they mash takes off it.
 export const BELLY = { hold: 8, mash: 0.12 };

@@ -1,5 +1,5 @@
 import { Body, Query, MASK, CAT, onewayBit, GRAV, approach } from './physics.js';
-import { MOVES, NOX_AIR } from './moves.js';
+import { MOVES, NOX_AIR, BURST } from './moves.js';
 import { MAP } from './map.js';
 import { FIGHTERS, speedOf, weightOf, styleOf } from './fighters.js';
 import { clamp } from '../engine/const.js';
@@ -12,7 +12,7 @@ import { tickAxolotl, axoGrab } from './axolotl.js';
 import { HALF_H, FOOT } from '../render/rig.js';
 
 export { HALF_H };
-const TIMERS = ['batCd', 'biteCd', 'chargeCd', 'hitstun', 'attack', 'attackCd', 'abilityCd', 'float', 'bufA', 'bufP', 'parry', 'parryCd', 'parryLag', 'counter', 'perfectT', 'hurt', 'invincible', 'iframes', 'dodgeCd', 'dodge', 'jumpGrace', 'jumpBuffer', 'stun', 'getup', 'comboTimer', 'shock', 'skid', 'landT', 'climbCd'];
+const TIMERS = ['batCd', 'biteCd', 'chargeCd', 'skipCd', 'setCd', 'burstCd', 'hitstun', 'attack', 'attackCd', 'abilityCd', 'float', 'bufA', 'bufP', 'parry', 'parryCd', 'parryLag', 'counter', 'perfectT', 'hurt', 'invincible', 'iframes', 'dodgeCd', 'dodge', 'jumpGrace', 'jumpBuffer', 'stun', 'getup', 'comboTimer', 'shock', 'skid', 'landT', 'climbCd'];
 
 export function groundInfo(g, a) {
   const b = a.body, x = b.position.x, feet = b.position.y + HALF_H;
@@ -25,6 +25,7 @@ export function groundInfo(g, a) {
   }
   for (let i = 0; i < MAP.oneway.length; i++) {
     const p = MAP.oneway[i];
+    if (g.hz?.off?.[i]) continue;
     if ((b.collisionFilter.mask & onewayBit(i)) && x + 6 > p.x0 && x - 6 < p.x1 && on(p.y)) return { kind: 'oneway', y: p.y, index: i, id: p.id };
   }
   if (b.collisionFilter.mask & CAT.actor) for (const o of g.actors) {
@@ -33,7 +34,7 @@ export function groundInfo(g, a) {
     if (Math.abs(o.body.position.x - x) < 13 && feet >= top - 3 && feet <= top + 6) return { kind: 'actor', y: top, id: null, actor: o.id };
   }
   const bodies = [];
-  for (const p of g.props) if (!p.held && p.kind !== 'glass') bodies.push(p.body);
+  for (const p of g.props) if (!p.held && p.kind !== 'glass' && !p.body.isSensor) bodies.push(p.body);
   for (const dx of [-5, 5]) {
     const hits = Query.ray(bodies, { x: x + dx, y: feet - 2 }, { x: x + dx, y: feet + 6 }, 2);
     if (hits.length) return { kind: 'prop', y: feet, body: hits[0].body || hits[0].bodyA };
@@ -88,6 +89,9 @@ function land(g, a, impact, height = 0) {
   }
 }
 
+// Held by a rival: in Nox's requiem.
+const heldBy = (g, a) => g.actors.some(o => o !== a && o.act === 'requiem' && o.reqId === a.id);
+
 export function stepActor(g, a, dt) {
   if (a.dead) {
     a.respawn -= dt;
@@ -109,7 +113,7 @@ export function stepActor(g, a, dt) {
   if (a.turnT && g.time >= a.turnT) { const o = g.actor(a.turnTo); if (o && !o.dead) a.face = o.x >= a.x ? 1 : -1; a.turnT = 0; }
   for (const k of TIMERS) a[k] = Math.max(0, (a[k] || 0) - dt);
   for (const k in a.drop) a.drop[k] = Math.max(0, a.drop[k] - dt);
-  tickForm(g, a);
+  tickForm(g, a, dt);
   tickBelly(g, a, dt);
   tickAxolotl(g, a, dt);
   if (a.frozen > 0) {
@@ -122,7 +126,7 @@ export function stepActor(g, a, dt) {
 
   const queued = a.queued || {};
   const input = a.bot ? think(g, a, dt) : { ...a.input };
-  // Moves read the held directions off a.input (side+J, S+J): a bot's come from its own plan.
+  // The moves read the held directions off a.input (S+J, side+J): a bot's are what it thinks.
   if (a.bot) a.input = input;
   if (!a.bot) for (const k of Object.keys(queued)) input[k] = true;
   a.queued = {};
@@ -282,7 +286,9 @@ export function stepActor(g, a, dt) {
     if (a.jumpHeld && !input.jump) { if (vy < -2.5) vy *= 0.48; a.jumpHeld = false; }
     if (vy > 0) a.jumpHeld = false;
     // A bat hovers through his air string instead of dropping out from under it.
-    if (styleOf(a) === 4 && a.attack > 0 && NOX_AIR.includes(a.attackKind)) vy = Math.min(vy, 0.35);
+    if (styleOf(a) === 4 && a.attack > 0 && (NOX_AIR.includes(a.attackKind) || a.attackKind === 'dAirClaw' || a.attackKind === 'dAirVortex')) vy = Math.min(vy, 0.35);
+    // Lola hangs in the air while she lays her ring of knives.
+    if (styleOf(a) === 2 && a.attack > 0 && a.attackKind === 'lAirRing') vy = Math.min(vy, -0.3);
     // Nox glides, scarf streaming, while jump is held on the way down.
     if (styleOf(a) === 4 && vy > 1.2 && input.jump && control >= 1) { vy = Math.min(vy, 1.7); a.gliding = true; }
   }
@@ -291,6 +297,14 @@ export function stepActor(g, a, dt) {
   // the air, both through attacks). Rolling also smothers fire.
   // A fresh tap of a direction, for Nox's phantom reap branch.
   if (pressed('left') || pressed('right')) a.dirTap = g.time;
+  // Reeling from a hit, Shift is a split second of parry: timed to the next blow it breaks the combo
+  // (combat.js parried); missed, Shift does nothing for a while (no mashing out of a string).
+  // Not out of a hold (the requiem): it has its own way out.
+  if (pressed('dodge') && a.hitstun > 0 && !a.knocked && !(a.frozen > 0) && !(a.burstCd > 0) && !a.act && !heldBy(g, a)) {
+    a.parry = BURST.window; a.burstCd = BURST.cd;
+    g.fx('ring', { x: a.x, y: a.y, size: 20, color: '#c8f0ff' });
+    g.sound('swing', a.x);
+  }
   if (pressed('dodge') && control >= 1 && !a.climbing && a.parryLag <= 0 && !a.act) {
     const dir = (input.right ? 1 : 0) - (input.left ? 1 : 0);
     if (!dir && a.parryCd <= 0) {
@@ -338,14 +352,13 @@ export function stepActor(g, a, dt) {
   a.lastPreVy = vy;
 }
 
-const GHOST_ACTS = ['chase', 'ride', 'pounce', 'kickoff', 'plunge', 'requiem', 'swarm', 'charge', 'leap', 'meteor', 'frenzy'];
+const GHOST_ACTS = ['chase', 'plunge', 'requiem', 'swarm', 'charge', 'leap', 'meteor', 'blink', 'world', 'frenzy'];
 function updateMask(g, a, vy) {
   const b = a.body;
   let mask = MASK.actor;
   if (a.ghostClear && !g.actors.some(o => o !== a && !o.dead && !o.knocked && o.swallowedBy == null && Math.abs(o.body.position.x - b.position.x) < 16 && Math.abs(o.body.position.y - b.position.y) < HALF_H * 2)) a.ghostClear = false;
   if (a.ghostClear || a.dodge > 0 || GHOST_ACTS.includes(a.act) || (a.attack > 0 && MOVES[a.attackKind]?.pass)) mask &= ~CAT.actor;
-  // A rider follows the head under it, so catwalks it would land on are not in its way.
-  if (!a.climbing && a.act !== 'ride') {
+  if (!a.climbing) {
     const feet = b.position.y + HALF_H;
     for (let i = 0; i < MAP.oneway.length; i++) {
       if (a.drop[i] > 0) continue;

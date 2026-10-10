@@ -10,10 +10,15 @@ import { SKULL, BURN_PAL, VENUS } from './axo-bits.js';
 const mk = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
 const X = v => v * S;
 const ease = t => 1 - (1 - t) * (1 - t);
-const TOPS = [
-  ...MAP.solids.filter(s => s.kind !== 'wall' && s.kind !== 'pit').map(s => ({ x0: X(s.x0), x1: X(s.x1), y: X(s.y0) })),
-  ...MAP.oneway.map(p => ({ x0: X(p.x0), x1: X(p.x1), y: X(p.y) }))
-];
+// The tops of the arena's surfaces, where falling particles settle (rebuilt when the arena changes).
+let TOPS = [];
+function surfaceTops() {
+  TOPS = [
+    ...MAP.solids.filter(s => s.kind !== 'wall' && s.kind !== 'pit').map(s => ({ x0: X(s.x0), x1: X(s.x1), y: X(s.y0) })),
+    ...MAP.oneway.map(p => ({ x0: X(p.x0), x1: X(p.x1), y: X(p.y) }))
+  ];
+}
+surfaceTops();
 const BLOOD = [P.blood1, P.blood2, P.blood3, P.blood2, P.blood0];
 const ROCK = ['#5a5068', '#7a6e88', '#3e3648', '#9a8eaa'], STEAM = ['#e8e4f0', '#c8c0d8', '#a8a0c0'], EMBER = ['#ffffff', '#ffe2a0', '#ffb040', '#ff6a2a'];
 const DUST = ['#6a6078', '#8a7f95', '#4f475e'];
@@ -28,11 +33,13 @@ const PART = { s: 1, g: 0, b: 0, drag: 1, em: false, ov: false, stick: false, gr
 const copyCols = c => (c >= 0 && FIGHTERS[c] ? [FIGHTERS[c].color, '#ffffff', '#ffe2a0'] : SLIME);
 const FIRE = [P.fire0, P.fire1, P.fire2, P.fire3, P.fire4];
 const DEBRIS = {
-  wood: ['#b07b4f', '#87553c', '#d6a46c'], glass: ['#bfe8f2', '#8cc0dc', '#ffffff'], metal: ['#8a87a2', '#5a5276', '#c4c0d8'],
+  wood: ['#b07b4f', '#87553c', '#d6a46c'], stone: ['#6a6280', '#4a4460', '#8a82a0', '#2e2a40'], glass: ['#bfe8f2', '#8cc0dc', '#ffffff'], metal: ['#8a87a2', '#5a5276', '#c4c0d8'],
   flesh: [P.flesh, P.blood3, P.blood2], bone: [P.bone1, P.bone2, P.bone0], ice: [P.ice0, P.ice1, P.ice2]
 };
 
 export class FX {
+  setMap() { surfaceTops(); }
+
   constructor() {
     this.parts = [];
     this.smears = [];

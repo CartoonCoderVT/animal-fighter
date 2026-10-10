@@ -2,6 +2,7 @@ import { VIEW_W, VIEW_H } from '../../engine/const.js';
 import { drawText } from '../../engine/font.js';
 import { FIGHTERS } from '../../sim/fighters.js';
 import { panel, paragraph, button, hit, hover, TextField } from '../widgets.js';
+import { MAPS, MAP_IDS } from '../../sim/map.js';
 
 const goMenu = s => import('./title.js').then(m => s.go(new m.MenuScene(s)));
 
@@ -35,6 +36,7 @@ export class OnlineScene {
     this.shell.settings.name = this.name.value.trim();
     this.shell.saveSettings();
     this.shell.net.bots = Math.max(0, Math.min(3, this.shell.settings.bots ?? 3));
+    this.shell.net.map = MAP_IDS.includes(this.shell.settings.map) ? this.shell.settings.map : 'depot';
     try { await this.shell.net.create(this.name.value, this.shell.selected); } catch (e) { this.status = e.message; }
     this.busy = false;
   }
@@ -85,9 +87,9 @@ export class OnlineScene {
 export class LobbyScene {
   constructor(shell) {
     this.shell = shell; this.t = 0; this.copied = 0;
-    this.items = ['bots', 'start', 'leave'];
-    this.focus = shell.net.host ? 1 : 2;
-    this.rects = { code: { x: VIEW_W / 2 - 150, y: 70, w: 300, h: 40 }, bots: { x: VIEW_W / 2 - 150, y: 242, w: 300, h: 16 }, start: { x: VIEW_W / 2 - 150, y: 262, w: 300, h: 20 }, leave: { x: VIEW_W / 2 - 150, y: 286, w: 300, h: 16 } };
+    this.items = ['bots', 'map', 'start', 'leave'];
+    this.focus = shell.net.host ? 2 : 3;
+    this.rects = { code: { x: VIEW_W / 2 - 150, y: 70, w: 300, h: 40 }, bots: { x: VIEW_W / 2 - 150, y: 242, w: 146, h: 16 }, map: { x: VIEW_W / 2 + 4, y: 242, w: 146, h: 16 }, start: { x: VIEW_W / 2 - 150, y: 262, w: 300, h: 20 }, leave: { x: VIEW_W / 2 - 150, y: 286, w: 300, h: 16 } };
   }
   async copy() {
     const link = `${location.origin}${location.pathname}?sala=${this.shell.net.code}`;
@@ -101,7 +103,16 @@ export class LobbyScene {
     // The chosen number of bots fills free places; with nobody else in the room one still comes.
     let bots = Math.max(net.bots, players.length < 2 ? 1 : 0);
     for (let id = 0; id < 4 && bots > 0; id++) if (!used.has(id)) { players.push({ id, type: (s.selected + id + 1) % FIGHTERS.length, name: FIGHTERS[(s.selected + id + 1) % FIGHTERS.length].name + ' BOT', bot: true }); bots--; }
-    try { net.start(players); s.startMatch(players, { mode: 'online' }); } catch (e) { s.toast(e.message); }
+    try { net.start(players); s.startMatch(players, { mode: 'online', map: net.map }); } catch (e) { s.toast(e.message); }
+  }
+  // The host picks the arena; it is remembered.
+  cycleMap() {
+    const s = this.shell;
+    if (!s.net.host) return;
+    s.settings.map = MAP_IDS[(MAP_IDS.indexOf(s.net.map) + 1) % MAP_IDS.length];
+    s.saveSettings();
+    s.net.setMap(s.settings.map);
+    s.sound.play('ui_move');
   }
   // The host cycles the number of bots, 0 to 3, and it is remembered.
   cycleBots() {
@@ -116,17 +127,18 @@ export class LobbyScene {
   update(dt) {
     this.t += dt; this.copied = Math.max(0, this.copied - dt);
     const i = this.shell.input;
-    if (i.nav('up')) { this.focus = (this.focus + 2) % 3; this.shell.sound.play('ui_move'); }
-    if (i.nav('down')) { this.focus = (this.focus + 1) % 3; this.shell.sound.play('ui_move'); }
+    if (i.nav('up')) { this.focus = (this.focus + 3) % 4; this.shell.sound.play('ui_move'); }
+    if (i.nav('down')) { this.focus = (this.focus + 1) % 4; this.shell.sound.play('ui_move'); }
     if (i.pressed('KeyC') || hit(i, this.rects.code)) this.copy();
     if (hit(i, this.rects.start)) this.start();
     if (hit(i, this.rects.bots)) this.cycleBots();
+    if (hit(i, this.rects.map) || i.pressed('KeyM')) this.cycleMap();
     // Your own fighter can still be changed while the room waits.
     const me = this.shell.net.players.findIndex(p => p.id === this.shell.net.localId);
     const step = i.nav('left') ? -1 : i.nav('right') ? 1 : me >= 0 && hit(i, { x: VIEW_W / 2 - 150, y: 122 + me * 30, w: 300, h: 26 }) ? 1 : 0;
     if (step) { this.shell.pickFighter((this.shell.selected + step + FIGHTERS.length) % FIGHTERS.length); this.shell.sound.play('ui_move'); }
     if (hit(i, this.rects.leave)) this.leave();
-    if (i.nav('ok')) { const k = this.items[this.focus]; if (k === 'start') this.start(); else if (k === 'bots') this.cycleBots(); else this.leave(); }
+    if (i.nav('ok')) { const k = this.items[this.focus]; if (k === 'start') this.start(); else if (k === 'bots') this.cycleBots(); else if (k === 'map') this.cycleMap(); else this.leave(); }
     if (i.nav('back')) this.leave();
   }
   draw(g) {
@@ -150,9 +162,10 @@ export class LobbyScene {
         if (p.id === net.localId) drawText(g, '◀ ▶ TROCAR', VIEW_W / 2 + 144, y + 9, { color: FIGHTERS[p.type].color, align: 'right' });
       } else drawText(g, k - net.players.length < net.bots ? 'VAGA LIVRE · UM BOT JOGA SE NINGUÉM ENTRAR' : 'VAGA LIVRE · SEM BOT', VIEW_W / 2 - 140, y + 9, { color: '#5a4e68' });
     }
-    button(g, this.rects.bots, net.host ? `BOTS: ${net.bots} · TROCAR` : `BOTS: ${net.bots} · O ANFITRIÃO ESCOLHE`, { hot: this.focus === 0 && net.host, disabled: !net.host, color: '#8a7f9c' });
-    button(g, this.rects.start, net.host ? 'COMEÇAR PARTIDA ▶' : 'AGUARDANDO ANFITRIÃO…', { hot: this.focus === 1 && net.host, disabled: !net.host, color: '#7bcbbb' });
-    button(g, this.rects.leave, 'SAIR DA SALA', { hot: this.focus === 2 });
+    button(g, this.rects.bots, `BOTS: ${net.bots}` + (net.host ? ' · TROCAR' : ''), { hot: this.focus === 0 && net.host, disabled: !net.host, color: '#8a7f9c' });
+    button(g, this.rects.map, `MAPA: ${(MAPS[net.map] || MAPS.depot).name}` + (net.host ? ' · M' : ''), { hot: this.focus === 1 && net.host, disabled: !net.host, color: '#a58ad0' });
+    button(g, this.rects.start, net.host ? 'COMEÇAR PARTIDA ▶' : 'AGUARDANDO ANFITRIÃO…', { hot: this.focus === 2 && net.host, disabled: !net.host, color: '#7bcbbb' });
+    button(g, this.rects.leave, 'SAIR DA SALA', { hot: this.focus === 3 });
     drawText(g, net.host ? 'MANDE O CÓDIGO E O LINK DO JOGO PARA OS AMIGOS.' : 'O ANFITRIÃO COMEÇA A PARTIDA.', VIEW_W / 2, 308, { color: '#6a5e80', align: 'center' });
   }
 }

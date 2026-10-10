@@ -1,0 +1,2294 @@
+// The Cat King's court: the five little cats who follow Mingau and fight on his orders (sim/court.js).
+// soldier (sword, helmet and plume), archer (green hood, bow and quiver), assassin (black cat, crimson
+// mask, two daggers), mage (pointed hat, starry robe, staff with a crystal; he floats), shield (a big
+// kite shield with the royal crest). Each one is built out of shaded pixel primitives into a small
+// cached sprite per pose (1-px ink outline, a light rim along the top), then posed from what the
+// simulation says it is doing (a.court[i]: st, act, t, vx, air, f): idle breathing, walk and run
+// cycles, jumps, every action with its anticipation, strike frame and follow-through, popping in and out.
+// They are restless: in rank they bounce on their toes, weapons up, glance about and hop round their
+// places; with the King on the move they run flat out. They are mortal: a blow (f.hurt) flashes white,
+// then red, with a shiver and squeezed-shut eyes; a fallen one (st 'dead', t since) is thrown the way
+// it was struck, tumbles, loses its weapon, lands, flickers out in a puff and a little haloed ghost
+// rises from where it lay. (Their health bars and the King's card pips are in hud.js.)
+// The event effects (slashes, stabs, lightning, meteors, smoke), the
+// arrows and magic bolts and the lights are drawn from fx events and observable state, so remote peers
+// see the same thing. Pure at load time (no DOM until something is drawn).
+//
+// Hooks (renderer.js):
+//   const court = new CourtFX(renderer)
+//   court.event(e)                                 every fx event (courtHit, blink, bolt, meteor,
+//                                                  courtPoof, courtAppear, courtHurt, courtDie)
+//   court.update(dt)                               every frame (it measures the game clock the draw
+//                                                  calls see, so the effects slow down with the LAB's
+//                                                  slow motion too)
+//   court.drawCourt(g, a, ox, oy, t, front)        lit layer: front=false before the fighters (the
+//                                                  court in formation, behind the King), front=true
+//                                                  after them (the shield on guard and every familiar
+//                                                  acting, so the blows read over the fighters)
+//   court.drawCourtKeep(lg, a, ox, oy, t, figures)  after the light map, right after the fighters'
+//                                                  own-color pass (lg.globalAlpha = 0.45 ... drawImage):
+//                                                  the familiars keep part of their own color too (the
+//                                                  ones behind are cut out where a fighter stands in
+//                                                  front of them). Until it is called, drawCourtGlow
+//                                                  does it for the familiars in front only.
+//   court.drawCourtGlow(g, a, ox, oy, t)           emissive layer: crystal, eyes, spells, and the gold
+//                                                  rim of the ones the kingdom's aura buffs (F.b 1..3)
+//   court.drawEffects(g, ox, oy, t)                emissive layer: the event effects
+//   court.drawBullet(g, b, ox, oy, t)              arrows and magic bolts; true if it drew b
+//   courtLights(state, t)                          light descriptors (view px, no shake)
+// For the select screen (king-hero.js):
+//   drawFamiliar(g, k, x, y, { f, scale, pose, t, p })   one familiar, feet at canvas pixel (x, y)
+//   drawFamiliarGlow(g, k, x, y, { f, scale, pose, t, p })  its glowing bits (crystal, sigil, eyes)
+//   pose: 'idle' | 'walk' | 'run' | 'jump' | 'fall' | any action name of COURT_ACTS[k] (p: 0..1 through it)
+//         | the hero poses 'heroRaise' (soldier), 'heroDraw' (archer), 'heroCrouch' (assassin),
+//           'heroCast' (mage), 'heroKneel' (shield): HERO_POSE[k] names each one's.
+import { S, seeded } from '../engine/const.js';
+import { ramp } from '../engine/palette.js';
+import * as MOVES from '../sim/moves.js';
+
+const KINDS = ['soldier', 'archer', 'assassin', 'mage', 'shield'];
+export const HERO_POSE = { soldier: 'heroRaise', archer: 'heroDraw', assassin: 'heroCrouch', mage: 'heroCast', shield: 'heroKneel' };
+const clamp01 = v => Math.max(0, Math.min(1, v));
+const ease = u => 1 - (1 - u) * (1 - u);
+const lerp = (a, b, u) => a + (b - a) * u;
+const DEG = Math.PI / 180;
+
+// Action timings from the simulation, with fallbacks in case a name is missing.
+const FALLBACK = {
+  soldier: { slash: [0.34, [0.55]], rise: [0.4, [0.5]], air: [0.3, [0.5]], plunge: [0.4, [0.6]], charge: [0.5, [0.2, 0.4, 0.6, 0.8]] },
+  archer: { shot: [0.36, [0.5]], volley: [0.5, [0.3, 0.55, 0.8]], rain: [0.45, [0.4]], airshot: [0.36, [0.5]] },
+  assassin: { stab: [0.42, [0.45, 0.75]], shadow: [0.4, [0.4]], mercy: [0.5, [0.3, 0.55, 0.8]] },
+  mage: { zap: [0.42, [0.55]], meteor: [0.5, [0.7]] },
+  shield: { bash: [0.4, [0.5]], drop: [0.45, [0.6]], charge: [0.5, [0.2, 0.4, 0.6, 0.8]], guard: [0.25, []] }
+};
+function actInfo(k, act) {
+  const A = MOVES.COURT_ACTS?.[k]?.[act];
+  if (A) return { dur: A.dur || 0.4, hits: A.hits || [] };
+  const f = FALLBACK[k]?.[act];
+  return f ? { dur: f[0], hits: f[1] } : { dur: 0.4, hits: [0.5] };
+}
+// Where p (0..1 through an action) stands relative to its strikes: i the strike it is on, pre 0..1
+// winding up to it (1 on the strike), post 0..1 after it until the next wind-up (or the end).
+function stageOf(p, hits) {
+  if (!hits.length) return { i: 0, pre: 1, post: p, n: 0, last: true };
+  for (let i = 0; i < hits.length; i++) {
+    const h = hits[i], start = i === 0 ? 0 : (hits[i - 1] + h) / 2;
+    if (p < h) return { i, pre: clamp01((p - start) / Math.max(0.001, h - start)), post: 0, n: hits.length, last: i === hits.length - 1 };
+    const end = i === hits.length - 1 ? 1 : (h + hits[i + 1]) / 2;
+    if (p < end) return { i, pre: 1, post: clamp01((p - h) / Math.max(0.001, end - h)), n: hits.length, last: i === hits.length - 1 };
+  }
+  return { i: hits.length - 1, pre: 1, post: 1, n: hits.length, last: true };
+}
+
+// ---- palettes -----------------------------------------------------------------------------------
+// ramp(): [outline, dark, base, light, highlight]
+const INK = '#120b19';
+const R = hex => ramp(hex).hex;
+const STEEL = R('#a9aec8'), GOLD = R('#e8b040'), PINK = R('#ff9fb4'), CREAM = R('#fbecd2');
+const EYE = R('#2a1a2a');
+const KIT = {
+  soldier: { fur: R('#ee9a48'), belly: CREAM, pink: PINK, eyeR: EYE, main: R('#cc3444'), trim: GOLD, steel: STEEL, plume: R('#e8384a'), grip: R('#6a3a2a'), glow: '#ffe6a0', ghost: '#ff8a5a' },
+  archer: { fur: R('#ead0a2'), belly: R('#fff8ea'), pink: PINK, eyeR: EYE, main: R('#46a24c'), dark: R('#2c6e3c'), leather: R('#8e5634'), wood: R('#b4783a'), string: R('#b8a890'), white: R('#f0ecf4'), glow: '#c8ffb0', ghost: '#7ce07a' },
+  assassin: { fur: R('#3e3450'), belly: R('#5e5476'), pink: R('#c46a8c'), eyeR: R('#ffe23a'), main: R('#c8263c'), steel: R('#cfd6e8'), grip: R('#2a2030'), toe: R('#5e5476'), glow: '#ffe23a', ghost: '#7a4ac8' },
+  mage: { fur: R('#f4f2fa'), belly: CREAM, pink: PINK, eyeR: EYE, main: R('#4444b0'), trim: GOLD, wood: R('#94603a'), gem: R('#c46cff'), glow: '#e0b0ff', ghost: '#a070ff' },
+  shield: { fur: R('#b07a4e'), belly: CREAM, pink: PINK, eyeR: EYE, steel: STEEL, main: R('#c02e44'), trim: GOLD, glow: '#ffe08a', ghost: '#ffd860' },
+  // The kingdom's own (sim/kingdom.js): a grey kitten in a yellow hard hat, and a tuxedo cat in armour.
+  worker: { fur: R('#a8a2bc'), belly: CREAM, pink: PINK, eyeR: EYE, hat: R('#f6c228'), steel: STEEL, wood: R('#b07a44'), fish: R('#b4c4dc'), fin: R('#6a86b4'), lamp: R('#fff2b0'), glow: '#fff2b0', ghost: '#d8d0e8' },
+  knight: { fur: R('#4c4260'), belly: R('#f4eef8'), pink: PINK, eyeR: R('#9ce06a'), main: R('#c02e44'), trim: GOLD, steel: STEEL, mail: R('#8a8eac'), legs: R('#8a8eac'), plume: R('#e8384a'), grip: R('#6a3a2a'), glow: '#ffe6a0', ghost: '#ff8a5a' }
+};
+
+// ---- the pixel grid each pose is painted into --------------------------------------------------
+// Local coordinates: x ahead (facing right), y down, the feet's bottom row is y = -1.
+const GW = 64, GH = 64, OX = 32, OY = 44;
+class Grid {
+  constructor() {
+    this.R = new Array(GW * GH).fill(null);
+    this.L = new Uint8Array(GW * GH);
+    this.P = new Int16Array(GW * GH);
+    this.pid = 0; this.cells = null; this.pts = {};
+  }
+  // A part: with sep, an ink line is drawn round it where it covers what was painted before.
+  begin(sep = false) { this.pid++; this.cells = sep ? [] : null; }
+  end() {
+    if (!this.cells) return;
+    for (const i of this.cells) for (const d of [-1, 1, -GW, GW]) {
+      const n = i + d;
+      if (this.R[n] && this.P[n] !== this.pid && this.P[n] > 0) { this.R[n] = null; this.L[n] = 0; this.P[n] = -1; }
+    }
+    this.cells = null;
+  }
+  set(x, y, Rp, l) {
+    const gx = OX + Math.floor(x), gy = OY + Math.floor(y);
+    if (gx < 1 || gy < 1 || gx >= GW - 1 || gy >= GH - 1) return;
+    const i = gy * GW + gx;
+    this.R[i] = Rp; this.L[i] = l; this.P[i] = this.pid;
+    if (this.cells) this.cells.push(i);
+  }
+  ink(x, y) { const gx = OX + Math.floor(x), gy = OY + Math.floor(y), i = gy * GW + gx; if (gx > 0 && gy > 0 && gx < GW - 1 && gy < GH - 1) { this.R[i] = null; this.P[i] = -1; } }
+  has(x, y) { const i = (OY + Math.floor(y)) * GW + OX + Math.floor(x); return !!this.R[i]; }
+  rect(x, y, w, h, Rp, l) { for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) this.set(x + i, y + j, Rp, l); }
+  // A shaded ellipse lit from the top left.
+  ell(cx, cy, rx, ry, Rp, { lo = 1, hi = 3, top = 4 } = {}) {
+    for (let y = Math.floor(cy - ry); y <= Math.ceil(cy + ry); y++) for (let x = Math.floor(cx - rx); x <= Math.ceil(cx + rx); x++) {
+      const nx = (x + 0.5 - cx) / rx, ny = (y + 0.5 - cy) / ry, d2 = nx * nx + ny * ny;
+      if (d2 > 1) continue;
+      const nz = Math.sqrt(1 - d2), d = -0.55 * nx - 0.62 * ny + 0.56 * nz;
+      this.set(x, y, Rp, d > 0.97 ? top : d > 0.72 ? hi : d > -0.3 ? 2 : lo);
+    }
+  }
+  line(x0, y0, x1, y1, Rp, l, w = 1) {
+    const n = Math.max(1, Math.ceil(Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0))));
+    for (let i = 0; i <= n; i++) {
+      const x = x0 + ((x1 - x0) * i) / n, y = y0 + ((y1 - y0) * i) / n;
+      this.rect(Math.round(x - (w - 1) / 2), Math.round(y - (w - 1) / 2), w, w, Rp, typeof l === 'function' ? l(i / n) : l);
+    }
+  }
+  // A filled polygon, flat colored (lv: level, or a function of x, y).
+  poly(pts, Rp, lv) {
+    let y0 = Infinity, y1 = -Infinity, x0 = Infinity, x1 = -Infinity;
+    for (const [x, y] of pts) { y0 = Math.min(y0, y); y1 = Math.max(y1, y); x0 = Math.min(x0, x); x1 = Math.max(x1, x); }
+    for (let y = Math.floor(y0); y <= Math.ceil(y1); y++) for (let x = Math.floor(x0); x <= Math.ceil(x1); x++) {
+      const px = x + 0.5, py = y + 0.5;
+      let on = false;
+      for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+        const [xi, yi] = pts[i], [xj, yj] = pts[j];
+        if ((yi > py) !== (yj > py) && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi) on = !on;
+      }
+      if (on) this.set(x, y, Rp, typeof lv === 'function' ? lv(x, y) : lv);
+    }
+  }
+  pt(name, x, y) { this.pts[name] = [x, y]; }
+  clear() { this.R.fill(null); this.L.fill(0); this.P.fill(0); this.pid = 0; this.cells = null; this.pts = {}; return this; }
+}
+// One grid, cleared for each new pose (built lazily: no DOM or big arrays at load).
+const GRID = { g: null, clear() { return (this.g ||= new Grid()).clear(); } };
+
+// Turns a painted grid into a sprite: an ink outline round the whole silhouette, the top edge lit,
+// cropped to its bounds. pts: named points (relative to the feet) for the glow layer and effects.
+let mkCanvas = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
+const RGBC = new Map();
+const rgbOf = hex => { let v = RGBC.get(hex); if (!v) { const n = parseInt(hex.slice(1, 7), 16); v = [(n >> 16) & 255, (n >> 8) & 255, n & 255]; RGBC.set(hex, v); } return v; };
+function finish(G, ink = INK) {
+  const N = GW * GH, out = new Array(N).fill(null), Rr = G.R, L = G.L;
+  for (let i = 0; i < N; i++) if (Rr[i]) {
+    // The rim: what faces up (open sky above it) catches the light.
+    let l = L[i];
+    if (!Rr[i - GW] && G.P[i - GW] !== -1 && l < 3 && l > 0) l = 3;
+    out[i] = Rr[i][l];
+  }
+  // The outline, and the separation lines parts left (P = -1).
+  const solid = i => !!Rr[i];
+  for (let i = GW; i < N - GW; i++) {
+    if (Rr[i]) continue;
+    if (G.P[i] === -1 && (solid(i - 1) || solid(i + 1) || solid(i - GW) || solid(i + GW))) { out[i] = ink; continue; }
+    if (solid(i - 1) || solid(i + 1) || solid(i - GW) || solid(i + GW)) out[i] = ink;
+  }
+  let x0 = GW, y0 = GH, x1 = -1, y1 = -1;
+  for (let y = 0; y < GH; y++) for (let x = 0; x < GW; x++) if (out[y * GW + x]) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+  if (x1 < 0) return null;
+  const w = x1 - x0 + 1, h = y1 - y0 + 1, c = mkCanvas(w, h), g = c.getContext('2d'), img = g.createImageData(w, h), d = img.data;
+  const mask = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const hex = out[(y + y0) * GW + x + x0];
+    if (!hex) continue;
+    const [r, gg, b] = rgbOf(hex), k = (y * w + x) * 4;
+    d[k] = r; d[k + 1] = gg; d[k + 2] = b; d[k + 3] = 255;
+    mask[y * w + x] = hex === ink ? 2 : 1;
+  }
+  g.putImageData(img, 0, 0);
+  return { canvas: c, flipped: null, x0: x0 - OX, y0: y0 - OY, w, h, mask, pts: G.pts, tints: {} };
+}
+
+// ---- the cats ---------------------------------------------------------------------------------
+// Foot frames: [far foot, near foot] (x, bottom row) and how far the body sinks (+) or rises (-).
+const LEGS = {
+  stand: { far: [-3, -1], near: [1, -1], dy: 0 },
+  w0: { far: [-4, -1], near: [2, -1], dy: 0 }, w1: { far: [-2, -2], near: [0, -1], dy: -1 },
+  w2: { far: [1, -1], near: [-3, -1], dy: 0 }, w3: { far: [-1, -1], near: [-1, -2], dy: -1 },
+  r0: { far: [-5, -2], near: [3, -1], dy: 0 }, r1: { far: [-3, -2], near: [1, -3], dy: -1 },
+  r2: { far: [3, -1], near: [-5, -2], dy: 0 }, r3: { far: [1, -3], near: [-3, -2], dy: -1 },
+  jump: { far: [-3, -2], near: [1, -3], dy: -1 }, fall: { far: [-4, -1], near: [2, -2], dy: -1 },
+  crouch: { far: [-4, -1], near: [2, -1], dy: 2 }, lunge: { far: [-5, -1], near: [3, -1], dy: 1 },
+  kneel: { far: [-4, -1], near: [2, -1], dy: 2 }, land: { far: [-4, -1], near: [2, -1], dy: 1 },
+  tuck: { far: [-2, -3], near: [1, -3], dy: -1 }, split: { far: [-6, -1], near: [4, -1], dy: 2 }
+};
+
+// The cat under the gear: tail, far leg, body, near leg. o: the pose (see poseFor). Returns where
+// the body and head are.
+function cat(G, K, o) {
+  const lg = LEGS[o.legs] || LEGS.stand, dy = lg.dy + (o.dy || 0), lean = o.lean || 0;
+  const bx = o.bx || 0, by = -5 + dy;
+  const hx = 1 + lean + bx, hy = -10.5 + dy + (o.hdy || 0);
+  const F = K.fur, B = K.body || F, LG = K.legs || F;
+  // The tail: thick at the root, curling up behind, swaying.
+  if (!o.noTail) {
+    G.begin();
+    const sw = o.tail || 0, up = o.tailUp || 0;
+    const p = [[bx - 3, by + 0.5], [bx - 5, by - 0.5], [bx - 6 + sw * 0.3, by - 2.5 - up], [bx - 6 + sw * 0.7, by - 4 - up], [bx - 5 + sw, by - 5 - up]];
+    G.line(p[0][0], p[0][1], p[1][0], p[1][1], F, 2, 2);
+    G.line(p[1][0], p[1][1], p[2][0], p[2][1], F, 2, 2);
+    G.line(p[2][0], p[2][1], p[3][0], p[3][1], F, 3);
+    G.line(p[3][0], p[3][1], p[4][0], p[4][1], K.tailTip || F, 3);
+    G.end();
+  }
+  // Far leg and foot, a shade darker.
+  const foot = ([fx, fy], near) => {
+    const top = by + 2;
+    G.line(bx + (near ? 1 : -1), top, bx + fx + 0.5, fy - 1, LG, near ? 2 : 1);
+    G.rect(bx + fx, fy - 1, 2, 2, LG, near ? 2 : 1);
+    if (near) G.set(bx + fx + 1, fy - 1, K.toe || LG, 3);
+  };
+  if (!o.noLegs) { G.begin(); foot(lg.far, false); G.end(); }
+  if (o.armB && !o.noArmB) { G.begin(); G.line(bx - 1, by - 1, o.armB[0], o.armB[1], K.sleeve || F, 1); G.set(o.armB[0], o.armB[1], F, 2); G.end(); G.pt('handB', o.armB[0], o.armB[1]); }
+  // The body, the belly patch.
+  G.begin();
+  G.ell(bx, by, 3.1, 2.6, B);
+  if (!K.body) { G.set(bx + 1, by, K.belly, 3); G.set(bx + 2, by, K.belly, 3); G.set(bx + 1, by + 1, K.belly, 2); G.set(bx + 2, by + 1, K.belly, 2); }
+  G.end();
+  if (!o.noLegs) { G.begin(); foot(lg.near, true); G.end(); }
+  G.pt('chest', bx + 1, by - 1);
+  G.pt('head', hx, hy);
+  return { bx, by, hx, hy, dy };
+}
+// The head: a round face, two ears (the far one darker, the near one pink inside), big eyes, a
+// cream muzzle and a pink nose. ears=false under a hat; mask paints over the muzzle instead.
+function head(G, K, c, o, { ears = true, mask = null } = {}) {
+  const { hx, hy } = c, F = K.fur;
+  G.begin(true);
+  if (ears) {
+    const et = o.ear || 0;
+    G.poly([[hx - 3.8, hy - 1.6], [hx - 2.8, hy - 5.4], [hx - 0.6, hy - 2.8]], F, 1);
+    if (et === 2) G.poly([[hx - 0.4, hy - 2.6], [hx + 0.2, hy - 4.8], [hx + 3.4, hy - 2.4]], F, 2);
+    else G.poly([[hx + 0.2, hy - 2.8], [hx + 2.2 - et, hy - 5.6 + et * 0.6], [hx + 3.9, hy - 1.6]], F, 2);
+    if (et !== 2) G.set(hx + 2 - et, hy - 4, K.pink, 2);
+  }
+  G.ell(hx, hy, 4.3, 3.35, F);
+  const mx = hx + 2, my = hy + 1;
+  if (mask) mask(mx, my);
+  else {
+    G.set(mx, my + 1, K.belly, 2); G.set(mx + 1, my + 1, K.belly, 2); G.set(mx + 1, my, K.belly, 3); G.set(mx + 2, my, K.belly, 3); G.set(mx + 2, my + 1, K.belly, 2);
+    G.set(mx + 2, my - 1, K.pink, 3);
+  }
+  G.end();
+  // Eyes: the near one big with a shine, the far one a dot.
+  const e = o.eye || 'open', E = K.eyeR, ex = hx + 2, ey = hy - 1, fx = hx - 1;
+  if (e === 'blink') { G.set(ex, ey + 1, E, 2); G.set(ex - 1, ey + 1, E, 2); G.set(fx, ey + 1, E, 2); }
+  else if (e === 'happy') { G.set(ex - 1, ey + 1, E, 2); G.set(ex, ey, E, 2); G.set(ex + 1, ey + 1, E, 2); G.set(fx, ey, E, 2); G.set(fx - 1, ey + 1, E, 2); }
+  else if (e === 'angry') { G.set(ex, ey + 1, E, 2); G.set(ex - 1, ey, E, 2); G.set(ex, ey, E, 2); G.set(fx, ey + 1, E, 2); G.set(fx + 1, ey, E, 2); }
+  // Struck: squeezed shut (> <).
+  else if (e === 'pain') { G.set(ex - 1, ey, E, 2); G.set(ex, ey + 1, E, 2); G.set(ex - 1, ey + 2, E, 2); G.set(fx, ey, E, 2); G.set(fx - 1, ey + 1, E, 2); }
+  // Knocked out: x x.
+  else if (e === 'ko') { G.set(ex - 1, ey, E, 2); G.set(ex + 1, ey, E, 2); G.set(ex, ey + 1, E, 2); G.set(ex - 1, ey + 2, E, 2); G.set(ex + 1, ey + 2, E, 2); G.set(fx - 1, ey, E, 2); G.set(fx, ey + 1, E, 2); G.set(fx - 1, ey + 2, E, 2); }
+  else { G.set(ex, ey, E, K.eyeL ?? 2); G.set(ex, ey + 1, E, 2); G.set(fx, ey, E, 2); G.set(fx, ey + 1, E, 2); }
+  G.pt('eye', ex, ey);
+  G.pt('eyeF', fx, ey);
+}
+// The near arm to the hand point (a paw there).
+function arm(G, K, c, hand, l = 3) {
+  G.begin();
+  const sx = c.bx + 1, sy = c.by - 1;
+  if (Math.hypot(hand[0] - sx, hand[1] - sy) > 1.5) G.line(sx, sy, hand[0], hand[1], K.sleeve || K.fur, 2);
+  G.set(hand[0], hand[1], K.fur, l);
+  G.end();
+  G.pt('hand', hand[0], hand[1]);
+}
+const along = (x, y, a, d) => [x + Math.cos(a) * d, y + Math.sin(a) * d];
+
+// A sword at angle a (radians, 0 ahead, -90 up): grip, gold guard across, steel blade, bright tip.
+function sword(G, K, hand, a, len = 7) {
+  const [hx, hy] = hand, c = Math.cos(a), s = Math.sin(a);
+  G.begin(true);
+  G.set(hx - c, hy - s, K.grip, 2);
+  const gx = hx + c * 1.1, gy = hy + s * 1.1;
+  G.line(gx - s * 1.5, gy + c * 1.5, gx + s * 1.5, gy - c * 1.5, K.trim, 3);
+  for (let d = 2; d <= len + 1; d++) G.set(hx + c * d, hy + s * d, K.steel, d >= len ? 4 : 3);
+  G.end();
+  G.pt('tip', hx + c * (len + 1), hy + s * (len + 1));
+  G.pt('blade', hx + c * (len * 0.6 + 1), hy + s * (len * 0.6 + 1));
+}
+// A dagger: dark grip, steel blade, bright point.
+function dagger(G, K, hand, a, len = 3) {
+  const [hx, hy] = hand, c = Math.cos(a), s = Math.sin(a);
+  G.begin();
+  G.set(hx - c, hy - s, K.grip, 2);
+  for (let d = 1; d <= len; d++) G.set(hx + c * d, hy + s * d, K.steel, d === len ? 4 : 3);
+  G.end();
+}
+
+// The bow held at bh, aimed along ba: a curved stave lit at its tips. Returns its two tips.
+function bowOf(G, K, bh, ba, r = 4.4) {
+  const nrm = ba + Math.PI / 2, tips = [];
+  for (let i = -4; i <= 4; i++) {
+    const u = i / 4, bend = (1 - u * u) * 2.4 - 0.6;
+    const x = bh[0] + Math.cos(nrm) * u * r + Math.cos(ba) * bend, y = bh[1] + Math.sin(nrm) * u * r + Math.sin(ba) * bend;
+    if (i === -4 || i === 4) tips.push([x, y]);
+    G.set(x, y, K.wood, Math.abs(i) >= 3 ? 4 : i < 0 ? 3 : 2);
+  }
+  return tips;
+}
+// The mage's staff held at st along sa (its crystal at that end).
+function staffOf(G, K, st, sa) {
+  const c = Math.cos(sa), s = Math.sin(sa);
+  const top = [st[0] + c * 9, st[1] + s * 9], foot = [st[0] - c * 6, st[1] - s * 6];
+  G.begin();
+  G.line(foot[0], foot[1], top[0], top[1], K.wood, (u) => (u > 0.5 ? 3 : 2));
+  const [cx, cy] = along(top[0], top[1], sa, 1.5);
+  G.set(cx, cy - 1, K.gem, 4); G.set(cx - 1, cy, K.gem, 3); G.set(cx, cy, K.gem, 4); G.set(cx + 1, cy, K.gem, 2); G.set(cx, cy + 1, K.gem, 2);
+  G.set(top[0] - 1, top[1], K.trim, 3); G.set(top[0] + 1, top[1], K.trim, 2);
+  G.end();
+  G.pt('gem', cx, cy);
+}
+
+// The kite shield, centred on c, turned by rot (radians, clockwise; 0 upright, its point down): a red
+// field lit on its left, a gold rim and the royal crest (a little gold crown).
+function shieldOf(G, K, c, rot, w, h) {
+  const cs = Math.cos(rot), sn = Math.sin(rot), at = (x, y) => [c[0] + x * cs - y * sn, c[1] + x * sn + y * cs];
+  G.begin(true);
+  G.poly([at(-w, -h * 0.45), at(w, -h * 0.45), at(w, h * 0.12), at(0, h * 0.55), at(-w, h * 0.12)], K.main, () => 2);
+  for (let i = 0; i < G.R.length; i++) {
+    if (G.P[i] !== G.pid) continue;
+    const x = (i % GW) - OX + 0.5 - c[0], y = Math.floor(i / GW) - OY + 0.5 - c[1], lx = x * cs + y * sn, ly = -x * sn + y * cs;
+    const rim = G.P[i - 1] !== G.pid || G.P[i + 1] !== G.pid || G.P[i - GW] !== G.pid || G.P[i + GW] !== G.pid;
+    if (rim) { G.R[i] = K.trim; G.L[i] = lx < 0 || ly < -h * 0.3 ? 3 : 2; }
+    else G.L[i] = lx < -1 ? 3 : lx > 1.2 ? 1 : 2;
+  }
+  if (w >= 2.5) {
+    const k = at(0, -h * 0.08), kx = Math.round(k[0] - 0.5), ky = Math.round(k[1] - 0.5);
+    G.set(kx - 1, ky, K.trim, 3); G.set(kx, ky, K.trim, 4); G.set(kx + 1, ky, K.trim, 2);
+    G.set(kx - 1, ky - 1, K.trim, 4); G.set(kx + 1, ky - 1, K.trim, 3); G.set(kx, ky - 1, K.main, 1); G.set(kx, ky + 1, K.main, 1);
+  }
+  G.end();
+  G.pt('shield', ...at(0, -h * 0.08));
+  G.pt('shieldTip', ...at(0, h * 0.55));
+}
+
+// The kingdom's kitten (render the worker): feet frames as LEGS, shorter.
+const KLEGS = {
+  stand: { far: [-2, -1], near: [1, -1], dy: 0 },
+  w0: { far: [-3, -1], near: [2, -1], dy: 0 }, w1: { far: [-1, -2], near: [0, -1], dy: -1 },
+  w2: { far: [1, -1], near: [-2, -1], dy: 0 }, w3: { far: [0, -1], near: [-1, -2], dy: -1 },
+  crouch: { far: [-3, -1], near: [2, -1], dy: 1 }, tuck: { far: [-1, -2], near: [1, -2], dy: -1 },
+  lunge: { far: [-3, -1], near: [3, -1], dy: 1 }, land: { far: [-3, -1], near: [2, -1], dy: 1 }
+};
+// A pickaxe gripped at hand, its handle along a (radians) len long, the pick across its end, its
+// points bent back toward the paw.
+function pickaxeOf(G, K, hand, a, len = 6) {
+  const [hx, hy] = hand, c = Math.cos(a), s = Math.sin(a);
+  G.begin(true);
+  for (let d = -1; d <= len; d++) G.set(hx + c * d, hy + s * d, K.wood, d < 2 ? 2 : 3);
+  const ex = hx + c * len, ey = hy + s * len;
+  for (let k = -2; k <= 2; k++) {
+    const back = Math.abs(k) === 2 ? 1 : 0;
+    G.set(ex - s * k - c * back, ey + c * k - s * back, K.steel, k === -2 ? 4 : k < 0 ? 3 : k === 0 ? 3 : 2);
+  }
+  G.set(ex + c, ey + s, K.steel, 2);
+  G.end();
+  G.pt('pick', ex - s * -2 - c, ey + c * -2 - s);
+  G.pt('pickB', ex - s * 2 - c, ey + c * 2 - s);
+}
+// A fish 7 x 4 (the kingdom's PEIXE) centred on (cx, cy), its head along a: a silver body, a dark
+// back, a forked tail (flapping: flap), an eye.
+function fishOf(G, K, cx, cy, a, flap = 0) {
+  const c = Math.cos(a), s = Math.sin(a);
+  G.begin(true);
+  for (let y = Math.floor(cy - 5); y <= Math.ceil(cy + 5); y++) for (let x = Math.floor(cx - 5); x <= Math.ceil(cx + 5); x++) {
+    const px = x + 0.5 - cx, py = y + 0.5 - cy, u = px * c + py * s, v = -px * s + py * c;
+    // The body: fat in the middle, pointed at the nose; the tail: a V opening behind it.
+    const half = u >= -2 && u <= 3.2 ? 1.75 * Math.sqrt(Math.max(0, 1 - ((u - 0.6) / 2.7) ** 2)) : -1;
+    const body = Math.abs(v) <= half;
+    const tu = -2 - u, w = v - flap * tu * 0.5, tail = tu > 0 && tu <= 2 && Math.abs(w) >= tu * 0.6 - 0.35 && Math.abs(w) <= tu * 0.6 + 0.75;
+    if (!body && !tail) continue;
+    G.set(x, y, tail || v < -0.55 ? K.fin : K.fish, tail ? 2 : v < -0.55 ? 3 : v > 0.6 ? 4 : 3);
+  }
+  G.set(cx + c * 2.1 + s * 0.35, cy + s * 2.1 - c * 0.35, EYE, 1);
+  G.end();
+  G.pt('fish', cx + c * 1.5, cy + s * 1.5);
+}
+// A scarf in the owner's colour (hex) knotted round a neck at (nx, ny), w wide, its end streaming
+// back from the knot (flapping: flut).
+function scarfOf(G, hex, nx, ny, w = 5, flut = 0) {
+  if (!hex) return;
+  const Rp = R(hex), x0 = Math.round(nx - w / 2 + 0.5), y = Math.floor(ny);
+  G.begin();
+  for (let i = 0; i < w; i++) G.set(x0 + i, y, Rp, i === w - 1 ? 2 : i >= w - 3 ? 3 : 2);
+  G.set(x0, y + 1, Rp, 1);
+  G.set(x0 - 1, y + 1 - flut, Rp, 2);
+  G.set(x0 - 2, y + 1 - flut + (flut ? 0 : 1), Rp, 1);
+  G.end();
+}
+
+// ---- each familiar -----------------------------------------------------------------------------
+const BUILD = {
+  // The soldier: a little ginger cat in a round steel cap (ear guards, a red plume), a red tabard
+  // with a gold belt, a short sword.
+  soldier(G, K, o) {
+    const Kb = { ...K, body: K.main };
+    const c = cat(G, Kb, o);
+    G.begin(); for (let x = -2; x <= 2; x++) G.set(c.bx + x, c.by + 1, K.trim, x === 0 ? 4 : 2); G.end();
+    // The sword over his body but under his head: raised, it shows over the helmet and before his
+    // face, and never crosses his eyes.
+    if (!o.bare) sword(G, K, o.hand, o.wpn, o.len || 6);
+    head(G, K, c, o, { ears: false });
+    const { hx, hy } = c;
+    G.begin();
+    // The cap: a steel dome on the head, its brim just over the eyes.
+    const rows = [[-6, -2, 1], [-5, -3, 2], [-4, -4, 3], [-3, -4, 4], [-2, -5, 4]];
+    for (const [y, x0, x1] of rows) for (let x = x0; x <= x1; x++) G.set(hx + x, hy + y, K.steel, y === -2 ? (x < 0 ? 2 : 1) : x <= x0 + 1 && y < -3 ? 4 : x >= x1 - 1 ? 2 : 3);
+    G.end();
+    // The plume: up off the crown and blown back.
+    G.begin();
+    const pw = o.plume || 0;
+    G.set(hx, hy - 7, K.plume, 3); G.set(hx - 1, hy - 7, K.plume, 4); G.set(hx - 1, hy - 8, K.plume, 3); G.set(hx - 2, hy - 8, K.plume, 3);
+    G.set(hx - 3, hy - 8 + pw, K.plume, 2); G.set(hx - 4, hy - 7 + pw, K.plume, 2); G.set(hx - 5, hy - 6 + pw, K.plume, 1); G.set(hx - 2, hy - 7, K.plume, 2);
+    G.end();
+    arm(G, Kb, c, o.hand);
+  },
+  // The archer: a cream cat in a green hood (ears up through it) and short cape, a quiver on the
+  // back, the bow held out in the far paw and its string drawn by the near one.
+  archer(G, K, o) {
+    const Kb = { ...K, body: K.main, legs: K.leather, sleeve: K.main };
+    const lg = LEGS[o.legs] || LEGS.stand, dy = lg.dy + (o.dy || 0), bx = o.bx || 0, by = -5 + dy;
+    // The quiver across the back, fletchings showing over the shoulder; the cape.
+    G.begin();
+    G.line(bx - 4, by - 4, bx - 2, by + 1, K.leather, (u) => (u < 0.3 ? 3 : 2), 2);
+    G.set(bx - 5, by - 5, K.white, 4); G.set(bx - 4, by - 6, R('#e04848'), 3); G.set(bx - 3, by - 5, K.white, 3);
+    G.end();
+    G.begin();
+    G.poly([[bx - 1, by - 3], [bx - 5 - (o.cape || 0), by + 2.6], [bx + 0.5, by + 2.6]], K.dark, (x, y) => (y < by ? 3 : 2));
+    G.end();
+    const c = cat(G, Kb, o);
+    head(G, K, c, o, { ears: false });
+    const { hx, hy } = c;
+    // The hood over the head, open at the face, with the ears in it and a point hanging behind.
+    G.begin();
+    for (let y = -6; y <= 3; y++) for (let x = -6; x <= 4; x++) {
+      const nx = (x + 0.6) / 4.9, ny = (y + 0.3) / 3.9;
+      const ear = (y >= -6 && y <= -4) && ((x === -3 && y >= -5) || (x === -2 && y >= -5) || (x === 1 && y >= -5) || (x === 2 && y >= -6));
+      if (nx * nx + ny * ny > 1 && !ear) continue;
+      // The face stays open.
+      if (x >= 0 && y >= -2) continue;
+      if (x === -1 && y >= 0 && y <= 2) continue;
+      G.set(hx + x, hy + y, K.main, ear ? (x > 0 ? 3 : 2) : y <= -3 ? 3 : x <= -4 ? 1 : 2);
+    }
+    G.set(hx + 2, hy - 4, K.pink, 2);
+    G.set(hx - 6, hy + 1, K.main, 1); G.set(hx - 6, hy + 2, K.main, 1); G.set(hx - 7, hy + 2, K.main, 1);
+    G.end();
+    // A castle archer of the kingdom wears its owner's colour at the throat.
+    if (o.scarf) scarfOf(G, o.scarf, c.bx + 0.5, c.by - 2, 5, o.flut || 0);
+    // The bow in the far paw, held out; the string to the near paw when drawn.
+    const bh = o.bowHand, ba = o.bowA ?? 0, draw = o.draw || 0;
+    G.begin();
+    G.line(c.bx, c.by - 1, bh[0], bh[1], K.main, 2);
+    G.end();
+    if (o.bare) { G.begin(); G.set(bh[0], bh[1], K.fur, 3); G.end(); arm(G, Kb, c, o.hand); return; }
+    G.begin();
+    const tips = bowOf(G, K, bh, ba);
+    G.set(bh[0], bh[1], K.fur, 3);
+    G.end();
+    const pull = draw > 0 ? o.hand : [(tips[0][0] + tips[1][0]) / 2 - Math.cos(ba) * 0.6, (tips[0][1] + tips[1][1]) / 2 - Math.sin(ba) * 0.6];
+    G.begin();
+    G.line(tips[0][0], tips[0][1], pull[0], pull[1], K.string, 2);
+    G.line(tips[1][0], tips[1][1], pull[0], pull[1], K.string, 2);
+    G.end();
+    if (draw > 0) {
+      const tip = along(bh[0], bh[1], ba, 3);
+      G.begin(); G.line(pull[0], pull[1], tip[0], tip[1], K.wood, 3); G.set(tip[0], tip[1], STEEL, 4); G.end();
+      G.pt('arrow', tip[0], tip[1]);
+    }
+    G.pt('bow', bh[0], bh[1]);
+    arm(G, Kb, c, o.hand);
+  },
+  // The assassin: a black cat, a crimson mask over the muzzle with its ties streaming behind, eyes
+  // that glow, a dagger in each paw.
+  assassin(G, K, o) {
+    const lg = LEGS[o.legs] || LEGS.stand, dy = lg.dy + (o.dy || 0), bx = o.bx || 0, hx = 1 + (o.lean || 0) + bx, hy = -10.5 + dy + (o.hdy || 0);
+    G.begin();
+    const fl = o.ties || 0;
+    G.line(hx - 4, hy + 0.5, hx - 7, hy - 0.5 + fl, K.main, 2);
+    G.line(hx - 7, hy - 0.5 + fl, hx - 9, hy + 0.5 + fl * 2, K.main, 1);
+    G.line(hx - 4, hy + 1.5, hx - 6, hy + 2.5 + fl, K.main, 1);
+    G.end();
+    if (o.armB && !o.bare) dagger(G, K, o.armB, o.wpnB ?? o.wpn, 3);
+    const c = cat(G, K, o);
+    head(G, K, c, o, {
+      mask: (mx, my) => {
+        for (let x = -2; x <= 3; x++) for (let y = 0; y <= 1; y++) if (G.has(mx + x, my + y)) G.set(mx + x, my + y, K.main, y === 0 ? 3 : 2);
+      }
+    });
+    G.begin(); for (let x = -2; x <= 2; x++) G.set(c.bx + x, c.by + 1, K.main, x > 0 ? 3 : 2); G.end();
+    if (!o.bare) dagger(G, K, o.hand, o.wpn, 4);
+    arm(G, K, c, o.hand);
+    G.pt('tip', o.hand[0] + Math.cos(o.wpn) * 4, o.hand[1] + Math.sin(o.wpn) * 4);
+  },
+  // The mage: a white cat in a starry blue robe down to the floor and a tall pointed hat, a staff
+  // taller than he is with a violet crystal.
+  mage(G, K, o) {
+    const dy = o.dy || 0, bx = o.bx || 0, hx = 1 + (o.lean || 0) + bx, hy = -10.5 + dy + (o.hdy || 0);
+    G.begin(); G.line(bx - 3, -2 + dy, bx - 5, -3 + dy, K.fur, 2, 2); G.set(bx - 6, -4 + dy - (o.tail > 0 ? 1 : 0), K.fur, 3); G.end();
+    // The robe: a bell from the neck to the hem (it sways), a gold hem and stars.
+    G.begin();
+    const sw = o.hem || 0;
+    G.poly([[bx - 2.4, -8 + dy], [bx + 2.6, -8 + dy], [bx + 4.4 + sw, -0.5 + dy], [bx - 4.4 + sw, -0.5 + dy]], K.main, (x, y) => (x - bx < -1 ? 3 : x - bx > 1 ? 1 : 2));
+    for (let x = Math.round(bx - 4 + sw); x <= Math.round(bx + 4 + sw); x++) G.set(x, -1 + dy, K.trim, x - bx < 0 ? 3 : 2);
+    G.set(bx + 1, -5 + dy, K.trim, 4); G.set(bx - 2, -3 + dy, K.trim, 3); G.set(bx + 2, -3 + dy, K.trim, 3);
+    G.end();
+    G.pt('chest', bx + 1, -6 + dy);
+    const cc = { bx, by: -5 + dy, hx, hy };
+    head(G, K, cc, o, { ears: false });
+    // The hat: a wide brim, a cone bent back at the tip, a gold band and a star.
+    G.begin();
+    const bend = o.hatBend || 0;
+    G.rect(hx - 4, hy - 3, 9, 1, K.main, 2); G.set(hx - 5, hy - 2, K.main, 2); G.set(hx + 5, hy - 2, K.main, 1);
+    G.poly([[hx - 3, hy - 3], [hx + 3.4, hy - 3], [hx + 0.6, hy - 9], [hx - 1.4 - bend, hy - 11]], K.main, (x) => (x < hx - 1 ? 3 : 2));
+    G.set(hx - 2 - bend, hy - 11, K.main, 3); G.set(hx - 3 - bend, hy - 10.5 + bend * 0.5, K.main, 3);
+    for (let x = -2; x <= 2; x++) G.set(hx + x, hy - 4, K.trim, x < 0 ? 3 : 2);
+    G.set(hx, hy - 7, K.trim, 4); G.set(hx - 1, hy - 7, K.trim, 3); G.set(hx + 1, hy - 7, K.trim, 3); G.set(hx, hy - 8, K.trim, 3); G.set(hx, hy - 6, K.trim, 3);
+    G.end();
+    G.pt('hat', hx - 3 - bend, hy - 11);
+    // The staff in the near paw: its crystal up by the hat.
+    if (!o.bare) staffOf(G, K, o.staff, o.staffA ?? -90 * DEG);
+    G.begin();
+    G.line(bx + 1, -7 + dy, o.hand[0], o.hand[1], K.main, 3);
+    G.set(o.hand[0], o.hand[1], K.fur, 3);
+    G.end();
+    G.pt('hand', o.hand[0], o.hand[1]);
+    if (o.handB) { G.begin(); G.line(bx - 1, -7 + dy, o.handB[0], o.handB[1], K.main, 2); G.set(o.handB[0], o.handB[1], K.fur, 3); G.end(); G.pt('handB', o.handB[0], o.handB[1]); }
+  },
+  // The kingdom's worker: a grey kitten (big head, stubby legs) in a yellow hard hat with a lamp, its
+  // owner's scarf, a pickaxe in its paw (raised as it trots, slung on its back when its paws are
+  // full) and now and then a fish held over its head in both paws.
+  worker(G, K, o) {
+    const L = KLEGS[o.legs] || KLEGS.stand, dy = L.dy + (o.dy || 0), bx = o.bx || 0, by = -3.5 + dy;
+    const hx = 0.5 + bx + (o.lean || 0), hy = -7.5 + dy + (o.hdy || 0);
+    // The pickaxe slung across its back, under everything.
+    if (o.tool === 'back') pickaxeOf(G, K, [bx - 1, by + 1], -112 * DEG, 5);
+    // The tail, a little curl.
+    if (!o.noTail) {
+      G.begin();
+      const sw = o.tail || 0;
+      G.line(bx - 2, by + 0.5, bx - 3.5, by - 0.5, K.fur, 2);
+      G.line(bx - 3.5, by - 0.5, bx - 4 + sw * 0.5, by - 2.5, K.fur, 2);
+      G.set(bx - 4 + sw, by - 3.5, K.fur, 3);
+      G.end();
+    }
+    const foot = ([fx, fy], near) => {
+      G.line(bx + (near ? 0.5 : -1), by + 1, bx + fx + 0.5, fy - 1, K.fur, near ? 2 : 1);
+      G.rect(bx + fx, fy - 1 + 1, 2, 1, K.fur, near ? 2 : 1);
+      if (near) G.set(bx + fx + 1, fy, K.fur, 3);
+    };
+    // The far paw (two-pawed holds), the far foot, the body, the near foot.
+    if (o.handB) { G.begin(); G.line(bx - 0.5, by - 1, o.handB[0], o.handB[1], K.fur, 1); G.set(o.handB[0], o.handB[1], K.fur, 2); G.end(); }
+    if (!o.noLegs) { G.begin(); foot(L.far, false); G.end(); }
+    G.begin();
+    G.ell(bx, by, 2.4, 1.9, K.fur);
+    G.set(bx + 1, by, K.belly, 3); G.set(bx + 2, by, K.belly, 3); G.set(bx + 1, by + 1, K.belly, 2);
+    G.end();
+    if (!o.noLegs) { G.begin(); foot(L.near, true); G.end(); }
+    G.pt('chest', bx + 1, by - 1);
+    // Raised over its head or swung up behind it, the pickaxe goes behind the head.
+    if (o.tool === 'up') pickaxeOf(G, K, o.hand, o.pa ?? -45 * DEG);
+    // The head: round, a cream muzzle, big eyes under the brim.
+    G.begin(true);
+    G.ell(hx, hy, 3.3, 2.7, K.fur);
+    const mx = Math.floor(hx) + 2, my = Math.floor(hy) + 2;
+    G.set(mx, my, K.belly, 3); G.set(mx + 1, my, K.belly, 3); G.set(mx + 1, my - 1, K.belly, 3); G.set(mx - 1, my, K.belly, 2);
+    G.set(mx + 2, my - 1, K.pink, 3);
+    G.end();
+    const e = o.eye || 'open', E = K.eyeR, ex = Math.floor(hx) + 2, ey = Math.floor(hy), fx = ex - 3;
+    if (e === 'blink') { G.set(ex, ey + 1, E, 2); G.set(fx, ey + 1, E, 2); }
+    else if (e === 'happy') { G.set(ex - 1, ey + 1, E, 2); G.set(ex, ey, E, 2); G.set(ex + 1, ey + 1, E, 2); G.set(fx, ey, E, 2); }
+    else if (e === 'angry') { G.set(ex, ey + 1, E, 2); G.set(ex - 1, ey, E, 2); G.set(fx, ey + 1, E, 2); }
+    else if (e === 'pain' || e === 'ko') { G.set(ex - 1, ey, E, 2); G.set(ex, ey + 1, E, 2); G.set(ex - 1, ey + 2, E, 2); if (e === 'ko') G.set(ex + 1, ey, E, 2), G.set(ex + 1, ey + 2, E, 2); G.set(fx, ey + 1, E, 2); }
+    else { G.set(ex, ey, E, 3); G.set(ex, ey + 1, E, 2); G.set(fx, ey, E, 2); G.set(fx, ey + 1, E, 2); }
+    G.pt('eye', ex, ey); G.pt('head', hx, hy);
+    // The hard hat: a yellow dome, a brim out over the eyes, the lamp at its front.
+    if (!o.noHat) {
+      G.begin();
+      const hX = Math.floor(hx), hY = Math.floor(hy);
+      for (let x = -2; x <= 1; x++) G.set(hX + x, hY - 3, K.hat, x < 0 ? 4 : 3);
+      for (let x = -3; x <= 2; x++) G.set(hX + x, hY - 2, K.hat, x < -1 ? 3 : x > 1 ? 2 : 3);
+      for (let x = -3; x <= 3; x++) G.set(hX + x, hY - 1, K.hat, x > 1 ? 2 : 1);
+      G.set(hX + 1, hY - 2, K.lamp, 4);
+      G.end();
+      G.pt('lamp', hX + 1, hY - 2);
+    }
+    // The owner's scarf, knotted at the back of the neck, its end flapping.
+    scarfOf(G, o.scarf, bx + 0.5, by - 1.5, 4, o.flut || 0);
+    // A fish held over its head (or swung, or lifted): drawn before the near paw holding it.
+    if (o.fish) fishOf(G, K, o.fish[0], o.fish[1], (o.fish[2] || 0) * DEG, o.fflap || 0);
+    if (o.tool === 'front') pickaxeOf(G, K, o.hand, o.pa ?? 40 * DEG, o.plen || 6);
+    // The near paw.
+    G.begin();
+    const sx = bx + 1, sy = by - 1, hand = o.hand || [bx + 2, by];
+    if (Math.hypot(hand[0] - sx, hand[1] - sy) > 1.2) G.line(sx, sy, hand[0], hand[1], K.fur, 2);
+    G.set(hand[0], hand[1], K.fur, 3);
+    G.end();
+    G.pt('hand', hand[0], hand[1]);
+  },
+  // The kingdom's knight: a black cat in a great helm (its ears up through two slots in it, green
+  // eyes in the visor's slit, a crimson plume streaming back), a crimson tabard with a gold belt, the
+  // owner's scarf, the crown shield and a short sword.
+  knight(G, K, o) {
+    const c = cat(G, { ...K, body: K.mail }, { ...o, noTail: true });
+    G.begin(); for (let x = -2; x <= 2; x++) G.set(c.bx + x, c.by + 1, K.main, x === 0 ? 3 : 2); G.end();
+    const X = Math.floor(c.hx), Y = Math.floor(c.hy) + 1, hx = X + 0.5, hy = Y + 0.5;
+    // The plume, streaming back off the back of the helm.
+    // The ears, up through the helm, and the plume between them, blown back.
+    G.begin();
+    G.set(X - 3, Y - 3, K.fur, 2); G.set(X - 3, Y - 4, K.fur, 2); G.set(X - 3, Y - 5, K.fur, 3);
+    G.set(X + 2, Y - 3, K.fur, 3); G.set(X + 2, Y - 4, K.pink, 2); G.set(X + 2, Y - 5, K.fur, 3); G.set(X + 3, Y - 3, K.fur, 2);
+    G.end();
+    G.begin();
+    const pw = o.plume || 0;
+    G.set(X, Y - 4, K.plume, 4); G.set(X + 1, Y - 4, K.plume, 3); G.set(X - 1, Y - 4, K.plume, 3); G.set(X, Y - 5, K.plume, 4);
+    G.set(X - 1, Y - 5 - pw, K.plume, 3); G.set(X - 2, Y - 5 - pw, K.plume, 2); G.set(X - 2, Y - 4, K.plume, 2);
+    G.end();
+    // The helm: a steel dome, a lit ridge, the visor's slit with the eyes in it.
+    G.begin(true);
+    G.ell(hx, hy, 3.5, 3.2, K.steel);
+    for (let x = -3; x <= 3; x++) G.set(X + x, Y + 3, K.steel, x > 0 ? 2 : 1);
+    if (o.crown) for (let x = -3; x <= 3; x++) G.set(X + x, Y + 2, K.trim, x < 0 ? 3 : 2);
+    G.end();
+    const e = o.eye || 'open';
+    for (let x = 0; x <= 3; x++) G.ink(X + x, Y);
+    G.ink(X + 1, Y + 1);
+    if (e === 'open' || e === 'happy') G.set(X + 2, Y, K.eyeR, 4);
+    else if (e === 'angry') { G.set(X + 2, Y, K.eyeR, 4); G.set(X + 1, Y, K.eyeR, 2); }
+    G.pt('eye', X + 2, Y); G.pt('head', hx, hy);
+    scarfOf(G, o.scarf, c.bx + 0.5, c.by - 2, 5, o.flut || 0);
+    // On guard the sword arm is behind the shield (the blade up over its rim); otherwise in front.
+    const Ka = { ...K, sleeve: K.mail };
+    if (o.behind) { if (!o.bare) sword(G, K, o.hand, o.wpn, 5); arm(G, Ka, c, o.hand); }
+    if (!o.bare && !o.noShield) shieldOf(G, K, o.sh, o.shRot || 0, 2.6, 7.4);
+    if (!o.behind) { if (!o.bare) sword(G, K, o.hand, o.wpn, 5); arm(G, Ka, c, o.hand); }
+  },
+  // The shield-bearer: a stocky brown cat in a steel helm and breastplate behind a big kite shield
+  // with the royal crest (a gold crown on red).
+  shield(G, K, o) {
+    const Kb = { ...K, body: K.steel };
+    const c = cat(G, Kb, o);
+    head(G, K, c, o, { ears: false });
+    const { hx, hy } = c;
+    // The helm: a steel bowl down over the ears with a gold crest and a cheek guard.
+    G.begin();
+    for (let y = -5; y <= 1; y++) for (let x = -5; x <= 5; x++) {
+      const nx = (x + 0.5) / 4.7, ny = (y + 0.3) / 3.7;
+      if (nx * nx + ny * ny > 1) continue;
+      if (x >= 0 && y >= -1) continue;
+      if (x >= -1 && y >= 0) continue;
+      G.set(hx + x, hy + y, K.steel, y === -2 && x >= -1 ? 1 : x < -2 ? 2 : y <= -3 ? 3 : 2);
+    }
+    G.set(hx - 1, hy - 4, K.trim, 3); G.set(hx, hy - 4, K.trim, 3); G.set(hx - 2, hy - 4, K.trim, 3); G.set(hx - 1, hy - 5, K.trim, 4);
+    G.end();
+    if (!o.noShield && !o.bare) shieldOf(G, K, o.sh, o.shRot || 0, o.shW ?? 3.5, o.shH ?? 10);
+    if (o.showArm) arm(G, Kb, c, o.hand);
+  }
+};
+
+// ---- poses ------------------------------------------------------------------------------------
+// The body's y for a pose (the hands hang off it).
+const BY = o => -5 + (LEGS[o.legs] || LEGS.stand).dy + (o.dy || 0);
+const SHOULDER = o => [(o.bx || 0) + 1, BY(o) - 1];
+// Hands and gear of each one at rest.
+function rest(k, o) {
+  const by = BY(o);
+  switch (k) {
+    case 'soldier': o.hand = [4, by]; o.wpn = -32 * DEG; break;
+    case 'archer': o.hand = [2, by]; o.bowHand = [6, by - 1]; o.bowA = 0; o.draw = 0; break;
+    case 'assassin': o.hand = [3, by + 1]; o.wpn = 20 * DEG; o.armB = [-2, by + 1]; o.wpnB = 160 * DEG; break;
+    case 'mage': o.hand = [4, by - 2]; o.staff = o.hand; o.staffA = -90 * DEG; break;
+    case 'shield': o.hand = [3, by - 1]; o.sh = [6, by + 0.5]; o.shRot = 0; break;
+  }
+}
+// The run/walk cycle frame name for a phase.
+const cycle = (run, ph) => (run ? 'r' : 'w') + (((Math.floor(ph) % 4) + 4) % 4);
+// The archer's bow aimed along a, drawn back (u 0..1) or just released (rel).
+function aimBow(o, a, u, rel = 0) {
+  const [sx, sy] = SHOULDER(o), c = Math.cos(a), s = Math.sin(a);
+  o.bowA = a; o.bowHand = [sx + c * 4.6, sy + 0.5 + s * 4.6];
+  const pull = rel ? 6.5 : 1.5 + u * 4;
+  o.hand = [o.bowHand[0] - c * pull, o.bowHand[1] - s * pull - (rel ? 1 : 0)];
+  o.draw = !rel && u > 0.25 ? 1 : 0;
+}
+
+// Each action, posed from its stage s (stageOf) and p (0..1 through it). Mutates the pose o and
+// returns cues for the glow layer: arc (a swing's smear: centre, radius, from/to degrees, u its
+// age 0..1), ghost (afterimages), charge/fire/sigil (the mage's spells), flash, twang.
+const STRIKE = 0.3;
+// When the simulation blinks the assassin away (sim/court.js: 0.06 s into a stab or a mercy).
+const BLINK = 0.06;
+// How long a blow's flash lasts (sim/court.js: f.hurt starts there and runs down to 0).
+const HURT = 0.25;
+const ACT = {
+  soldier: {
+    slash(o, s) {
+      o.eye = 'angry'; o.ear = 2;
+      if (s.pre < 0.45) { o.legs = 'crouch'; o.lean = -1; const by = BY(o); o.hand = [-1, by - 3]; o.wpn = -150 * DEG; return {}; }
+      if (s.pre < 1) { o.legs = 'lunge'; o.lean = 1; const by = BY(o); o.hand = [-1, by]; o.wpn = 170 * DEG; o.plume = 1; return { ghost: 1 }; }
+      if (s.post < STRIKE) { o.legs = 'lunge'; o.lean = 2; const by = BY(o); o.hand = [5, by - 1]; o.wpn = 12 * DEG; o.plume = 1; return { arc: { c: [1, by - 2], r: 8, a0: -150, a1: 30, u: s.post / STRIKE }, ghost: 1 }; }
+      o.legs = s.post < 0.7 ? 'lunge' : 'stand'; o.lean = 1; const by = BY(o); o.hand = [4, by + 1]; o.wpn = 55 * DEG; return {};
+    },
+    rise(o, s) {
+      o.eye = 'angry'; o.ear = 2;
+      if (s.pre < 0.6) { o.legs = 'crouch'; o.lean = -1; const by = BY(o); o.hand = [0, by + 2]; o.wpn = 150 * DEG; return {}; }
+      if (s.pre < 1) { o.legs = 'lunge'; const by = BY(o); o.hand = [3, by + 1]; o.wpn = 100 * DEG; return {}; }
+      if (s.post < STRIKE) { o.legs = 'jump'; o.lean = 1; const by = BY(o); o.hand = [5, by - 4]; o.wpn = -75 * DEG; o.len = 7; o.plume = 1; return { arc: { c: [1, by - 2], r: 8, a0: 110, a1: -85, u: s.post / STRIKE }, ghost: 1 }; }
+      o.legs = 'tuck'; const by = BY(o); o.hand = [5, by - 5]; o.wpn = -88 * DEG; o.len = 7; o.plume = 1; return {};
+    },
+    air(o, s) {
+      o.eye = 'angry'; o.ear = 2; o.legs = 'tuck';
+      const by = BY(o);
+      if (s.pre < 0.6) { o.hand = [-1, by - 4]; o.wpn = -150 * DEG; o.len = 7; return {}; }
+      if (s.pre < 1) { o.hand = [-1, by - 5]; o.wpn = -118 * DEG; o.len = 7; return {}; }
+      if (s.post < STRIKE) { o.hand = [5, by]; o.wpn = 35 * DEG; o.plume = 1; return { arc: { c: [1, by - 2], r: 8, a0: -130, a1: 50, u: s.post / STRIKE } }; }
+      o.hand = [4, by + 1]; o.wpn = 70 * DEG; return {};
+    },
+    plunge(o, s) {
+      o.eye = 'angry'; o.ear = 2;
+      if (s.pre < 0.5) { o.legs = 'tuck'; const by = BY(o); o.hand = [4, by - 5]; o.wpn = -80 * DEG; o.len = 7; return {}; }
+      if (s.pre < 1) { o.legs = 'tuck'; o.plume = 1; const by = BY(o); o.hand = [2, by + 2]; o.wpn = 90 * DEG; o.len = 7; return { ghost: 1, fall: 1 }; }
+      if (s.post < STRIKE) { o.legs = 'crouch'; const by = BY(o); o.hand = [3, by + 1]; o.wpn = 90 * DEG; o.len = 6; return { flash: 1 - s.post / STRIKE }; }
+      o.legs = s.post < 0.7 ? 'crouch' : 'stand'; const by = BY(o); o.hand = [3, by + 1]; o.wpn = 75 * DEG; return {};
+    },
+    charge(o, s, p, ph) {
+      o.eye = 'angry'; o.ear = 2; o.plume = 1; o.lean = 2; o.legs = cycle(true, ph);
+      const by = BY(o), jab = s.pre >= 1 && s.post < STRIKE;
+      o.hand = [jab ? 6 : 4, by - 1]; o.wpn = (jab ? 0 : 8) * DEG;
+      return { ghost: 1, thrust: jab ? 1 - s.post / STRIKE : 0 };
+    }
+  },
+  archer: {
+    shot(o, s) { return bowAct(o, s, 0); },
+    volley(o, s) { return bowAct(o, s, -4 * DEG * (s.i - 1)); },
+    rain(o, s) { return bowAct(o, s, -68 * DEG); },
+    airshot(o, s) { o.legs = 'tuck'; return bowAct(o, s, 38 * DEG); }
+  },
+  assassin: {
+    stab(o, s, p, ph, F) {
+      o.eye = 'angry'; o.ear = 2;
+      if (s.i === 0 && s.pre < 1) {
+        // Vanishing: low and still; then there behind them, blades cocked.
+        o.legs = 'crouch'; const by = BY(o);
+        if ((F?.t ?? 1) < BLINK) { o.hand = [2, by]; o.wpn = 0; return {}; }
+        o.hand = [0, by - 2]; o.wpn = -150 * DEG; o.armB = [-2, by]; o.wpnB = 170 * DEG; return {};
+      }
+      if (s.post < STRIKE && s.pre >= 1) {
+        o.legs = 'lunge'; o.lean = 1; const by = BY(o);
+        if (s.i === 0) { o.hand = [5, by - 1]; o.wpn = 0; o.armB = [-2, by + 1]; o.wpnB = 160 * DEG; }
+        else { o.hand = [1, by + 1]; o.wpn = 30 * DEG; o.armB = [5, by]; o.wpnB = 5 * DEG; o.noArmB = false; }
+        return { stab: 1 - s.post / STRIKE, b: s.i === 1 };
+      }
+      o.legs = 'crouch'; const by = BY(o);
+      if (s.i === 1 && s.pre < 1) { o.hand = [2, by]; o.wpn = 20 * DEG; o.armB = [-1, by - 3]; o.wpnB = -130 * DEG; return {}; }
+      o.hand = [3, by]; o.wpn = 20 * DEG; o.armB = [-2, by + 1]; o.wpnB = 160 * DEG; return {};
+    },
+    shadow(o, s) {
+      o.eye = 'angry'; o.ear = 2; o.ties = 1;
+      if (s.pre < 1) { o.legs = 'lunge'; o.lean = 1; const by = BY(o); o.hand = [-2, by + 1]; o.wpn = 175 * DEG; o.armB = [-3, by]; o.wpnB = 185 * DEG; return { ghost: 1 }; }
+      if (s.post < STRIKE) { o.legs = 'split'; o.lean = 2; const by = BY(o); o.hand = [5, by - 2]; o.wpn = -15 * DEG; o.armB = [-4, by]; o.wpnB = 185 * DEG; return { ghost: 1, arc: { c: [0, by - 1], r: 7, a0: 150, a1: -10, u: s.post / STRIKE, thin: 1 } }; }
+      o.legs = 'crouch'; const by = BY(o); o.hand = [4, by + 1]; o.wpn = 30 * DEG; o.armB = [-3, by]; o.wpnB = 190 * DEG; return {};
+    },
+    mercy(o, s, p, ph, F) {
+      o.eye = 'angry'; o.ear = 2; o.legs = 'kneel';
+      const by = BY(o), alt = s.i % 2 === 1;
+      if ((F?.t ?? 1) < BLINK) return {};
+      const up = s.pre < 1 || s.post > 0.6, hand = up ? [2, by - 5] : [4, by + 2], a = 90 * DEG;
+      if (alt) { o.armB = hand; o.wpnB = a; o.hand = [2, by]; o.wpn = 30 * DEG; }
+      else { o.hand = hand; o.wpn = a; o.armB = [-2, by]; o.wpnB = 150 * DEG; }
+      return !up ? { stab: 1 - s.post / 0.6, b: alt } : {};
+    }
+  },
+  mage: {
+    zap(o, s) {
+      const by = BY(o), u = ease(s.pre);
+      if (s.pre < 1) { o.hand = [Math.round(lerp(4, 3, u)), Math.round(lerp(by - 2, by - 6, u))]; o.handB = s.pre > 0.4 ? [-1, by - 4] : null; o.hatBend = s.pre > 0.6 ? 1 : 0; o.eye = s.pre > 0.5 ? 'blink' : 'open'; return { charge: s.pre }; }
+      if (s.post < STRIKE) { o.hand = [3, by - 7]; o.handB = [-1, by - 5]; o.hatBend = 2; o.eye = 'angry'; return { flash: 1 - s.post / STRIKE, charge: 1 }; }
+      o.hand = [Math.round(lerp(3, 4, s.post)), Math.round(lerp(by - 6, by - 2, s.post))]; o.hatBend = 1; return {};
+    },
+    meteor(o, s) {
+      const by = BY(o);
+      if (s.pre < 1) { o.hand = [1, by - 4]; o.staffA = -120 * DEG; o.handB = [-2, by - 4]; o.hatBend = 1; o.eye = s.pre > 0.4 ? 'angry' : 'open'; return { fire: s.pre }; }
+      if (s.post < STRIKE) { o.hand = [5, by - 3]; o.staffA = -25 * DEG; o.lean = 1; o.eye = 'angry'; return { flash: 1 - s.post / STRIKE }; }
+      o.hand = [5, by - 2]; o.staffA = -50 * DEG; return {};
+    }
+  },
+  shield: {
+    bash(o, s) {
+      o.eye = 'angry';
+      if (s.pre < 0.5) { o.legs = 'crouch'; o.lean = -1; const by = BY(o); o.sh = [4, by + 1]; return {}; }
+      if (s.pre < 1) { o.legs = 'lunge'; o.lean = 1; const by = BY(o); o.sh = [7, by]; return { ghost: 1 }; }
+      if (s.post < STRIKE) { o.legs = 'lunge'; o.lean = 2; const by = BY(o); o.sh = [8, by - 3]; o.shRot = -30 * DEG; return { flash: 1 - s.post / STRIKE }; }
+      o.legs = 'stand'; const by = BY(o); o.sh = [7, by - 1]; o.shRot = -15 * DEG; return {};
+    },
+    drop(o, s) {
+      o.eye = 'angry';
+      if (s.pre < 0.5) { o.legs = 'tuck'; const by = BY(o); o.sh = [3, by - 9]; o.shRot = 180 * DEG; return {}; }
+      if (s.pre < 1) { o.legs = 'tuck'; const by = BY(o); o.sh = [2, by + 5]; o.shRot = 0; return { ghost: 1, fall: 1 }; }
+      if (s.post < STRIKE) { o.legs = 'crouch'; const by = BY(o); o.sh = [5, by + 2]; return { flash: 1 - s.post / STRIKE }; }
+      o.legs = s.post < 0.7 ? 'crouch' : 'stand'; const by = BY(o); o.sh = [6, by + 1]; return {};
+    },
+    charge(o, s, p, ph) {
+      o.eye = 'angry'; o.lean = 1; o.legs = cycle(true, ph);
+      const by = BY(o), jab = s.pre >= 1 && s.post < STRIKE;
+      o.sh = [jab ? 8 : 7, by - 1]; o.shRot = -5 * DEG;
+      return { ghost: 1, flash: jab ? 1 - s.post / STRIKE : 0 };
+    },
+    guard(o, s, p) {
+      o.eye = 'angry'; o.legs = 'lunge';
+      const by = BY(o); o.sh = [7, by - 1]; o.shRot = -8 * DEG;
+      return { flash: Math.max(0, 1 - p * 3) };
+    }
+  }
+};
+function bowAct(o, s, a) {
+  o.eye = 'angry'; o.ear = 2;
+  if (s.pre < 1) { aimBow(o, a, clamp01((s.pre - 0.15) * 1.6)); return { nock: o.draw }; }
+  if (s.post < STRIKE) { aimBow(o, a, 0, 1); return { twang: 1 - s.post / STRIKE }; }
+  aimBow(o, a, 0, 0); o.draw = 0;
+  return {};
+}
+// The select screen's battle poses.
+const HERO = {
+  soldier(o, ph) { o.legs = 'lunge'; o.eye = 'angry'; o.plume = Math.sin(ph * 3) > 0 ? 1 : 0; const by = BY(o); o.hand = [6, by - 4]; o.wpn = -84 * DEG; o.len = 7; return { glint: 1 }; },
+  archer(o, ph) { o.legs = 'lunge'; o.eye = 'angry'; o.cape = 1; aimBow(o, -12 * DEG, 1); return { nock: 1 }; },
+  assassin(o, ph) { o.legs = 'split'; o.eye = 'angry'; o.ear = 2; o.ties = Math.round(Math.sin(ph * 4)); const by = BY(o); o.hand = [4, by]; o.wpn = -25 * DEG; o.armB = [-3, by - 1]; o.wpnB = 200 * DEG; return {}; },
+  mage(o, ph) { const by = BY(o); o.hand = [4, by - 5]; o.handB = [-1, by - 5]; o.hatBend = 1; o.eye = 'angry'; return { sigil: (ph * 0.25) % 1, charge: 1, hero: 1 }; },
+  shield(o, ph) { o.legs = 'kneel'; o.eye = 'angry'; const by = BY(o); o.sh = [6, by + 2]; return {}; }
+};
+
+// What a familiar looks like this frame: the pose (all small whole numbers, so the sprite cache
+// hits), where the sprite sits relative to its feet (dx, dy), whether it glances back (flip) and the
+// cues for the glow layer. mem: what track() keeps of it (stride and bounce phases, the King's speed).
+// They are never still: in rank they bounce on their toes, weapons up, glancing about, and hop about
+// their place; with the King on the move they run flat out.
+function poseFor(k, F, t, idx, mem) {
+  const ph = t + idx * 0.37, vx = F.vx || 0, sp = Math.abs(vx);
+  const breath = Math.sin(ph * 2.6) > 0.55 ? 1 : 0;
+  const blink = (ph * 0.7) % 4.3 < 0.12;
+  const twitch = (ph * 1.7 + idx) % 2.3 < 0.12 ? 1 : 0;
+  const o = { legs: 'stand', eye: blink ? 'blink' : 'open', ear: twitch, tail: Math.round(Math.sin(ph * 3.4)), dy: breath };
+  let dy = 0, dx = 0, flip = false, cue = {};
+  const acting = F.st === 'act' && ACT[k]?.[F.act];
+  const hero = F.st === 'hero';
+  const moving = !acting && !hero && sp > 0.12;
+  // Is the King going somewhere (then they run or walk with him), or are they fidgeting in rank?
+  const kingGo = (mem?.kv ?? (sp > 0.12 ? 1 : 0)) > 0.5;
+  const run = F.st === 'back' || (moving && sp > 0.6 && kingGo);
+  const hopping = moving && !run && !kingGo && !F.air;
+  const ready = !acting && !hero && !moving && !F.air;
+  const cph = mem?.ph ?? t * (run ? 16 : 10);
+  const bu = ((((mem?.bph ?? t * (hopping ? 6 : 3.4) + idx * 0.29)) % 1) + 1) % 1;
+  if (k === 'mage') {
+    // He floats: a quick restless bob, the hem swaying; moving, he leans in and the hem trails.
+    dy = Math.round(Math.sin(ph * 4.4) * 1.3) - (F.air ? 1 : 0);
+    o.dy = 0;
+    o.hem = moving ? -Math.sign(vx * (F.f || 1)) : Math.round(Math.sin(ph * 4.4 + 1));
+    o.lean = moving ? 1 : 0;
+  } else if (F.air && !acting && !hero) {
+    const rising = (mem?.vy ?? 0) < -0.3;
+    o.legs = rising ? 'jump' : 'fall'; o.dy = 0; o.tail = rising ? -1 : 1; o.ear = rising ? 0 : 2;
+  } else if (run) {
+    o.legs = cycle(true, cph); o.dy = 0; o.lean = 1; o.tail = -2; o.ear = 2;
+  } else if (hopping) {
+    // A quick hop about its place: off its toes, tucked, down again with a squash.
+    dy = -Math.round(Math.sin(bu * Math.PI) * 2.4);
+    o.legs = bu < 0.12 || bu > 0.88 ? 'land' : bu < 0.5 ? 'jump' : 'fall'; o.dy = 0; o.tail = bu < 0.5 ? -1 : 1; o.ear = bu < 0.5 ? 0 : 2;
+  } else if (moving) {
+    o.legs = cycle(false, cph); o.dy = 0;
+  } else if (ready) {
+    // Bouncing on its toes (the shield-bearer, heavy, shifts his weight instead).
+    if (k === 'shield') o.dy = bu < 0.5 ? 0 : 1;
+    else { dy = bu > 0.2 && bu < 0.55 ? -1 : 0; o.dy = bu > 0.62 && bu < 0.8 ? 1 : 0; }
+    // Now and then a glance back over the shoulder.
+    if (k !== 'shield' && k !== 'mage' && (ph * 0.41 + idx * 0.23) % 1 < 0.08) flip = true;
+  }
+  rest(k, o);
+  if (k === 'soldier') {
+    o.plume = moving ? 1 : Math.sin(ph * 4.5) > 0.4 ? 1 : 0;
+    if (run) { o.hand = [3, BY(o) - 1]; o.wpn = -20 * DEG; }
+    // Sword up on guard, twitching between guards (held still through a hop).
+    else if (hopping) { o.hand = [4, BY(o) - 1]; o.wpn = -30 * DEG; o.plume = 1; }
+    else if (ready) { o.hand = [4, BY(o) - 1]; o.wpn = [-40, -25, -55][Math.floor(ph * 2.3) % 3] * DEG; }
+  }
+  if (k === 'archer') {
+    o.cape = moving ? 1 : 0;
+    // An arrow nocked, half drawn, the bow sweeping for a mark.
+    if (ready) aimBow(o, [-6, -16, 2, -10][Math.floor(ph * 1.7) % 4] * DEG, 0.45);
+  }
+  if (k === 'assassin') {
+    o.ties = moving ? 1 : Math.round(Math.sin(ph * 6));
+    if (ready) {
+      o.legs = 'crouch'; rest(k, o);
+      // Flipping a dagger in its paw.
+      if (Math.floor(ph * 2.6) % 3 === 1) { o.hand = [3, BY(o)]; o.wpn = -40 * DEG; }
+    }
+  }
+  if (k === 'mage' && ready) { o.hand = [4, BY(o) - 2 - (Math.floor(ph * 3) % 2)]; o.staff = o.hand; }
+  if (k === 'shield') {
+    o.eye = blink ? 'blink' : 'angry';
+    if (F.air) o.sh = [5, BY(o) - 1];
+    else if (ready) o.sh = [6, BY(o) + 0.5 - (Math.floor(ph * 2.4) % 2)];
+  }
+  if (acting) {
+    const A = actInfo(k, F.act), p = clamp01((F.t || 0) / A.dur), s = stageOf(p, A.hits);
+    if (k !== 'mage') o.dy = 0;
+    cue = ACT[k][F.act](o, s, p, cph, F) || {};
+    // The assassin's blink: he fades out where he stood, and in again behind them.
+    if (k === 'assassin' && (F.act === 'stab' || F.act === 'mercy')) {
+      const bt = F.t || 0;
+      if (bt < BLINK) cue.fade = clamp01(bt / BLINK);
+      else if (bt < BLINK * 2) cue.fade = 1 - (bt - BLINK) / BLINK;
+    }
+    cue.act = F.act; cue.p = p;
+  } else if (hero) {
+    cue = HERO[k](o, ph) || {};
+    if (k !== 'mage') o.dy = breath;
+  } else if (run && sp > 2.5) cue.ghost = 0.55;
+  if (F.st === 'appear') {
+    const at = F.t || 0;
+    if (at < 0.12) cue.tint = '#ffffff';
+    else dy -= Math.round(Math.sin(clamp01((at - 0.12) / 0.28) * Math.PI) * 3);
+    o.eye = 'happy';
+  }
+  // Struck: eyes squeezed shut, head thrown back, a shiver (and the flash, drawn over it).
+  const hurt = F.hurt > 0 && F.st !== 'dead' ? clamp01(F.hurt / HURT) : 0;
+  if (hurt) {
+    // (an action keeps its own face: fewer poses to paint)
+    if (hurt > 0.3 && !acting) o.eye = 'pain';
+    if (hurt > 0.45 && !acting && k !== 'mage') o.lean = -1;
+    if (hurt > 0.35) dx = Math.floor(F.hurt * 60) % 2 ? 1 : -1;
+    cue.hurt = hurt; flip = false;
+  }
+  if (o.eye === 'blink' && cue.act) o.eye = 'angry';
+  // Only what changes the picture goes in the key: ears show on the assassin alone (the others wear
+  // a hat, a hood or a helmet), the mage's tail only peeks out or not, and through an action the
+  // tail stays put (it would triple the poses to cache).
+  if (k !== 'assassin') o.ear = 0;
+  if (cue.act) o.tail = k === 'mage' ? 0 : -1;
+  if (k === 'mage') o.tail = o.tail > 0 ? 1 : 0;
+  return { o, dx, dy, flip, cue };
+}
+
+// ---- sprite cache ----------------------------------------------------------------------------
+class LRU {
+  constructor(max) { this.max = max; this.map = new Map(); }
+  get(k) { const v = this.map.get(k); if (v !== undefined) { this.map.delete(k); this.map.set(k, v); } return v; }
+  set(k, v) { this.map.set(k, v); if (this.map.size > this.max) this.map.delete(this.map.keys().next().value); }
+}
+const SPRITES = new LRU(2400);
+// How many poses have been painted (a cache miss each): for profiling.
+export const STATS = { built: 0 };
+const keyOf = (k, o) => {
+  let s = k;
+  for (const n in o) {
+    const v = o[n];
+    if (v === undefined || v === null) continue;
+    s += '|' + n + (Array.isArray(v) ? v.map(q => Math.round(q * 2) / 2).join(',') : typeof v === 'number' ? Math.round(v * 100) / 100 : v);
+  }
+  return s;
+};
+export function familiarSprite(k, o) {
+  const key = keyOf(k, o);
+  let s = SPRITES.get(key);
+  if (s === undefined) {
+    STATS.built++;
+    const G = GRID.clear();
+    BUILD[k](G, KIT[k], o);
+    s = finish(G);
+    SPRITES.set(key, s);
+  }
+  return s;
+}
+function flippedOf(s) {
+  if (!s.flipped) {
+    const c = mkCanvas(s.w, s.h), g = c.getContext('2d');
+    g.translate(s.w, 0); g.scale(-1, 1); g.drawImage(s.canvas, 0, 0);
+    s.flipped = c;
+  }
+  return s.flipped;
+}
+// What flies off a fallen familiar, centred on (0, 0) and turned to a8 eighths of a turn: the
+// soldier's sword, the archer's bow, a dagger, the mage's staff, the kite shield.
+const WEAPON = {
+  soldier(G, K, a) { sword(G, K, along(0, 0, a + Math.PI, 3), a, 6); },
+  archer(G, K, a) {
+    G.begin(); const tips = bowOf(G, K, along(0, 0, a + Math.PI, 1), a); G.end();
+    G.begin(); G.line(tips[0][0], tips[0][1], tips[1][0], tips[1][1], K.string, 2); G.end();
+  },
+  assassin(G, K, a) { dagger(G, K, along(0, 0, a + Math.PI, 1.5), a, 4); },
+  mage(G, K, a) { staffOf(G, K, along(0, 0, a + Math.PI, 2), a); },
+  shield(G, K, a) { shieldOf(G, K, [0, 0], a, 3.5, 10); }
+};
+export function weaponSprite(k, a8) {
+  const key = 'W|' + k + '|' + a8;
+  let s = SPRITES.get(key);
+  if (s === undefined) {
+    const G = GRID.clear();
+    WEAPON[k](G, KIT[k], (a8 * Math.PI) / 4);
+    s = finish(G);
+    SPRITES.set(key, s);
+  }
+  return s;
+}
+// The little ghost a fallen familiar gives up: a white cat's head, eyes peacefully shut, trailing a
+// wisp, outlined in lavender (it is drawn as light).
+const GHOST = { fur: R('#ece6ff'), belly: R('#ffffff'), pink: R('#ffc4d8'), eyeR: R('#6a5a9a') };
+export function ghostSprite() {
+  let s = SPRITES.get('ghost');
+  if (s === undefined) {
+    const G = GRID.clear(), F = GHOST.fur;
+    G.begin();
+    G.poly([[-3, -8], [3, -8], [2.4, -5], [0.6, -3], [-1.2, -1.6], [-3, -1], [-2.2, -2.6], [-3.2, -4.6]], F, (x, y) => (y < -6 ? 3 : x > 0 ? 1 : 2));
+    G.end();
+    head(G, GHOST, { hx: 0, hy: -10 }, { eye: 'happy', ear: 0 });
+    s = finish(G, '#5a4a92');
+    SPRITES.set('ghost', s);
+  }
+  return s;
+}
+
+// A flat-colored copy (the white pop), only its outline in a color (rim: the kingdom's gold rim), a
+// dithered copy, every other pixel and the outline left out (rim = 'dither': afterimages), or a
+// copy washed over with a color, its shading kept (rim = 'wash': the red of a blow).
+function tintOf(s, color, rim = false) {
+  const key = (rim === 'dither' ? 'd' : rim === 'wash' ? 'w' : rim ? 'r' : 't') + color;
+  if (!s.tints[key]) {
+    const c = mkCanvas(s.w, s.h), g = c.getContext('2d');
+    if (rim === 'dither') {
+      g.fillStyle = color;
+      for (let y = 0; y < s.h; y++) for (let x = 0; x < s.w; x++) if (s.mask[y * s.w + x] === 1 && ((x + y) & 1) === 0) g.fillRect(x, y, 1, 1);
+    } else if (rim === 'wash') {
+      g.drawImage(s.canvas, 0, 0);
+      g.globalCompositeOperation = 'source-atop';
+      g.globalAlpha = 0.5;
+      g.fillStyle = color; g.fillRect(0, 0, s.w, s.h);
+    } else if (rim) {
+      g.fillStyle = color;
+      for (let y = 0; y < s.h; y++) for (let x = 0; x < s.w; x++) if (s.mask[y * s.w + x] === 2) g.fillRect(x, y, 1, 1);
+    } else {
+      g.drawImage(s.canvas, 0, 0);
+      g.globalCompositeOperation = 'source-in';
+      g.fillStyle = color; g.fillRect(0, 0, s.w, s.h);
+    }
+    s.tints[key] = { canvas: c, flipped: null, x0: s.x0, y0: s.y0, w: s.w, h: s.h, tints: {}, mask: s.mask };
+  }
+  return s.tints[key];
+}
+function blit(g, s, x, y, f = 1, scale = 1) {
+  if (f >= 0) g.drawImage(s.canvas, Math.round(x + s.x0 * scale), Math.round(y + s.y0 * scale), s.w * scale, s.h * scale);
+  else g.drawImage(flippedOf(s), Math.round(x - (s.x0 + s.w) * scale), Math.round(y + s.y0 * scale), s.w * scale, s.h * scale);
+}
+
+// A sprite turned a whole number of quarter turns (rot, clockwise) about a pivot py pixels over its
+// feet, the pivot at canvas pixel (x, y): pixel-exact, no smoothing.
+function blitRot(g, s, x, y, f, rot, py) {
+  const img = f >= 0 ? s.canvas : flippedOf(s), X0 = f >= 0 ? s.x0 : -(s.x0 + s.w);
+  if (!rot) { g.drawImage(img, Math.round(x + X0), Math.round(y + s.y0 + py)); return; }
+  g.save();
+  g.translate(Math.round(x), Math.round(y));
+  g.rotate((rot * Math.PI) / 2);
+  g.drawImage(img, X0, s.y0 + py);
+  g.restore();
+}
+// How far below the pivot the lowest pixel of s lies once turned rot quarter turns.
+function lowest(s, f, rot, py) {
+  const X0 = f >= 0 ? s.x0 : -(s.x0 + s.w);
+  return rot === 1 ? X0 + s.w : rot === 3 ? -X0 : rot === 2 ? -(s.y0 + py) : s.y0 + s.h + py;
+}
+
+// ---- effect palettes -------------------------------------------------------------------------
+const FXC = {
+  steel: { core: '#ffffff', hot: '#fff4d0', mid: '#ffd468', deep: '#b8761e', ink: '#2a1408' },
+  gold: { core: '#ffffff', hot: '#fff2a8', mid: '#ffc838', deep: '#c47a12', ink: '#3a1e04' },
+  blood: { core: '#ffffff', hot: '#ffd2dc', mid: '#ff4a64', deep: '#8a1030', ink: '#1e0410' },
+  magic: { core: '#ffffff', hot: '#f0dcff', mid: '#b878ff', deep: '#5a2aa8', ink: '#12062a' },
+  leaf: { core: '#ffffff', hot: '#eaffd8', mid: '#9ae070', deep: '#3a8a3a', ink: '#0a1a0a' },
+  fire: { core: '#fff6c4', hot: '#ffd25c', mid: '#ff9a35', deep: '#e3532d', ink: '#97302e' },
+  smoke: ['#2a2238', '#3a3050', '#4e4466', '#16101e'],
+  hurt: { core: '#ffffff', hot: '#ffe2e8', mid: '#ff5a74', deep: '#a8284a', ink: '#2a0814' }
+};
+const KIND_FX = { soldier: FXC.steel, archer: FXC.leaf, assassin: FXC.blood, mage: FXC.magic, shield: FXC.gold, worker: FXC.steel, knight: FXC.steel };
+
+// A crescent cut: centre (cx, cy), radius r, from a0 to a1 (radians, view space), width w; u 0..1
+// its age: the head sweeps in fast, white-hot, then the tail runs up after it and it thins away.
+function crescent(g, P, cx, cy, r, a0, a1, w, u, ox = 0, oy = 0, scale = 1) {
+  const head = Math.min(1, u / 0.35), tail = u < 0.3 ? 0 : Math.min(1, (u - 0.3) / 0.7);
+  if (head - tail < 0.02) return;
+  const span = a1 - a0, n = Math.max(6, Math.ceil(Math.abs(span) * r)), thin = 1 - u * 0.5;
+  for (let i = 0; i <= n; i++) {
+    const v = i / n;
+    if (v < tail || v > head) continue;
+    const q = (v - tail) / Math.max(0.01, head - tail), prof = Math.sin(Math.PI * Math.pow(q, 1.4)), ww = Math.max(1, Math.round(w * prof * thin));
+    const a = a0 + span * v, ca = Math.cos(a), sa = Math.sin(a);
+    for (let d = 0; d < ww; d++) {
+      const rr = r - d;
+      g.fillStyle = d === 0 ? (u < 0.45 && prof > 0.3 ? P.core : P.hot) : d === 1 ? (u < 0.3 && prof > 0.6 ? P.core : P.hot) : d < ww - 1 ? P.mid : P.deep;
+      g.fillRect(Math.round(cx + ca * rr * scale + ox), Math.round(cy + sa * rr * scale + oy), scale, scale);
+    }
+  }
+}
+// A four-pointed glint (sparkle) of radius r.
+function glint(g, P, x, y, r, ox = 0, oy = 0) {
+  x = Math.round(x + ox); y = Math.round(y + oy);
+  g.fillStyle = P.mid;
+  for (let d = 1; d <= r; d++) { g.fillRect(x - d, y, 1, 1); g.fillRect(x + d, y, 1, 1); g.fillRect(x, y - d, 1, 1); g.fillRect(x, y + d, 1, 1); }
+  g.fillStyle = P.hot;
+  for (let d = 1; d <= Math.max(1, r - 2); d++) { g.fillRect(x - d, y, 1, 1); g.fillRect(x + d, y, 1, 1); g.fillRect(x, y - d, 1, 1); g.fillRect(x, y + d, 1, 1); }
+  g.fillStyle = P.core; g.fillRect(x, y, 1, 1);
+}
+// A jagged lightning path from (x0, y0) down to (x1, y1) (re-rolled by seed).
+function boltPath(x0, y0, x1, y1, seed, jag = 7) {
+  const rnd = seeded(seed), pts = [[x0, y0]], n = Math.max(3, Math.round(Math.abs(y1 - y0) / 11));
+  for (let i = 1; i < n; i++) { const u = i / n; pts.push([x0 + (x1 - x0) * u + (rnd() - 0.5) * jag * 2, y0 + (y1 - y0) * u + (rnd() - 0.5) * 4]); }
+  pts.push([x1, y1]);
+  return pts;
+}
+function strokePath(g, pts, c, w, ox, oy) {
+  g.fillStyle = c;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const [ax, ay] = pts[i], [bx, by] = pts[i + 1], n = Math.max(1, Math.ceil(Math.max(Math.abs(bx - ax), Math.abs(by - ay))));
+    for (let k = 0; k <= n; k++) g.fillRect(Math.round(ax + ((bx - ax) * k) / n - (w - 1) / 2 + ox), Math.round(ay + ((by - ay) * k) / n + oy), w, 1);
+  }
+}
+// A filled disc with dithered rings (the meteor's blast, the gem's glow).
+function disc(g, x, y, r, colors, ox, oy, t = 0) {
+  const R = Math.ceil(r);
+  for (let j = -R; j <= R; j++) for (let i = -R; i <= R; i++) {
+    const d = Math.hypot(i, j) / Math.max(0.5, r);
+    if (d > 1) continue;
+    const n = colors.length, k = Math.min(n - 1, Math.floor(d * n + (((i * 7 + j * 13 + Math.floor(t * 30)) & 3) / 4) * 0.6));
+    g.fillStyle = colors[k];
+    g.fillRect(Math.round(x + i + ox), Math.round(y + j + oy), 1, 1);
+  }
+}
+
+// ---- the court on the field ------------------------------------------------------------------
+let LIVE = null;
+// The order they are drawn in: the mage at the back, the shield last.
+const ORDER = [3, 1, 2, 0, 4];
+// One familiar as drawCourt placed it (popping in white, fading out on a blink).
+// Struck, it flashes white, then blinks washed in red until the blow's flash runs out; a fallen one
+// tumbles (turned in quarter turns about its middle), its weapon flying off on its own.
+function blitRec(g, r, ox, oy, alpha, tint = null) {
+  const cue = r.q.cue, hu = cue.hurt || 0;
+  const s = tint ? tintOf(r.s, tint) : cue.tint ? tintOf(r.s, cue.tint) : hu > 0.72 ? tintOf(r.s, '#ffffff') : hu > 0 && Math.floor(hu * 9) % 2 ? tintOf(r.s, '#ff3050', 'wash') : r.s;
+  g.globalAlpha = alpha * (cue.fade ? 1 - cue.fade * 0.8 : 1) * (r.alpha ?? 1);
+  if (r.rot !== undefined) {
+    for (const w of r.bits || []) blitRot(g, tint ? tintOf(w.s, tint) : w.s, w.x + ox, w.y + oy, 1, 0, 0);
+    blitRot(g, s, r.x + ox, r.y + oy, r.f, r.rot, PIVOT);
+  } else blit(g, s, r.x + ox, r.y + oy, r.f);
+  g.globalAlpha = 1;
+}
+// A fallen familiar's last moments (s after it fell): thrown back the way it was struck, tumbling,
+// its weapon flung off spinning; down, a bounce, a flicker, gone in a puff; a little ghost with a halo
+// rising from where it lay.
+const DIE = { fly: 0.36, bounce: 0.1, flicker: 0.5, end: 0.64, ghost0: 0.56, ghost1: 1.5 };
+// The pivot a fallen one tumbles about: the middle of its body, this far over its feet.
+const PIVOT = 6;
+const FEET = 17 * S;
+export class CourtFX {
+  constructor(renderer = null) {
+    this.r = renderer;
+    this.fx = [];
+    this.parts = [];
+    this.mem = new Map();
+    this.kmem = new Map();
+    this.dies = [];
+    this.drawn = new Map();
+    this.bullets = [];
+    // How fast game time runs against the dt update() is handed (the LAB's slow motion is not in
+    // it): measured from the game clock the draw calls see, so the effects slow down with the game.
+    this.rate = 1; this.clock = { t: null, gt: null, acc: 0, gacc: 0 };
+    LIVE = this;
+  }
+
+  reset() { this.fx.length = 0; this.parts.length = 0; this.mem.clear(); this.kmem.clear(); this.dies.length = 0; this.drawn.clear(); this.bullets.length = 0; this.rate = 1; this.clock = { t: null, gt: null, acc: 0, gacc: 0 }; }
+
+  // Particles: k 'spark' (glowing, with a streak), 'smoke' (a puff that grows and fades), 'ember',
+  // 'mote' (a gold speck rising); x, y view pixels, v in px/s.
+  part(k, x, y, vx, vy, life, c, extra = {}) {
+    if (this.parts.length > 600) return;
+    this.parts.push({ k, x, y, vx, vy, t: 0, life, c, g: 0, drag: 1, s: 1, ...extra });
+  }
+  sparks(x, y, n, P, rnd, { a = -Math.PI / 2, spread = Math.PI * 2, sp = 90, life = 0.3, g = 260 } = {}) {
+    for (let i = 0; i < n; i++) {
+      const an = a + (rnd() - 0.5) * spread, v = sp * (0.4 + rnd() * 0.8);
+      this.part('spark', x, y, Math.cos(an) * v, Math.sin(an) * v, life * (0.6 + rnd() * 0.6), [P.core, P.hot, P.mid][Math.floor(rnd() * 3)], { g, drag: 0.04 });
+    }
+  }
+  smoke(x, y, n, rnd, { r = 6, life = 0.5, up = 14, cols = FXC.smoke } = {}) {
+    for (let i = 0; i < n; i++) {
+      const an = rnd() * Math.PI * 2, d = rnd() * r;
+      this.part('smoke', x + Math.cos(an) * d, y + Math.sin(an) * d * 0.7, Math.cos(an) * 18 * rnd(), -up * (0.4 + rnd()), life * (0.6 + rnd() * 0.6), cols[Math.floor(rnd() * cols.length)], { s: 2 + Math.floor(rnd() * 2), drag: 0.1 });
+    }
+  }
+
+  event(e) {
+    const x = (e.x ?? 0) * S, y = (e.y ?? 0) * S, rnd = seeded(((e.id || 1) * 2654435761) ^ 0x5bd1);
+    switch (e.fx) {
+      case 'courtHit': this.hitFx(e, x, y, rnd); break;
+      case 'blink': {
+        const x2 = (e.x2 ?? e.x) * S, y2 = (e.y2 ?? e.y) * S;
+        this.smoke(x, y - 6, 9, rnd, { r: 6, life: 0.45, up: 10 });
+        this.smoke(x2, y2 - 6, 7, rnd, { r: 5, life: 0.4, up: 16 });
+        this.fx.push({ k: 'blink', x, y: y - 6, x2, y2: y2 - 6, t: 0, life: 0.18 });
+        for (let i = 0; i < 4; i++) this.part('spark', x2 + (rnd() - 0.5) * 8, y2 - 4 - rnd() * 10, 0, -20, 0.3, FXC.magic.mid, { drag: 0.1 });
+        break;
+      }
+      case 'bolt': {
+        this.fx.push({ k: 'bolt', x, y, t: 0, life: 0.34, seed: (e.id || 1) * 31 });
+        this.sparks(x, y + FEET - 2, 12, FXC.magic, rnd, { spread: 2.6, sp: 120, life: 0.35 });
+        this.sparks(x, y, 6, FXC.gold, rnd, { sp: 70, life: 0.3, g: 120 });
+        break;
+      }
+      case 'meteor': {
+        const x0 = (e.x0 ?? e.x) * S, y0 = (e.y0 ?? e.y - 130) * S;
+        this.fx.push({ k: 'meteor', x0, y0, x, y, t: 0, life: 0.55 });
+        this.sparks(x, y, 18, FXC.fire, rnd, { sp: 140, life: 0.45, g: 300 });
+        for (let i = 0; i < 8; i++) this.part('ember', x + (rnd() - 0.5) * 10, y + (rnd() - 0.5) * 6, (rnd() - 0.5) * 60, -30 - rnd() * 50, 0.6 + rnd() * 0.5, rnd() < 0.5 ? FXC.fire.hot : FXC.fire.mid, { g: 40, drag: 0.4 });
+        this.smoke(x, y, 10, rnd, { r: 9, life: 0.8, up: 20, cols: ['#3a2a30', '#4e3a3a', '#2a2028', '#6a4a3a'] });
+        break;
+      }
+      case 'courtPoof': case 'courtAppear': {
+        const P = KIND_FX[e.k] || FXC.gold, app = e.fx === 'courtAppear';
+        this.smoke(x, y - 6, app ? 6 : 10, rnd, { r: 5, life: 0.5, up: 16, cols: ['#d8d0e8', '#a89cc0', '#7a6e94', '#efe8f8'] });
+        for (let i = 0; i < 6; i++) { const an = rnd() * Math.PI * 2; this.part('spark', x + Math.cos(an) * 4, y - 6 + Math.sin(an) * 4, Math.cos(an) * 40, Math.sin(an) * 40 - 20, 0.4, [P.core, P.hot, P.mid][i % 3], { drag: 0.05 }); }
+        this.fx.push({ k: app ? 'appear' : 'poof', x, y: y - 6, P, t: 0, life: app ? 0.4 : 0.3 });
+        break;
+      }
+      case 'courtHurt': {
+        // A familiar struck: a little white-hot pow at its body, sparks and tufts of its fur flung
+        // the way it was knocked.
+        const sd = e.f || 1, P = FXC.hurt, K = KIT[e.k];
+        this.fx.push({ k: 'hurt', x, y, f: sd, P, t: 0, life: 0.14 });
+        this.sparks(x, y, 5, P, rnd, { a: sd > 0 ? -0.4 : Math.PI + 0.4, spread: 2.2, sp: 90, life: 0.22, g: 220 });
+        if (K) for (let j = 0; j < 2; j++) this.part('fleck', x + (rnd() - 0.5) * 4, y + (rnd() - 0.5) * 4, sd * (30 + rnd() * 40), -40 - rnd() * 40, 0.35 + rnd() * 0.2, K.fur[3], { g: 320, drag: 0.3 });
+        break;
+      }
+      case 'courtDie': {
+        // Kept a moment for the familiar it goes with (which way it was thrown); a bigger pow.
+        this.dies.push({ x: e.x ?? 0, y: e.y ?? 0, k: e.k, f: e.f || 0, age: 0 });
+        if (this.dies.length > 40) this.dies.shift();
+        const sd = e.f || 1, P = FXC.hurt, K = KIT[e.k], cy = y - Math.round(9 * S);
+        this.fx.push({ k: 'star', x, y: cy, P, t: 0, life: 0.16, big: true });
+        this.fx.push({ k: 'ring', x, y: cy, P, t: 0, life: 0.28, r: 14 });
+        this.sparks(x, cy, 10, KIND_FX[e.k] || FXC.gold, rnd, { a: sd > 0 ? -0.5 : Math.PI + 0.5, spread: 2.6, sp: 130, life: 0.35, g: 260 });
+        if (K) for (let j = 0; j < 4; j++) this.part('fleck', x + (rnd() - 0.5) * 6, cy + (rnd() - 0.5) * 6, sd * (20 + rnd() * 60), -50 - rnd() * 50, 0.4 + rnd() * 0.3, K.fur[j % 2 ? 2 : 3], { g: 320, drag: 0.3 });
+        break;
+      }
+    }
+    if (this.fx.length > 80) this.fx.splice(0, this.fx.length - 80);
+  }
+
+  // A familiar's strike landing: what it looks like depends on who struck and how.
+  hitFx(e, x, y, rnd) {
+    const f = e.f || 1, k = e.k, act = e.act, P = KIND_FX[k] || FXC.steel;
+    const push = q => this.fx.push({ t: 0, x, y, f, P, ...q });
+    if (k === 'soldier') {
+      if (act === 'rise') push({ k: 'cut', cx: x - f * 4, cy: y + 4, r: 14, a0: 110, a1: -85, w: 4, life: 0.2 });
+      else if (act === 'plunge') { push({ k: 'pierce', life: 0.22 }); this.smoke(x, y + FEET - 2, 6, rnd, { r: 10, life: 0.5, up: 6, cols: ['#5a5068', '#6a6078'] }); }
+      else if (act === 'charge') push({ k: 'thrust', life: 0.14 });
+      else push({ k: 'cut', cx: x - f * 2, cy: y - 1, r: 13, a0: -140, a1: 40, w: 4, life: 0.2 });
+      push({ k: 'star', life: 0.1, big: act === 'plunge' });
+      this.sparks(x, y, 7, P, rnd, { a: f > 0 ? 0 : Math.PI, spread: 1.8, sp: 120 });
+    } else if (k === 'assassin') {
+      if (act === 'shadow') push({ k: 'line', life: 0.26 });
+      else push({ k: 'cross', life: 0.16, ang: rnd() * 0.6 - 0.3 });
+      this.sparks(x, y, 5, P, rnd, { a: f > 0 ? 0 : Math.PI, spread: 2, sp: 90 });
+      this.smoke(x - f * 4, y, 2, rnd, { r: 3, life: 0.3, up: 10 });
+    } else if (k === 'shield') {
+      push({ k: 'star', life: 0.14, big: true, P: FXC.gold });
+      push({ k: 'ring', life: 0.26, r: act === 'drop' ? 18 : 13 });
+      this.sparks(x, y, 10, FXC.gold, rnd, { a: act === 'bash' ? -Math.PI / 2 : f > 0 ? 0 : Math.PI, spread: 1.6, sp: 130 });
+      if (act === 'drop') this.smoke(x, y + FEET - 2, 8, rnd, { r: 12, life: 0.5, up: 6, cols: ['#5a5068', '#6a6078'] });
+    } else if (k === 'mage') {
+      push({ k: 'ring', life: 0.22, r: 10, P: FXC.magic });
+      this.sparks(x, y, 6, FXC.magic, rnd, { sp: 80 });
+    } else {
+      push({ k: 'star', life: 0.1 });
+      this.sparks(x, y, 4, P, rnd, { sp: 70 });
+    }
+  }
+
+  update(dt) {
+    if (!(dt > 0)) return;
+    const C = this.clock;
+    C.acc += dt;
+    if (C.acc >= 0.2) {
+      // Over the last fifth of a second: game time gone by against frame time.
+      if (C.gacc > 0) this.rate = Math.max(0.05, Math.min(1, C.gacc / C.acc));
+      C.acc = 0; C.gacc = 0;
+    }
+    dt *= this.rate;
+    for (const q of this.fx) q.t += dt;
+    this.fx = this.fx.filter(q => q.t < q.life);
+    for (const p of this.parts) {
+      p.t += dt;
+      p.vy += p.g * dt;
+      const d = Math.pow(p.drag, dt);
+      p.vx *= d; p.vy *= d;
+      p.x += p.vx * dt; p.y += p.vy * dt;
+    }
+    this.parts = this.parts.filter(p => p.t < p.life);
+    for (const d of this.dies) d.age += dt;
+    if (this.dies.length) this.dies = this.dies.filter(d => d.age < 1.5);
+  }
+
+  // Per familiar: how far it has walked (its stride phase), how fast it is rising or falling, and
+  // where it was the last few frames (for afterimages). Updated once per frame of game time.
+  track(a, t) {
+    const C = a.court;
+    // How fast the King himself is going (world units a step): with him on the move they run, with
+    // him still they fidget and hop about their ranks.
+    let km = this.kmem.get(a.id);
+    if (!km || t < km.t - 0.5) { km = { t, x: a.x, v: 0 }; this.kmem.set(a.id, km); }
+    const kdt = Math.min(0.1, t - km.t);
+    if (kdt > 0) { km.v = km.v * 0.6 + Math.min(20, Math.abs(a.x - km.x) / (kdt * 60)) * 0.4; km.x = a.x; km.t = t; }
+    for (let i = 0; i < C.length; i++) {
+      const F = C[i], key = a.id + ':' + i;
+      let m = this.mem.get(key);
+      if (!m || t < m.t - 0.5 || F.st === 'gone') { m = { t, x: F.x, y: F.y, vy: 0, ph: 0, bph: i * 0.29, kv: 0, hist: [], ht: 0, death: null }; this.mem.set(key, m); }
+      m.kv = km.v;
+      if (F.st === 'dead') {
+        if (!m.death) m.death = this.deathOf(a, F);
+        else if (!m.death.matched && (F.t || 0) < 0.2) { const e = this.takeDie(F); if (e) { m.death.s = e.f || m.death.s; m.death.matched = true; } }
+      } else m.death = null;
+      const dt = Math.min(0.1, Math.max(0, t - m.t));
+      if (dt <= 0) continue;
+      const vy = (F.y - m.y) / (dt * 60);
+      m.vy = m.vy * 0.5 + vy * 0.5;
+      // Stride and bounce: the stride runs backwards when it shuffles back without turning round.
+      const sp = Math.abs(F.vx || 0), back = F.st === 'back', run = back || (sp > 0.6 && km.v > 0.5);
+      m.ph += dt * (run ? 16 : 10) * (sp > 0.12 || back ? Math.sign((F.vx || 0) * (F.f || 1)) || 1 : 0);
+      m.bph += dt * (sp > 0.12 && km.v <= 0.5 ? 6 : 3.4);
+      // Running flat out, little kicks of dust off its heels.
+      if (run && sp > 1.5 && !F.air && F.st !== 'act' && (m.dust = (m.dust || 0) + dt) > 0.09) {
+        m.dust = 0;
+        const fx = F.f >= 0 ? 1 : -1;
+        this.part('smoke', F.x * S - fx * 3, F.y * S - 1, -fx * (8 + (i % 3) * 4), -5 - (i % 2) * 4, 0.24, i % 2 ? '#6a6078' : '#4e4466', { s: 1, drag: 0.1 });
+      }
+      m.ht += dt;
+      if (m.ht >= 1 / 30) { m.ht = 0; m.hist.push({ x: F.x * S, y: F.y * S, f: F.f || 1, s: null, dy: 0 }); if (m.hist.length > 5) m.hist.shift(); }
+      m.x = F.x; m.y = F.y; m.t = t;
+    }
+  }
+
+  // A familiar just fell: where (view px), which way it was thrown (the 'courtDie' event that goes with
+  // it, else away from where it faced) and the floor it lands on (the mage floats; one struck in the
+  // air drops toward the King's feet).
+  deathOf(a, F) {
+    const e = this.takeDie(F), x = F.x * S, y = F.y * S;
+    const kingFeet = ((a.y ?? F.y) + 17) * S;
+    const floor = y + (F.air ? Math.max(0, Math.min(40, kingFeet - y)) : F.k === 'mage' ? Math.round(15 * S) : 0);
+    return { x, y, floor, s: e?.f || -(F.f || 1) || 1, f: (F.f || 1) >= 0 ? 1 : -1, matched: !!e, puffed: false, at: null };
+  }
+  takeDie(F) {
+    const i = this.dies.findIndex(e => e.k === F.k && Math.abs(e.x - F.x) < 14 && Math.abs(e.y - F.y) < 14);
+    return i < 0 ? null : this.dies.splice(i, 1)[0];
+  }
+
+  // A fallen familiar this frame: its tumbling body and flying weapon as a record drawCourt and
+  // drawCourtKeep blit like any other (null once it is gone). Spawns its puff once, as it vanishes.
+  deathFigure(a, i, t) {
+    const F = a.court[i], k = F.k || KINDS[i], T = F.t || 0;
+    if (!BUILD[k]) return null;
+    const m = this.mem.get(a.id + ':' + i), D = m?.death;
+    // Gone: a puff of smoke and sparkles where it lay (once, even if a long frame skipped past it).
+    if (D && !D.puffed && D.last && T >= DIE.end - 0.05 && T < DIE.end + 0.4) {
+      D.puffed = true;
+      const rnd = seeded((a.id + 1) * 977 + i * 131 + Math.floor(D.x)), P = KIND_FX[k] || FXC.gold, [px, py] = D.last;
+      this.smoke(px, py - 1, 9, rnd, { r: 6, life: 0.5, up: 14, cols: ['#e8e2f4', '#b8acd0', '#8a7ea8', '#fff8ff'] });
+      for (let j = 0; j < 7; j++) { const an = rnd() * Math.PI * 2; this.part('spark', px + Math.cos(an) * 4, py + Math.sin(an) * 3, Math.cos(an) * 46, Math.sin(an) * 30 - 24, 0.4, [P.core, P.hot, P.mid][j % 3], { drag: 0.05 }); }
+      this.fx.push({ k: 'poof', x: px, y: py, P, t: 0, life: 0.3 });
+      for (const w of D.bits || []) this.smoke(w[0], w[1], 3, rnd, { r: 3, life: 0.35, up: 10, cols: ['#d8d0e8', '#a89cc0'] });
+    }
+    // Landing: a little burst of dust off the floor.
+    if (D && !D.landed && D.last && T >= DIE.fly && T < DIE.fly + 0.2) {
+      D.landed = true;
+      const rnd = seeded((a.id + 1) * 613 + i * 71 + Math.floor(D.x)), cols = ['#8a7e9a', '#a89cb4', '#6a6078'];
+      for (let j = 0; j < 6; j++) { const sd = j % 2 ? 1 : -1; this.part('smoke', D.last[0] + sd * (2 + rnd() * 4), D.floor - 1, sd * (14 + rnd() * 26), -6 - rnd() * 10, 0.3 + rnd() * 0.2, cols[j % 3], { s: 1 + Math.floor(rnd() * 2), drag: 0.05 }); }
+    }
+    if (T >= DIE.end) return null;
+    const G = D || this.deathOf(a, F), s = G.s, f = G.f;
+    // The body: bare-pawed, x x eyes, curled up in the air, sprawled once down.
+    const flying = T < DIE.fly, u = Math.min(1, T / DIE.fly);
+    const o = { legs: flying ? 'tuck' : 'split', eye: 'ko', ear: k === 'assassin' ? 2 : 0, bare: true, tail: flying ? -1 : 1, dy: 0 };
+    rest(k, o);
+    const by = BY(o);
+    if (k === 'mage') { o.hand = [3, by - 5]; o.handB = [-2, by - 5]; o.hem = flying ? -1 : 0; }
+    else if (k === 'archer') { o.hand = [3, by - 4]; o.bowHand = [5, by - 3]; }
+    else if (k === 'shield') { o.hand = [4, by - 4]; o.showArm = true; }
+    else { o.hand = [4, by - 4]; if (o.armB) o.armB = [-3, by - 4]; }
+    const spr = familiarSprite(k, o);
+    // Quarter turns, the way it was thrown; it lands on its side, head first.
+    const q = flying ? Math.min(5, Math.floor(u * 6)) : 5, rot = (((q * s) % 4) + 4) % 4;
+    const restY = G.floor - lowest(spr, f, (((5 * s) % 4) + 4) % 4, PIVOT), y0 = G.y - PIVOT;
+    let x, y;
+    if (flying) {
+      x = G.x + s * 22 * ease(u);
+      y = lerp(y0, restY, u) - 15 * 4 * u * (1 - u);
+    } else {
+      const v = clamp01((T - DIE.fly) / DIE.bounce);
+      x = G.x + s * (22 + 3 * ease(v));
+      y = restY - Math.sin(v * Math.PI) * 3;
+    }
+    // (never through the floor, whichever way up it is)
+    const r = { k, F, q: { o, cue: {} }, s: spr, f, x: Math.round(x), y: Math.round(Math.min(y, G.floor - lowest(spr, f, rot, PIVOT))), t, rot, bits: [] };
+    if (T < 0.06) r.q.cue.tint = '#ffffff';
+    if (T > DIE.flicker) r.alpha = Math.floor(T * 30) % 2 ? 0.35 : 1;
+    // Its weapon (the assassin's two daggers): flung up off it, spinning, clattering down.
+    const n = k === 'assassin' ? 2 : 1;
+    for (let j = 0; j < n; j++) {
+      const dir = j ? s * 0.9 : -s * (k === 'shield' ? 0.4 : 0.6), wu = Math.min(1, T / 0.46), hi = k === 'shield' ? 16 : 26;
+      const spin = j ? s : -s, land = k === 'shield' || k === 'archer' ? 2 : 0;
+      const a8 = wu < 1 ? (((Math.floor(T / 0.035) * spin + (k === 'shield' ? 0 : 7)) % 8) + 8) % 8 : land;
+      const ws = weaponSprite(k, a8);
+      const wy0 = G.y - 7, wFloor = G.floor - (ws.y0 + ws.h);
+      let wx = G.x + f * 3 + dir * 26 * wu, wy = lerp(wy0, wFloor, wu) - hi * 4 * wu * (1 - wu);
+      if (wu >= 1) { const v = clamp01((T - 0.46) / 0.08); wx += dir * 3 * v; wy = wFloor - Math.sin(v * Math.PI) * 2; }
+      r.bits.push({ s: ws, x: Math.round(wx), y: Math.round(Math.min(wy, wFloor)) });
+    }
+    if (D) { D.last = [r.x, r.y]; D.bits = r.bits.map(w => [w.x, w.y]); }
+    return r;
+  }
+
+  // One familiar's pose and sprite this frame, and where it goes (view px without shake).
+  figure(a, i, t) {
+    const F = a.court[i], k = F.k || KINDS[i];
+    if (!BUILD[k]) return null;
+    const m = this.mem.get(a.id + ':' + i);
+    const q = poseFor(k, F, t, i, m);
+    const s = familiarSprite(k, q.o);
+    const f = ((F.f || 1) >= 0 ? 1 : -1) * (q.flip ? -1 : 1);
+    const x = Math.round(F.x * S) + q.dx, y = Math.round(F.y * S) + q.dy;
+    if (m && m.hist.length) { const h = m.hist[m.hist.length - 1]; if (!h.s) { h.s = s; h.f = f; h.dy = q.dy; } }
+    return { k, F, q, s, f, x, y, t };
+  }
+
+  // The court on the lit layer: front=false before the fighters (in formation behind the King, and
+  // their shadows), front=true after them (the shield on guard, and whoever is striking).
+  drawCourt(g, a, ox, oy, t, front) {
+    const C = a?.court;
+    if (!C?.length) return;
+    if (!front) this.track(a, t);
+    let recs = this.drawn.get(a.id);
+    if (!recs || recs.t !== t) { recs = { t, list: [] }; this.drawn.set(a.id, recs); }
+    if (!front) {
+      // Little contact shadows on the floor (the mage's well under him).
+      g.fillStyle = '#0a0612';
+      for (const F of C) {
+        if (!F || F.st === 'gone' || F.st === 'dead' || (F.air && F.k !== 'mage')) continue;
+        const sx = Math.round(F.x * S + ox), sy = Math.round(F.y * S + oy) + (F.k === 'mage' ? Math.round(12 * S) : 0);
+        g.globalAlpha = F.k === 'mage' ? 0.22 : 0.35;
+        g.fillRect(sx - 3, sy - 1, 7, 1); g.fillRect(sx - 2, sy, 5, 1);
+      }
+      g.globalAlpha = 1;
+    }
+    for (const i of ORDER) {
+      const F = C[i];
+      if (!F || F.st === 'gone') continue;
+      const dead = F.st === 'dead';
+      const inFront = F.st === 'act' || F.k === 'shield' || dead;
+      if (inFront !== !!front) continue;
+      const r = dead ? this.deathFigure(a, i, t) : this.figure(a, i, t);
+      if (!r?.s) continue;
+      r.front = !!front;
+      recs.list[i] = r;
+      blitRec(g, r, ox, oy, 1);
+    }
+  }
+
+  // After the light map: the familiars keep part of their own color, as the fighters do (they would
+  // sink into the dark arenas otherwise). The renderer calls it right after its fighters' own-color
+  // pass with the figure records: the familiars behind the fighters are cut out where a fighter
+  // stands in front of them, the ones in front are drawn as they are. Until the renderer calls it,
+  // drawCourtGlow does it for the familiars in front (the ones striking) on its own.
+  drawCourtKeep(g, a, ox, oy, t, figures = null, alpha = 0.45) {
+    const recs = a?.court && this.drawn.get(a.id);
+    if (!recs || recs.t !== t) return;
+    recs.kept = t; recs.figs = figures;
+    const ga = g.globalAlpha, gc = g.globalCompositeOperation;
+    if (figures) {
+      // Behind: into a scratch canvas, the fighters' silhouettes punched out of it.
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const r of recs.list) if (r && !r.front) {
+        const X = r.x + ox + (r.f >= 0 ? r.s.x0 : -(r.s.x0 + r.s.w)), Y = r.y + oy + r.s.y0;
+        x0 = Math.min(x0, X); y0 = Math.min(y0, Y); x1 = Math.max(x1, X + r.s.w); y1 = Math.max(y1, Y + r.s.h);
+      }
+      if (x1 > x0) {
+        x0 = Math.floor(x0); y0 = Math.floor(y0);
+        const w = Math.ceil(x1 - x0) + 1, h = Math.ceil(y1 - y0) + 1;
+        let c = this.scratch;
+        if (!c || c.width < w || c.height < h) c = this.scratch = mkCanvas(Math.max(w, c?.width || 0), Math.max(h, c?.height || 0));
+        const sg = c.getContext('2d');
+        sg.globalCompositeOperation = 'source-over';
+        sg.clearRect(0, 0, c.width, c.height);
+        for (const i of ORDER) { const r = recs.list[i]; if (r && !r.front) blitRec(sg, r, ox - x0, oy - y0, 1); }
+        sg.globalCompositeOperation = 'destination-out';
+        for (const f of figures) if (f?.fc?.body?.c && f.x < x0 + w && f.y < y0 + h && f.x + f.fc.body.c.width > x0 && f.y + f.fc.body.c.height > y0) sg.drawImage(f.fc.body.c, f.x - x0, f.y - y0);
+        sg.globalCompositeOperation = 'source-over';
+        g.globalCompositeOperation = 'source-over';
+        g.globalAlpha = alpha;
+        g.drawImage(c, x0, y0);
+      }
+    }
+    g.globalCompositeOperation = 'source-over';
+    for (const i of ORDER) { const r = recs.list[i]; if (r && r.front) blitRec(g, r, ox, oy, alpha); }
+    g.globalAlpha = ga; g.globalCompositeOperation = gc;
+  }
+
+  // The glowing bits on the emissive layer: the mage's crystal and spells, the assassin's eyes,
+  // blades flashing through their swings and their smears, afterimages of dashes, and the gold rim of
+  // the ones his kingdom's aura buffs (F.b).
+  drawCourtGlow(g, a, ox, oy, t) {
+    const C = a?.court;
+    if (!C?.length) return;
+    const recs = this.drawn.get(a.id);
+    if (recs && recs.t === t && recs.kept !== t && this.r?.lg && this.r.lg !== g) this.drawCourtKeep(this.r.lg, a, ox, oy, t, null);
+    if (recs && recs.t === t) this.drawRims(g, a, recs, ox, oy, t);
+    for (let i = 0; i < C.length; i++) {
+      const F = C[i];
+      if (!F || F.st === 'gone') continue;
+      const rec = recs && recs.t === t ? recs.list[i] : null;
+      if (F.st === 'dead') { this.drawGhost(g, a, i, F, rec, ox, oy); continue; }
+      const r = rec || this.figure(a, i, t);
+      if (!r?.s) continue;
+      // The white of a blow, glowing (only over the ones in front: behind, a fighter may hide them).
+      if (r.front && (r.q.cue.hurt || 0) > 0.72) blitRec(g, r, ox, oy, 0.8, '#ffffff');
+      const m = this.mem.get(a.id + ':' + i);
+      // Afterimages along a dash: dithered, fainter the older, only where it has really moved.
+      if (r.q.cue.ghost && m) {
+        const col = KIT[r.k].ghost, n = m.hist.length, gk = r.q.cue.ghost;
+        let lx = F.x * S, ly = F.y * S;
+        for (let j = n - 2; j >= Math.max(0, n - (gk < 1 ? 3 : 4)); j--) {
+          const h = m.hist[j];
+          if (!h.s || Math.hypot(h.x - lx, h.y - ly) < 4) continue;
+          lx = h.x; ly = h.y;
+          g.globalAlpha = (0.42 - 0.14 * (n - 2 - j)) * gk;
+          blit(g, tintOf(h.s, col, 'dither'), Math.round(h.x + ox), Math.round(h.y + oy) + h.dy, h.f);
+        }
+        g.globalAlpha = 1;
+      }
+      glowBits(g, r.k, r.s, r.q, r.x + ox, r.y + oy, r.f, 1, t + i * 0.37);
+    }
+  }
+
+  // Buffed by the kingdom (F.b, the tier 1..3 of the aura they stand in): their outline turns gold,
+  // faint at tier 1, bright at 3 with a twinkle running round them. The ones in rank behind the
+  // fighters are cut out where a fighter stands in front of them (with the figures drawCourtKeep was
+  // handed this frame), so the rim never shows through the King.
+  drawRims(g, a, recs, ox, oy, t) {
+    let behind = null;
+    const ga = g.globalAlpha;
+    for (const i of ORDER) {
+      const r = recs.list[i], b = r?.F?.b | 0;
+      if (!r?.s || b <= 0 || r.F.st === 'dead' || r.rot !== undefined) continue;
+      if (!r.front && recs.figs) { (behind ||= []).push(r); continue; }
+      rimOf(g, r, b, ox, oy, t, i);
+    }
+    if (behind) {
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const r of behind) {
+        const X = r.x + ox + (r.f >= 0 ? r.s.x0 : -(r.s.x0 + r.s.w)) - 3, Y = r.y + oy + r.s.y0 - 3;
+        x0 = Math.min(x0, X); y0 = Math.min(y0, Y); x1 = Math.max(x1, X + r.s.w + 6); y1 = Math.max(y1, Y + r.s.h + 6);
+      }
+      x0 = Math.floor(x0); y0 = Math.floor(y0);
+      const w = Math.ceil(x1 - x0) + 1, h = Math.ceil(y1 - y0) + 1;
+      let c = this.scratch2;
+      if (!c || c.width < w || c.height < h) c = this.scratch2 = mkCanvas(Math.max(w, c?.width || 0), Math.max(h, c?.height || 0));
+      const sg = c.getContext('2d');
+      sg.globalCompositeOperation = 'source-over'; sg.globalAlpha = 1;
+      sg.clearRect(0, 0, c.width, c.height);
+      for (const r of behind) rimOf(sg, r, r.F.b | 0, ox - x0, oy - y0, t, recs.list.indexOf(r));
+      sg.globalAlpha = 1;
+      sg.globalCompositeOperation = 'destination-out';
+      for (const f of recs.figs) if (f?.fc?.body?.c && f.x < x0 + w && f.y < y0 + h && f.x + f.fc.body.c.width > x0 && f.y + f.fc.body.c.height > y0) sg.drawImage(f.fc.body.c, f.x - x0, f.y - y0);
+      sg.globalCompositeOperation = 'source-over';
+      g.drawImage(c, x0, y0);
+    }
+    g.globalAlpha = ga;
+  }
+
+  // A fallen one on the emissive layer: the white flash of the blow that felled it, then its little
+  // ghost rising from where it lay, swaying, a gold halo over its head, fading as it goes.
+  drawGhost(g, a, i, F, r, ox, oy) {
+    const T = F.t || 0;
+    if (T < 0.08 && r) blitRec(g, r, ox, oy, 0.9, '#ffffff');
+    if (T < DIE.ghost0 || T > DIE.ghost1) return;
+    const D = this.mem.get(a.id + ':' + i)?.death, base = D?.last || [F.x * S, F.y * S - PIVOT];
+    const gu = (T - DIE.ghost0) / (DIE.ghost1 - DIE.ghost0), gs = ghostSprite();
+    const x = Math.round(base[0] + Math.sin(gu * 9 + i) * 2 + ox), y = Math.round(base[1] + 3 - ease(gu) * 28 + oy);
+    const al = gu < 0.12 ? gu / 0.12 : gu > 0.55 ? 1 - (gu - 0.55) / 0.45 : 1;
+    g.globalAlpha = al * 0.8;
+    blit(g, gs, x, y, D?.f ?? 1);
+    const hy = y + gs.y0 - 2, hx = x + (D?.f ?? 1) * 0;
+    g.globalAlpha = al;
+    g.fillStyle = '#ffd860'; g.fillRect(hx - 1, hy - 1, 3, 1); g.fillRect(hx - 2, hy, 1, 1); g.fillRect(hx + 2, hy, 1, 1);
+    g.fillStyle = '#fff6c8'; g.fillRect(hx - 1, hy + 1, 3, 1);
+    g.globalAlpha = 1;
+  }
+
+  // Arrows and magic bolts (lit layer); true if it drew b.
+  drawBullet(g, b, ox, oy, t) {
+    if (!b || (b.kind !== 'arrow' && b.kind !== 'magic')) return false;
+    const x = b.x * S + ox, y = b.y * S + oy;
+    if (b.kind === 'arrow') {
+      let vx = b.vx ?? 0, vy = b.vy ?? 0;
+      if (!vx && !vy) vy = 1;
+      const n = Math.hypot(vx, vy), c = vx / n, s = vy / n;
+      const px = (col, d, side = 0) => { g.fillStyle = col; g.fillRect(Math.round(x - c * d - s * side), Math.round(y - s * d + c * side), 1, 1); };
+      // A dark line under it so it reads on any ground, then the head, the shaft and the fletching.
+      g.globalAlpha = 0.6;
+      for (let d = 0; d <= 7; d++) px('#140c18', d, 1);
+      g.globalAlpha = 1;
+      px('#ffffff', 0); px('#b8c0dc', 1); px('#8a90b0', 1, -1); px('#8a90b0', 1, 1);
+      for (let d = 2; d <= 6; d++) px(d < 4 ? '#d49a5a' : '#a8703c', d);
+      px('#f0f4e8', 6, -1); px('#f0f4e8', 6, 1); px('#58b858', 7, -1); px('#58b858', 7, 1); px('#e8e0d0', 7);
+      this.bullets.push({ k: 'arrow', x: x - ox, y: y - oy, c, s });
+      return true;
+    }
+    // A magic bolt: a violet orb with a white core and a gold spark circling it, a fading trail.
+    let vx = b.vx ?? (b.x - (b.px ?? b.x)), vy = b.vy ?? (b.y - (b.py ?? b.y));
+    const n = Math.hypot(vx, vy) || 1;
+    g.fillStyle = '#5a2aa8';
+    for (let i = 1; i <= 4; i++) { g.globalAlpha = 0.7 - i * 0.15; g.fillRect(Math.round(x - (vx / n) * i * 2), Math.round(y - (vy / n) * i * 2), 1, 1); }
+    g.globalAlpha = 1;
+    g.fillStyle = '#b878ff'; g.fillRect(Math.round(x) - 1, Math.round(y) - 1, 3, 3);
+    g.fillStyle = '#ffffff'; g.fillRect(Math.round(x), Math.round(y), 1, 1);
+    this.bullets.push({ k: 'magic', x: x - ox, y: y - oy, vx: vx / n, vy: vy / n });
+    return true;
+  }
+
+  // The event effects, on the emissive layer.
+  drawEffects(g, ox, oy, t) {
+    const C = this.clock;
+    if (C.gt !== null) { const d = t - C.gt; if (d >= 0 && d < 0.5) C.gacc += d; }
+    C.gt = t;
+    const dot = (c, x, y, w = 1, h = w) => { g.fillStyle = c; g.fillRect(Math.round(x + ox), Math.round(y + oy), w, h); };
+    // The glowing part of the shots drawn on the lit layer this frame.
+    for (const b of this.bullets) {
+      if (b.k === 'arrow') {
+        // A streak along the whole shaft (so it reads against the dark), fading off behind it.
+        const at = (d, side = 0) => [b.x - b.c * d - b.s * side, b.y - b.s * d + b.c * side];
+        for (let d = 1; d <= 12; d++) {
+          g.globalAlpha = d <= 7 ? 0.42 : 0.3 * (1 - (d - 7) / 6);
+          dot(d < 2 ? '#e8eeff' : d < 7 ? '#ffe2b0' : '#fff4d8', ...at(d));
+        }
+        g.globalAlpha = 0.5; dot('#c8ffb8', ...at(7, -1)); dot('#c8ffb8', ...at(7, 1));
+        g.globalAlpha = 1; dot('#ffffff', b.x, b.y);
+      }
+      else {
+        dot(FXC.magic.mid, b.x - 1, b.y - 1, 3); dot('#ffffff', b.x, b.y);
+        const an = t * 18, gx = b.x + Math.cos(an) * 3, gy = b.y + Math.sin(an) * 3;
+        dot(FXC.gold.hot, gx, gy);
+        g.globalAlpha = 0.6; for (let i = 1; i <= 5; i++) dot(i < 3 ? FXC.magic.hot : FXC.magic.mid, b.x - b.vx * i * 2, b.y - b.vy * i * 2); g.globalAlpha = 1;
+      }
+    }
+    this.bullets.length = 0;
+    for (const q of this.fx) {
+      const u = q.t / q.life;
+      switch (q.k) {
+        case 'cut': crescent(g, q.P, q.cx, q.cy, q.r, (q.f > 0 ? q.a0 : 180 - q.a0) * DEG, (q.f > 0 ? q.a1 : 180 - q.a1) * DEG, q.w, u, ox, oy); break;
+        case 'star': {
+          const r = Math.round((q.big ? 8 : 5) * (1 - u * 0.6));
+          glint(g, q.P, q.x, q.y, r, ox, oy);
+          if (q.big) { const d = Math.round(r * 0.6); dot(q.P.hot, q.x - d, q.y - d); dot(q.P.hot, q.x + d, q.y - d); dot(q.P.hot, q.x - d, q.y + d); dot(q.P.hot, q.x + d, q.y + d); }
+          break;
+        }
+        case 'ring': {
+          const P = q.P, R = q.r * (0.3 + 0.7 * ease(u));
+          g.globalAlpha = 1 - u;
+          for (let i = 0; i < 40; i++) { const an = (i / 40) * Math.PI * 2; dot(i % 2 ? P.hot : P.mid, q.x + Math.cos(an) * R, q.y + Math.sin(an) * R * 0.85); }
+          g.globalAlpha = 1;
+          break;
+        }
+        case 'cross': {
+          // Two quick crossing stabs: white-hot lines that snap open and shrink away.
+          const L = (q.big ? 7 : 5) * (u < 0.3 ? u / 0.3 : 1 - (u - 0.3) * 0.8);
+          for (const sd of [-1, 1]) {
+            const an = sd * (Math.PI / 4) + (q.ang || 0);
+            for (let d = -L; d <= L; d++) dot(Math.abs(d) < L * 0.4 ? q.P.core : Math.abs(d) < L * 0.75 ? q.P.hot : q.P.mid, q.x + Math.cos(an) * d, q.y + Math.sin(an) * d);
+          }
+          break;
+        }
+        case 'line': {
+          // The shadow dash's cut straight through: a long hairline that opens to a white seam.
+          const L = 20, w = u < 0.25 ? 1 : u < 0.6 ? 2 : 1;
+          for (let d = -L; d <= L; d++) {
+            const v = Math.abs(d) / L;
+            if (v > 1 - u * 0.6 && u > 0.4) continue;
+            dot(v < 0.3 ? q.P.core : v < 0.7 ? q.P.hot : q.P.mid, q.x + d * q.f, q.y - 1 + Math.round(d * 0.12) * q.f, 1, w);
+          }
+          break;
+        }
+        case 'pierce': {
+          // The plunge: a streak down onto them and a burst of light on the floor.
+          const top = q.y - 26, bot = q.y + FEET;
+          g.globalAlpha = 1 - u;
+          for (let yy = top; yy < bot; yy++) dot(yy > bot - 6 ? q.P.core : q.P.hot, q.x, yy);
+          g.globalAlpha = 1;
+          const R = 4 + u * 14;
+          for (let i = -R; i <= R; i++) if (Math.abs(i) > R - 4 || u < 0.2) dot(Math.abs(i) > R - 2 ? q.P.mid : q.P.hot, q.x + i, bot - 1);
+          break;
+        }
+        case 'thrust': {
+          const L = 14 * (1 - u);
+          for (let d = 0; d < L; d++) dot(d < 4 ? q.P.core : q.P.hot, q.x - q.f * d, q.y);
+          glint(g, q.P, q.x, q.y, 3, ox, oy);
+          break;
+        }
+        case 'blink': {
+          // A thread of shadow between where the assassin was and where he is.
+          g.globalAlpha = (1 - u) * 0.8;
+          const n = Math.ceil(Math.hypot(q.x2 - q.x, q.y2 - q.y) / 2);
+          for (let i = 0; i <= n; i += 1) { const v = i / n; if ((i + Math.floor(t * 40)) % 3) dot(i % 2 ? FXC.magic.deep : FXC.magic.mid, q.x + (q.x2 - q.x) * v, q.y + (q.y2 - q.y) * v + Math.sin(v * Math.PI) * -6); }
+          g.globalAlpha = 1;
+          break;
+        }
+        case 'hurt': {
+          // A small pow: a white star rimmed in red, two short streaks flung the way it was struck.
+          glint(g, q.P, q.x, q.y, Math.max(1, Math.round(4 * (1 - u))) + 1, ox, oy);
+          if (u < 0.6) for (const d of [-1, 1]) for (let j = 2; j < 5; j++) dot(j < 3 ? q.P.hot : q.P.mid, q.x + q.f * j, q.y + d * Math.round(j * 0.6));
+          break;
+        }
+        case 'bolt': this.drawBolt(g, q, u, ox, oy, t); break;
+        case 'meteor': this.drawMeteor(g, q, u, ox, oy, t); break;
+        case 'poof': case 'appear': {
+          const P = q.P, R = (q.k === 'appear' ? 12 : 8) * ease(u);
+          g.globalAlpha = 1 - u;
+          for (let i = 0; i < 8; i++) { const an = (i / 8) * Math.PI * 2 + u; dot(i % 2 ? P.hot : P.mid, q.x + Math.cos(an) * R, q.y + Math.sin(an) * R); }
+          g.globalAlpha = 1;
+          if (q.k === 'appear' && u < 0.5) glint(g, P, q.x, q.y - 2, Math.round(5 * (1 - u * 2)), ox, oy);
+          break;
+        }
+      }
+    }
+    // Particles.
+    for (const p of this.parts) {
+      const k = p.t / p.life;
+      if (p.k === 'smoke') {
+        const sz = Math.round(p.s + k * 2);
+        g.globalAlpha = 0.75 * (1 - k);
+        dot(p.c, p.x - sz / 2, p.y - sz / 2, sz);
+      } else if (p.k === 'spark') {
+        g.globalAlpha = 1;
+        dot(p.c, p.x, p.y);
+        g.globalAlpha = 0.5;
+        dot(p.c, p.x - p.vx * 0.012, p.y - p.vy * 0.012);
+      } else {
+        g.globalAlpha = 1 - k * 0.7;
+        dot(p.c, p.x, p.y);
+      }
+    }
+    g.globalAlpha = 1;
+  }
+
+  // Lightning out of the top of the screen onto them: a white core, a violet halo, forks, a flash at
+  // the start, and a burst of light where it hits the floor.
+  drawBolt(g, q, u, ox, oy, t) {
+    const P = FXC.magic, top = -oy - 4, bot = q.y + FEET;
+    const flick = Math.floor(q.t * 30);
+    if (u > 0.55 && flick % 2) return;
+    const pts = boltPath(q.x + ((q.seed % 7) - 3) * 3, top, q.x, bot, q.seed + flick * 13, 7);
+    const wide = u < 0.15;
+    strokePath(g, pts.map(([x, y]) => [x - 1, y]), P.mid, 1, ox, oy);
+    strokePath(g, pts.map(([x, y]) => [x + 1, y]), P.mid, 1, ox, oy);
+    if (wide) { strokePath(g, pts.map(([x, y]) => [x - 2, y]), P.deep, 1, ox, oy); strokePath(g, pts.map(([x, y]) => [x + 2, y]), P.deep, 1, ox, oy); }
+    strokePath(g, pts, u < 0.4 ? P.core : P.hot, 1, ox, oy);
+    // Two forks off it.
+    const rnd = seeded(q.seed + flick * 7);
+    for (let j = 0; j < 2; j++) {
+      const i = 1 + Math.floor(rnd() * (pts.length - 2)), [fx, fy] = pts[i], sd = rnd() < 0.5 ? -1 : 1;
+      strokePath(g, boltPath(fx, fy, fx + sd * (8 + rnd() * 10), fy + 10 + rnd() * 10, q.seed + j * 5 + flick, 4), P.hot, 1, ox, oy);
+    }
+    // The strike on the floor.
+    const R = 3 + u * 12;
+    g.globalAlpha = 1 - u;
+    for (let i = -R; i <= R; i++) g.fillStyle = Math.abs(i) < R * 0.4 ? P.core : P.mid, g.fillRect(Math.round(q.x + i + ox), Math.round(bot - 1 + oy), 1, 1);
+    if (u < 0.3) disc(g, q.x, bot - 3, 4 - u * 8, [P.core, P.hot, P.mid], ox, oy, t);
+    g.globalAlpha = 1;
+  }
+
+  // The meteor: its fiery trail down from where it fell, and the blast where it struck.
+  drawMeteor(g, q, u, ox, oy, t) {
+    const P = FXC.fire;
+    // The trail: thick and bright at the bottom, burning out back up its path.
+    const tail = Math.max(0, 1 - u * 2.2);
+    if (tail > 0) {
+      const n = 26;
+      for (let i = 0; i < n; i++) {
+        const v = i / n, x = q.x + (q.x0 - q.x) * v * 0.55 * (0.4 + tail * 0.6), y = q.y + (q.y0 - q.y) * v * 0.55 * (0.4 + tail * 0.6), w = Math.max(1, Math.round((1 - v) * 4 * tail));
+        g.fillStyle = v < 0.2 ? P.core : v < 0.45 ? P.hot : v < 0.7 ? P.mid : P.deep;
+        g.fillRect(Math.round(x - w / 2 + ox), Math.round(y - w / 2 + oy), w, w);
+      }
+    }
+    // The blast: a fireball swelling and breaking up into embers.
+    const R = u < 0.25 ? 4 + (u / 0.25) * 10 : 14 * (1 - (u - 0.25) * 0.8);
+    if (u < 0.6) disc(g, q.x, q.y, R, u < 0.12 ? [P.core, P.core, P.hot, P.mid] : u < 0.35 ? [P.core, P.hot, P.mid, P.deep] : [P.hot, P.mid, P.deep, P.ink], ox, oy, t);
+    // Its shockwave along the floor.
+    const fy = q.y + FEET - 1, W = 6 + u * 30;
+    g.globalAlpha = 1 - u;
+    for (let i = -W; i <= W; i++) if (Math.abs(i) > W - 5) { g.fillStyle = P.hot; g.fillRect(Math.round(q.x + i + ox), Math.round(fy + oy), 1, 1); }
+    g.globalAlpha = 1;
+  }
+
+  lights(add) {
+    for (const q of this.fx) {
+      const u = q.t / q.life;
+      if (q.k === 'bolt') add({ x: q.x, y: q.y, r: 80, color: '#d8b8ff', i: 1.7 * (1 - u) });
+      else if (q.k === 'meteor') add({ x: q.x, y: q.y, r: 90, color: '#ff9a40', i: 1.6 * (1 - u) });
+      else if (q.k === 'star' && q.big) add({ x: q.x, y: q.y, r: 40, color: '#ffe2a0', i: 0.8 * (1 - u) });
+    }
+  }
+}
+
+// The gold rim of a buffed familiar (b: its tier 1..3): its ink outline drawn in gold, pulsing; at
+// tier 3 brighter, with a little star twinkling at one point of it after another.
+const RIM = [null, { a: 0.2, p: 0.06, c: '#ffd860' }, { a: 0.36, p: 0.1, c: '#ffd860' }, { a: 0.58, p: 0.14, c: '#ffe68a' }];
+function rimOf(g, r, b, ox, oy, t, i) {
+  const R = RIM[Math.min(3, b)], x = r.x + ox, y = r.y + oy;
+  g.globalAlpha = R.a + R.p * Math.sin(t * 5 + i * 1.3) * (r.q.cue.fade ? 1 - r.q.cue.fade : 1);
+  blit(g, tintOf(r.s, R.c, true), x, y, r.f);
+  g.globalAlpha = 1;
+  if (b < 3) return;
+  // The twinkle: hops to another of its points every 0.4 s, opening and closing.
+  const k = Math.floor(t * 2.5 + i * 0.6), u = (t * 2.5 + i * 0.6) % 1, pts = r.s.pts || {};
+  const names = ['head', 'hand', 'chest', 'tip', 'gem', 'bow', 'shield'].filter(n => pts[n]);
+  const p = names.length ? pts[names[(k * 7 + i) % names.length]] : [0, -8];
+  const px = x + (r.f >= 0 ? p[0] + 0.5 : -p[0] - 0.5) + ((k * 5) % 3) - 1, py = y + p[1] - 2 - ((k * 3) % 3);
+  const rr = u < 0.5 ? Math.round(u * 6) : Math.round((1 - u) * 6);
+  if (rr > 0) glint(g, FXC.gold, px, py, rr, 0, 0);
+}
+
+// The glowing bits of one familiar drawn at (x, y) facing f at scale: the mage's crystal (charging,
+// the fireball he conjures, the sigil of his storm), the assassin's eyes, blades flashing through
+// their swing with the smear they leave, the bow's arrow tip, the shield's crest catching the light.
+function glowBits(g, k, s, q, x, y, f, scale, t) {
+  const cue = q.cue, K = KIT[k];
+  const P = (name) => { const p = s.pts?.[name]; return p ? [x + (f >= 0 ? p[0] + 0.5 : -p[0] - 0.5) * scale, y + (p[1] + 0.5) * scale] : null; };
+  const dot = (c, px, py, w = 1, h = w) => { g.fillStyle = c; g.fillRect(Math.round(px - (scale - 1) / 2), Math.round(py - (scale - 1) / 2), w * scale, h * scale); };
+  if (cue.arc) {
+    const A = cue.arc, cx = x + A.c[0] * f * scale, cy = y + A.c[1] * scale;
+    const a0 = (f > 0 ? A.a0 : 180 - A.a0) * DEG, a1 = (f > 0 ? A.a1 : 180 - A.a1) * DEG;
+    crescent(g, KIND_FX[k], cx, cy, A.r, a0, a1, A.thin ? 2 : 3, Math.min(1, A.u * 0.9 + 0.1), 0, 0, scale);
+  }
+  if (k === 'mage') {
+    const gem = P('gem');
+    if (gem) {
+      const ch = cue.charge || 0, pulse = 0.5 + 0.5 * Math.sin(t * 4);
+      g.globalAlpha = 0.5 + 0.5 * Math.max(ch, pulse * 0.6);
+      dot(FXC.magic.mid, gem[0] - scale, gem[1]); dot(FXC.magic.mid, gem[0] + scale, gem[1]); dot(FXC.magic.mid, gem[0], gem[1] - scale); dot(FXC.magic.mid, gem[0], gem[1] + scale);
+      g.globalAlpha = 1;
+      dot(ch > 0.5 || cue.flash ? '#ffffff' : FXC.magic.hot, gem[0], gem[1]);
+      // Sparks spiralling into the crystal as he charges.
+      if (ch > 0) for (let i = 0; i < 5; i++) {
+        const v = ((t * 2.2 + i / 5) % 1), an = i * 1.3 + t * 6, r = (1 - v) * 9 * scale;
+        g.globalAlpha = v;
+        dot(i % 2 ? FXC.magic.hot : FXC.gold.hot, gem[0] + Math.cos(an) * r, gem[1] + Math.sin(an) * r);
+      }
+      g.globalAlpha = 1;
+      if (cue.flash) glint(g, FXC.magic, gem[0], gem[1], Math.round((3 + 4 * cue.flash) * scale), 0, 0);
+      // The fireball he conjures over the staff for the meteor.
+      if (cue.fire) disc(g, gem[0] - f * scale, gem[1] - 4 * scale, (1 + cue.fire * 2.5) * scale, [FXC.fire.core, FXC.fire.hot, FXC.fire.mid, FXC.fire.deep], 0, 0, t);
+    }
+    // The sigil of the storm: a ring of runes turning over his head.
+    if (cue.sigil !== undefined) {
+      const hat = P('hat') || [x, y - 20 * scale], cx = x + f * scale, cy = Math.min(hat[1], y - 20 * scale) - 4 * scale, R = (cue.hero ? 9 : 8) * scale;
+      for (let i = 0; i < 36; i++) {
+        const an = (i / 36) * Math.PI * 2 + t * 1.6;
+        g.globalAlpha = i % 3 ? 0.9 : 0.5;
+        dot(i % 6 === 0 ? FXC.gold.hot : FXC.magic.mid, cx + Math.cos(an) * R, cy + Math.sin(an) * R * 0.35);
+      }
+      for (let i = 0; i < 6; i++) { const an = (i / 6) * Math.PI * 2 - t * 2.4; dot(FXC.magic.hot, cx + Math.cos(an) * R * 0.55, cy + Math.sin(an) * R * 0.55 * 0.35); }
+      g.globalAlpha = 1;
+    }
+  }
+  if (k === 'assassin' && q.o.eye !== 'blink') {
+    const e = P('eye'), e2 = P('eyeF');
+    g.globalAlpha = 1 - (cue.fade || 0);
+    if (e) { dot(K.glow, e[0], e[1]); dot(K.glow, e[0], e[1] + scale); }
+    if (e2) dot(K.glow, e2[0], e2[1] + scale);
+    g.globalAlpha = 1;
+  }
+  if (k === 'soldier') {
+    const tip = P('tip');
+    if (tip && (cue.glint || cue.arc || cue.thrust)) glint(g, FXC.steel, tip[0], tip[1], Math.round((cue.glint ? 2 + Math.max(0, Math.sin(t * 3)) * 2 : 2) * scale), 0, 0);
+  }
+  if (k === 'archer') {
+    const ar = P('arrow');
+    if (ar && cue.nock) dot('#ffffff', ar[0], ar[1]);
+    if (cue.twang) { const b = P('bow'); if (b) { g.globalAlpha = cue.twang; dot(FXC.leaf.hot, b[0] - f * scale, b[1] - 2 * scale, 1, 4); g.globalAlpha = 1; } }
+  }
+  if (k === 'shield') {
+    const c = P('shield');
+    if (c) {
+      const sweep = (t * 0.45) % 1;
+      if (cue.flash) glint(g, FXC.gold, c[0], c[1], Math.round((2 + 4 * cue.flash) * scale), 0, 0);
+      else if (sweep < 0.12) dot('#fff6c8', c[0], c[1] - scale);
+    }
+  }
+}
+
+// ---- lights ----------------------------------------------------------------------------------
+// Light descriptors (view px, without the shake): the mage's crystal (brighter as he casts), the
+// little ghosts of the fallen, magic bolts, and the event effects (lightning, meteors).
+export function courtLights(state, t) {
+  const out = [];
+  for (const a of state?.actors || []) {
+    if (!a.court || a.dead) continue;
+    // The little ghosts of the fallen, a faint glow as they rise.
+    a.court.forEach((F, i) => {
+      const T = F.t || 0;
+      if (F.st !== 'dead' || T < DIE.ghost0 || T > DIE.ghost1) return;
+      const at = LIVE?.mem.get(a.id + ':' + i)?.death?.last;
+      if (at) out.push({ x: at[0], y: at[1] - 6 - ease((T - DIE.ghost0) / (DIE.ghost1 - DIE.ghost0)) * 28, r: 16, color: '#d8ccff', i: 0.4, noRim: true });
+    });
+    const m = a.court.find(F => F.k === 'mage');
+    if (m && m.st !== 'gone' && m.st !== 'dead') {
+      const casting = m.st === 'act';
+      out.push({ x: (m.x + (m.f || 1) * 6) * S, y: (m.y - 26) * S, r: casting ? 34 : 16, color: '#c070ff', i: casting ? 1.0 : 0.45, noRim: !casting });
+    }
+  }
+  for (const b of state?.bullets || []) if (b.kind === 'magic') out.push({ x: b.x * S, y: b.y * S, r: 18, color: '#c88aff', i: 0.7, noRim: true });
+  LIVE?.lights(l => out.push(l));
+  return out;
+}
+
+// ---- the kingdom's units ---------------------------------------------------------------------
+// The little cats the King's kingdom sends out (sim/kingdom.js), drawn from nothing but the unit's
+// fields and the clock (so a guest's snapshot looks the same as the live game):
+//   worker  a grey kitten in a yellow hard hat, trotting about frantically with its pickaxe raised;
+//           it crouches and tugs a fish off the floor, carries it home over its head in both paws
+//           (slung pickaxe, slower bob), shoves it in at the door, and whacks whoever is in its way
+//           (with the pickaxe, or a fish slap when its paws are full).
+//   knight  a tuxedo cat in a slotted helmet (ears through it, a crimson plume), the crown shield
+//           and a short sword: shield up on guard, trotting after them, a hard overhead cut.
+//   archer  the court's archer on a castle tower, peeking over the merlon with the bow low; drawing,
+//           loosing, recovering.
+// Every one wears its owner's colour (opts.color) as a scarf; they pop in, flash white then red when
+// struck, tuck their legs hopping between floors, and when they fall are thrown back the way they
+// faced, tumble, flicker and vanish in a puff (the worker's hat flies off, the knight's sword too).
+// One unit: u = { id, k, x, y (feet), f, vx, st, t, hp, hurt, c, air }; time: the state's clock (s);
+// opts = { color, lv, shadow = false (a contact shadow under it), front = true (false: leave out the
+// white of a blow on the glow layer, for one a fighter may stand in front of) }.
+const UNIT_PIVOT = { worker: 4, knight: 6, archer: 6 };
+const UNIT_HURT = 0.25;
+const unitClamp = v => (v < 0 ? 0 : v > 1 ? 1 : v);
+// Distance walked, in strides of px pixels (stateless: from where it is, so its feet never slide).
+const strideOf = (u, f, px) => (((Math.floor((u.x * S * f) / px)) % 4) + 4) % 4;
+
+function unitPose(u, time, opts) {
+  const k = u.k, T = Math.max(0, u.t || 0), f = (u.f || 1) >= 0 ? 1 : -1, id = u.id || 0, st = u.st;
+  const ph = time + (id % 89) * 0.37;
+  const blink = (ph * 0.7) % 3.7 < 0.12;
+  const o = { legs: 'stand', eye: blink ? 'blink' : 'open', scarf: opts.color || '#ffd76a' };
+  let dx = 0, dy = 0, flip = false;
+  const cue = {};
+  const sp = Math.abs(u.vx || 0), walking = sp > 0.05 && !u.air && (st === 'go' || st === 'back' || st === 'chase' || st === 'idle' || st === 'guard');
+  if (k === 'worker') {
+    const carry = !!u.c;
+    const by = () => -3.5 + (KLEGS[o.legs] || KLEGS.stand).dy + (o.dy || 0);
+    const hy = () => -7.5 + (KLEGS[o.legs] || KLEGS.stand).dy + (o.dy || 0);
+    o.tool = carry ? 'back' : 'front';
+    o.tail = Math.round(Math.sin(ph * 5));
+    // Paws full: the fish over its head.
+    const overhead = (lift = 1) => {
+      const h = hy();
+      o.hand = [3, Math.round(lerp(-2, h - 4, lift))]; o.handB = [-2, Math.round(lerp(-2, h - 4, lift))];
+      o.fish = [0.5, Math.round(lerp(-2.5, h - 6.5, lift)) + 0.5, 0];
+    };
+    if (u.air) {
+      o.legs = 'tuck'; o.eye = 'open'; o.tail = -1;
+      if (carry) overhead(); else { o.hand = [3, by() - 2]; o.pa = -70 * DEG; }
+    } else if (st === 'hit') {
+      const p = unitClamp(T / 0.35);
+      o.eye = 'angry';
+      if (!carry) {
+        if (p < 0.4) { o.legs = 'crouch'; o.lean = -1; o.tool = 'up'; o.hand = [0, by() - 4]; o.pa = -150 * DEG; }
+        else if (p < 0.5) { o.legs = 'stand'; o.tool = 'up'; o.hand = [2, by() - 4]; o.pa = -70 * DEG; cue.arc = { c: [1, by() - 3], r: 7, a0: -160, a1: -40, u: (p - 0.4) / 0.1 }; }
+        else if (p < 0.72) { o.legs = 'lunge'; o.lean = 1; o.hand = [4, by() - 2]; o.pa = 22 * DEG; cue.arc = { c: [1, by() - 3], r: 7, a0: -150, a1: 40, u: (p - 0.5) / 0.22 }; cue.impact = 1 - (p - 0.5) / 0.22; }
+        else { o.legs = 'stand'; o.hand = [3, by() - 1]; o.pa = 5 * DEG; }
+      } else {
+        // The fish slap: raised back over its head, then brought down across them flat.
+        if (p < 0.4) { o.legs = 'crouch'; o.lean = -1; const h = hy(); o.hand = [0, h - 3]; o.handB = [-2, h - 2]; o.fish = [-2, h - 4, -150]; }
+        else if (p < 0.5) { const h = hy(); o.hand = [3, h - 2]; o.handB = [1, h - 2]; o.fish = [3, h - 4, -80]; }
+        else if (p < 0.72) { o.legs = 'lunge'; o.lean = 1; const b = by(); o.hand = [4, b - 1]; o.handB = [3, b - 1]; o.fish = [7, b, 10]; cue.slap = 1 - (p - 0.5) / 0.22; o.fflap = 1; }
+        else { const b = by(); o.hand = [3, b - 1]; o.handB = [2, b - 1]; o.fish = [5, b - 2, -20]; }
+      }
+    } else if (st === 'gather') {
+      // Crouched over the fish, tugging it up off the floor.
+      const tug = Math.floor(T * 12) % 2;
+      o.legs = 'crouch'; o.tool = 'back'; o.eye = tug ? 'angry' : 'happy'; o.lean = tug;
+      o.hand = [3 + tug, -2]; o.handB = [2 + tug, -2];
+    } else if (st === 'drop') {
+      // Into the door with it: up, then shoved in; then paws dusted off.
+      o.tool = 'back';
+      if (T < 0.12) { overhead(); o.hdy = -1; o.fish = [1, o.fish[1] - 1, -20]; o.eye = 'happy'; }
+      else if (T < 0.2) { o.legs = 'lunge'; o.lean = 1; const b = by(); o.hand = [4, b]; o.handB = [3, b]; o.fish = [6, b + 1, 40]; o.eye = 'angry'; }
+      else { const b = by(); o.hand = [3, b - (Math.floor(T * 20) % 2)]; o.handB = [2, b]; o.eye = 'happy'; cue.done = 1; }
+    } else if (walking || st === 'go' || st === 'back') {
+      if (walking) o.legs = 'w' + strideOf(u, f, carry ? 3.5 : 2.5);
+      if (carry) {
+        // Lifting it as it sets off (the end of the gather), then over its head at a slower bob.
+        const lift = st === 'back' ? unitClamp(T / 0.2) : 1;
+        if (lift < 1 && !walking) o.legs = 'crouch';
+        overhead(ease(lift));
+        o.fflap = Math.floor(ph * 3) % 4 === 0 ? 1 : 0;
+        o.eye = lift < 1 ? 'happy' : o.eye;
+      } else {
+        // The pickaxe raised, bouncing with each step.
+        const b = by(); o.hand = [3, b - 1]; o.pa = (o.legs === 'w1' || o.legs === 'w3' ? -55 : -40) * DEG;
+      }
+      o.flut = Math.floor(ph * 8) % 2;
+    } else {
+      // Idle (and appear): leaning on the pickaxe, looking about.
+      const look = (ph * 0.45) % 1;
+      if (look < 0.22 && st !== 'appear') flip = true;
+      o.dy = Math.sin(ph * 3) > 0.6 ? 1 : 0;
+      const b = by();
+      if (carry) overhead(); else { o.hand = [3, b - 1]; o.pa = 76 * DEG; o.plen = 4; }
+    }
+  } else if (k === 'knight') {
+    o.plume = 0;
+    const by = () => -5 + (LEGS[o.legs] || LEGS.stand).dy + (o.dy || 0);
+    o.crown = (opts.lv | 0) >= 3 ? 1 : 0;
+    if (u.air) { o.legs = 'tuck'; const b = by(); o.hand = [3, b - 1]; o.wpn = -60 * DEG; o.sh = [5, b]; o.plume = 1; }
+    else if (st === 'hit') {
+      const p = unitClamp(T / 0.4);
+      o.eye = 'angry';
+      if (p < 0.3) { o.legs = 'crouch'; o.lean = -1; const b = by(); o.hand = [-1, b - 4]; o.wpn = -140 * DEG; o.sh = [3, b]; }
+      else if (p < 0.55) { o.legs = 'lunge'; const b = by(); o.hand = [2, b - 5]; o.wpn = -75 * DEG; o.sh = [3, b]; o.plume = 1; cue.arc = { c: [1, b - 3], r: 9, a0: -160, a1: -60, u: (p - 0.3) / 0.25 }; }
+      else if (p < 0.78) { o.legs = 'lunge'; o.lean = 1; const b = by(); o.hand = [5, b]; o.wpn = 25 * DEG; o.sh = [3, b + 1]; o.plume = 1; cue.arc = { c: [1, b - 3], r: 9, a0: -140, a1: 50, u: (p - 0.55) / 0.23 }; cue.impact = 1 - (p - 0.55) / 0.23; }
+      else { o.legs = 'stand'; const b = by(); o.hand = [4, b]; o.wpn = 50 * DEG; o.sh = [4, b]; }
+    } else if (walking || st === 'chase') {
+      // Trotting after them: sword on the shoulder, shield ahead.
+      if (walking) o.legs = (sp > 1.2 ? 'r' : 'w') + strideOf(u, f, sp > 1.2 ? 3.5 : 3);
+      o.lean = walking ? 1 : 0; o.eye = 'angry'; o.plume = 1;
+      const b = by(); o.hand = [2, b - 1]; o.wpn = -125 * DEG; o.sh = [5, b];
+    } else {
+      // On guard: shield up to the chin, the sword over it, breathing; now and then a glance back.
+      o.legs = 'lunge';
+      o.dy = Math.sin(ph * 2.2) > 0.5 ? 1 : 0;
+      const b = by(); o.hand = [4, b + 1]; o.wpn = 22 * DEG; o.behind = 1; o.sh = [5, b - 1];
+      o.plume = Math.sin(ph * 4.5) > 0.4 ? 1 : 0;
+      if (o.eye !== 'blink') o.eye = 'angry';
+    }
+    o.flut = Math.floor(ph * 6) % 2;
+  } else {
+    // The castle archer (the court's archer sprite in the owner's scarf).
+    rest('archer', o);
+    o.ear = 0;
+    const aim = 12 * DEG;
+    if (st === 'shoot') {
+      o.legs = 'lunge'; o.eye = 'angry';
+      if (T < 0.15) { aimBow(o, aim, unitClamp(T / 0.15)); cue.nock = o.draw; }
+      else if (T < 0.22) { aimBow(o, aim, 0, 1); cue.twang = 1 - (T - 0.15) / 0.07; }
+      else { aimBow(o, aim, 0, 0); o.draw = 0; }
+    } else {
+      // Peeking over the merlon: crouched, the bow low, bobbing up for a look now and then.
+      const peek = (ph * 0.55) % 1;
+      o.legs = peek < 0.3 ? 'stand' : 'crouch';
+      aimBow(o, 35 * DEG, 0); o.draw = 0;
+      if (peek > 0.6 && peek < 0.7 && st !== 'appear') flip = true;
+    }
+    o.cape = 0;
+    o.flut = Math.floor(ph * 6) % 2;
+  }
+  // Popping in: a white flash, then a hop up out of it.
+  if (st === 'appear') {
+    if (T < 0.08) cue.tint = '#ffffff';
+    else dy -= Math.round(Math.sin(unitClamp((T - 0.08) / 0.32) * Math.PI) * 4);
+    o.eye = 'happy'; cue.appear = 1 - unitClamp(T / 0.4);
+  }
+  // Struck: eyes squeezed shut, a shiver, the flash (white, then blinking red).
+  const hurt = u.hurt > 0 && st !== 'dead' ? unitClamp(u.hurt / UNIT_HURT) : 0;
+  if (hurt) {
+    if (hurt > 0.3 && st !== 'hit') o.eye = 'pain';
+    if (hurt > 0.35) dx = Math.floor(u.hurt * 60) % 2 ? 1 : -1;
+    cue.hurt = hurt; flip = false;
+  }
+  if (o.eye === 'blink' && (cue.arc || cue.slap)) o.eye = 'angry';
+  return { k, o, dx, dy, flip, cue, f };
+}
+
+// The unit's death (st 'dead', t 0..0.5): thrown back against its facing, tumbling in quarter turns,
+// down on its side, a flicker, gone (the puff is drawUnitGlow's). The worker's hat and the knight's
+// sword fly off on their own.
+const UDIE = { fly: 0.28, flicker: 0.34, gone: 0.42 };
+function unitDeath(u, time, opts, X, Y) {
+  const k = u.k, T = Math.max(0, u.t || 0), f = (u.f || 1) >= 0 ? 1 : -1, s = -f, py = UNIT_PIVOT[k] || 5;
+  const o = { legs: 'tuck', eye: 'ko', scarf: opts.color || '#ffd76a' };
+  if (k === 'worker') { o.tool = 'none'; o.noHat = true; o.hand = [3, -6]; o.handB = [-1, -6]; }
+  else if (k === 'knight') { o.bare = true; o.hand = [4, -8]; o.crown = (opts.lv | 0) >= 3 ? 1 : 0; o.plume = 1; }
+  else { rest('archer', o); o.ear = 0; o.bare = true; o.hand = [3, -9]; o.bowHand = [5, -8]; }
+  const spr = familiarSprite(k, o);
+  if (!spr) return null;
+  // The archer drops back behind its merlon; the others down on their own floor.
+  const far = k === 'archer' ? 8 : 14, floor = Y + (k === 'archer' ? 7 : 0);
+  const uu = unitClamp(T / UDIE.fly), q = T < UDIE.fly ? Math.min(3, Math.floor(uu * 4)) : (k === 'archer' ? 1 : 1);
+  const rot = (((q * s) % 4) + 4) % 4;
+  const restY = floor - lowest(spr, f, rot, py);
+  let x, y;
+  if (T < UDIE.fly) { x = X + s * far * ease(uu); y = lerp(Y - py, restY, uu) - (k === 'archer' ? 6 : 9) * 4 * uu * (1 - uu); }
+  else { const v = unitClamp((T - UDIE.fly) / 0.06); x = X + s * (far + 2 * v); y = restY - Math.sin(v * Math.PI) * 2; }
+  y = Math.min(y, floor - lowest(spr, f, rot, py));
+  const rec = { spr, f, rot, py, x: Math.round(x), y: Math.round(y), tint: T < 0.05 ? '#ffffff' : null, alpha: T > UDIE.flicker ? (Math.floor(T * 40) % 2 ? 0.3 : 0.9) : 1, bits: [] };
+  if (T >= UDIE.gone) rec.alpha = 0;
+  // What flies off it: the hard hat, the sword.
+  if (k === 'worker' || k === 'knight') {
+    const wu = unitClamp(T / 0.4), dir = s * (k === 'worker' ? -0.5 : 0.8);
+    const ws = k === 'worker' ? hatSprite(wu < 1 ? Math.floor(T / 0.05) % 4 : 0) : weaponSprite('soldier', wu < 1 ? (((Math.floor(T / 0.04) * s) % 8) + 8) % 8 : 0);
+    const wy0 = Y - (k === 'worker' ? 11 : 10), wFloor = Y - (ws.y0 + ws.h);
+    let wx = X + dir * 18 * wu, wy = lerp(wy0, wFloor, wu) - (k === 'worker' ? 16 : 12) * 4 * wu * (1 - wu);
+    rec.bits.push({ s: ws, x: Math.round(wx), y: Math.round(Math.min(wy, wFloor)) });
+  }
+  return rec;
+}
+// The worker's hard hat on its own (turned a quarter turn at a time as it flies).
+function hatSprite(q) {
+  const key = 'H|' + q;
+  let s = SPRITES.get(key);
+  if (s === undefined) {
+    const G = GRID.clear(), K = KIT.worker;
+    G.begin(true);
+    const pts = [];
+    for (let x = -2; x <= 1; x++) pts.push([x, -3, x < 0 ? 4 : 3]);
+    for (let x = -3; x <= 2; x++) pts.push([x, -2, 3]);
+    for (let x = -3; x <= 3; x++) pts.push([x, -1, x > 1 ? 3 : 1]);
+    for (const [x, y, l] of pts) { let X = x, Y = y + 2; for (let i = 0; i < q; i++) [X, Y] = [-Y, X]; G.set(X, Y - 2, K.hat, l); }
+    G.end();
+    s = finish(G);
+    SPRITES.set(key, s);
+  }
+  return s;
+}
+
+// The sprite and where it goes, for both layers.
+function unitFigure(u, ox, oy, time, opts) {
+  const X = Math.round(u.x * S + ox), Y = Math.round(u.y * S + oy);
+  if (u.st === 'dead') { const d = unitDeath(u, time, opts, X, Y); return d && { dead: true, X, Y, ...d }; }
+  const P = unitPose(u, time, opts), s = familiarSprite(P.k, P.o);
+  if (!s) return null;
+  return { dead: false, X, Y, P, s, f: P.f * (P.flip ? -1 : 1), x: X + P.dx, y: Y + P.dy };
+}
+
+// One unit on the lit layer (its feet at u.x, u.y). Returns the box it drew (canvas px) or null.
+export function drawUnit(g, u, ox, oy, time = 0, opts = {}) {
+  if (!u || !BUILD[u.k]) return null;
+  const r = unitFigure(u, ox, oy, time, opts);
+  if (!r) return null;
+  const ga = g.globalAlpha;
+  if (r.dead) {
+    for (const w of r.bits) blitRot(g, w.s, w.x, w.y, 1, 0, 0);
+    if (!(r.alpha > 0)) return null;
+    g.globalAlpha = ga * r.alpha;
+    blitRot(g, r.tint ? tintOf(r.spr, r.tint) : r.spr, r.x, r.y, r.f, r.rot, r.py);
+    g.globalAlpha = ga;
+    return { x: r.x - 10, y: r.y - 10, w: 20, h: 20 };
+  }
+  const { P, s } = r;
+  // A little contact shadow under it on the floor.
+  if (opts.shadow && !u.air && u.st !== 'appear') {
+    g.fillStyle = '#0a0612'; g.globalAlpha = ga * 0.35;
+    const w = u.k === 'worker' ? 5 : 7;
+    g.fillRect(r.X - (w >> 1), r.Y - 1, w, 1); g.fillRect(r.X - (w >> 1) + 1, r.Y, w - 2, 1);
+    g.globalAlpha = ga;
+  }
+  const hu = P.cue.hurt || 0;
+  const spr = P.cue.tint ? tintOf(s, P.cue.tint) : hu > 0.72 ? tintOf(s, '#ffffff') : hu > 0 && Math.floor(hu * 9) % 2 ? tintOf(s, '#ff3050', 'wash') : s;
+  blit(g, spr, r.x, r.y, r.f);
+  const X0 = r.f >= 0 ? r.x + s.x0 : r.x - (s.x0 + s.w);
+  return { x: X0, y: r.y + s.y0, w: s.w, h: s.h };
+}
+
+// Its glowing bits on the emissive layer: the white of a blow, the swing's smear and the glint where
+// it lands, the worker's hat lamp, the archer's arrow and bowstring, the sparkle it pops in with,
+// and the puff it vanishes in.
+export function drawUnitGlow(g, u, ox, oy, time = 0, opts = {}) {
+  if (!u || !BUILD[u.k]) return;
+  const X = Math.round(u.x * S + ox), Y = Math.round(u.y * S + oy), T = Math.max(0, u.t || 0);
+  const dot = (c, x, y, w = 1, h = w) => { g.fillStyle = c; g.fillRect(Math.round(x), Math.round(y), w, h); };
+  const ga = g.globalAlpha;
+  if (u.st === 'dead') {
+    const r = unitFigure(u, ox, oy, time, opts);
+    if (r && T < 0.06) { g.globalAlpha = ga * 0.85; blitRot(g, tintOf(r.spr, '#ffffff'), r.x, r.y, r.f, r.rot, r.py); g.globalAlpha = ga; }
+    // The puff: a white cloud blooming where it lay, then thinning out, sparkles in its owner's colour.
+    if (T >= UDIE.flicker - 0.02 && r) {
+      const v = unitClamp((T - UDIE.flicker + 0.02) / (0.5 - UDIE.flicker + 0.02)), cx = r.x, cy = r.y - 2, rnd = seeded((u.id || 1) * 7919);
+      const cols = ['#ffffff', '#f4eefc', '#e0d8f0', '#c8bce0'], al = v < 0.45 ? 1 : (1 - v) / 0.55;
+      if (v < 0.3) { g.globalAlpha = ga; dot('#ffffff', cx - 1, cy - 1, 3); }
+      for (let i = 0; i < 8; i++) {
+        const an = (i / 8) * Math.PI * 2 + rnd() * 0.6, R = 1.5 + ease(v) * (4 + rnd() * 3), sz = v < 0.35 ? 3 : v < 0.7 ? 2 : 1;
+        g.globalAlpha = ga * al * (i % 2 ? 0.85 : 1);
+        dot(cols[(i + (v > 0.5 ? 2 : 0)) % 4], cx + Math.cos(an) * R - sz / 2, cy + Math.sin(an) * R * 0.75 - sz / 2 - v * 4, sz);
+      }
+      g.globalAlpha = ga * (1 - v);
+      const P = { core: '#ffffff', hot: R(opts.color || '#ffd76a')[4], mid: opts.color || '#ffd76a' };
+      for (let i = 0; i < 5; i++) { const an = i * 1.7 + (u.id || 0); dot(i % 2 ? P.hot : P.mid, cx + Math.cos(an) * (3 + v * 10), cy + Math.sin(an) * (2 + v * 5) - v * 7); }
+      if (v < 0.3) glint(g, P, cx, cy - 1, Math.round(4 * (1 - v / 0.3)) + 1, 0, 0);
+      g.globalAlpha = ga;
+    }
+    return;
+  }
+  const r = unitFigure(u, ox, oy, time, opts);
+  if (!r) return;
+  const { P, s } = r, cue = P.cue, f = r.f;
+  const pt = name => { const p = s.pts?.[name]; return p ? [r.x + (f >= 0 ? p[0] + 0.5 : -p[0] - 0.5), r.y + p[1] + 0.5] : null; };
+  if ((cue.hurt || 0) > 0.72 && opts.front !== false) { g.globalAlpha = ga * 0.8; blit(g, tintOf(s, '#ffffff'), r.x, r.y, f); g.globalAlpha = ga; }
+  if (u.k === 'archer') glowBits(g, 'archer', s, { o: P.o, cue }, r.x, r.y, f, 1, time);
+  else {
+    if (cue.arc) {
+      const A = cue.arc, cx = r.x + A.c[0] * f, cy = r.y + A.c[1];
+      crescent(g, FXC.steel, cx, cy, A.r, (f > 0 ? A.a0 : 180 - A.a0) * DEG, (f > 0 ? A.a1 : 180 - A.a1) * DEG, u.k === 'knight' ? 3 : 2, Math.min(1, A.u * 0.9 + 0.1), 0, 0);
+    }
+    if (cue.impact > 0.5) {
+      const tip = pt(u.k === 'knight' ? 'tip' : 'pick');
+      if (tip) glint(g, FXC.steel, tip[0] - 0.5, tip[1] - 0.5, Math.round(1 + cue.impact * 3), 0, 0);
+    }
+    if (cue.slap > 0.4) {
+      // Smack: a white star off the fish's nose and a few drops of water.
+      const p = pt('fish');
+      if (p) {
+        glint(g, FXC.steel, p[0] + f * 3, p[1], Math.round(cue.slap * 4), 0, 0);
+        g.globalAlpha = ga * cue.slap;
+        for (let i = 0; i < 4; i++) dot(i % 2 ? '#c8e8ff' : '#8ac4ff', p[0] + f * (3 + i * 2 * (1 - cue.slap)), p[1] - 1 - i * (1 - cue.slap) * 3 + (i % 2) * 2);
+        g.globalAlpha = ga;
+      }
+    }
+    // The worker's hat lamp, and the fish catching the light now and then.
+    if (u.k === 'worker') {
+      const l = pt('lamp');
+      if (l) { dot('#fff8d8', l[0] - 0.5, l[1] - 0.5); g.globalAlpha = ga * 0.45; dot('#ffe27a', l[0] - 0.5 + f, l[1] - 0.5); g.globalAlpha = ga; }
+      const fp = pt('fish');
+      if (fp && ((time * 0.8 + (u.id || 0) * 0.31) % 1) < 0.12) dot('#ffffff', fp[0] - 0.5, fp[1] - 1.5);
+    }
+  }
+  // Popping in: a sparkle over its head.
+  if (cue.appear > 0.6) glint(g, FXC.gold, X, Y - (u.k === 'worker' ? 12 : 16), Math.round((cue.appear - 0.6) * 12), 0, 0);
+  g.globalAlpha = ga;
+}
+
+// ---- select screen ---------------------------------------------------------------------------
+function heroFigure(k, { f = 1, pose = 'idle', t = 0, p = 0, idx = KINDS.indexOf(k) } = {}) {
+  const loco = pose === 'idle' || pose === 'walk' || pose === 'run' || pose === 'jump' || pose === 'fall';
+  const isHero = pose.startsWith('hero');
+  const A = !loco && !isHero ? actInfo(k, pose) : null;
+  const F = { k, f, vx: pose === 'run' ? 1.2 : pose === 'walk' ? 0.4 : 0, air: pose === 'jump' || pose === 'fall', st: loco ? 'follow' : isHero ? 'hero' : 'act', act: pose, t: A ? p * A.dur : 0 };
+  const mem = { vy: pose === 'jump' ? -1 : 1, ph: t * (pose === 'run' ? 13 : 7) };
+  const q = poseFor(k, F, t, idx, mem);
+  return { q, s: familiarSprite(k, q.o) };
+}
+// One familiar with its feet at canvas pixel (x, y). pose: 'idle', 'walk', 'run', 'jump', 'fall',
+// an action of COURT_ACTS[k] (p: 0..1 through it) or its hero pose (HERO_POSE[k]). Returns the sprite.
+export function drawFamiliar(g, k, x, y, opts = {}) {
+  if (!BUILD[k]) return null;
+  const { f = 1, scale = 1 } = opts, { q, s } = heroFigure(k, opts);
+  if (s) blit(g, s, x, y + q.dy * scale, f, scale);
+  return s;
+}
+// Its glowing bits, drawn after it (on the same canvas on the select screen).
+export function drawFamiliarGlow(g, k, x, y, opts = {}) {
+  if (!BUILD[k]) return;
+  const { f = 1, scale = 1, t = 0 } = opts, { q, s } = heroFigure(k, opts);
+  if (s) glowBits(g, k, s, q, x, y + q.dy * scale, f, scale, t + KINDS.indexOf(k) * 0.37);
+}

@@ -3,9 +3,11 @@ import { MAP } from './map.js';
 export const M = globalThis.Matter;
 export const { Engine, Bodies, Body, Composite, Constraint, Events, Query, Vector } = M;
 
-export const CAT = { world: 1, actor: 2, prop: 4, limb: 8, bullet: 16, minion: 1 << 10, cable: 1 << 20, sensor: 1 << 21 };
+export const CAT = { world: 1, actor: 2, prop: 4, limb: 8, bullet: 16, cable: 1 << 20, sensor: 1 << 21, minion: 1 << 22 };
+// Each one-way platform has its own collision bit (bits 5..19), so an arena has at most 15 of them.
 export const onewayBit = i => 32 << i;
-export const ALL_ONEWAY = MAP.oneway.reduce((m, _, i) => m | onewayBit(i), 0);
+export const MAX_ONEWAY = 15;
+export const ALL_ONEWAY = Array.from({ length: MAX_ONEWAY }, (_, i) => onewayBit(i)).reduce((m, b) => m | b, 0);
 export const MASK = {
   actor: CAT.world | CAT.actor | CAT.prop | CAT.bullet,
   prop: CAT.world | CAT.actor | CAT.prop | CAT.limb | CAT.bullet | CAT.cable | CAT.minion | ALL_ONEWAY,
@@ -49,7 +51,7 @@ export function buildStatic(world) {
 export function surfaceY(x, y, { oneway = true } = {}) {
   let best = Infinity;
   for (const s of MAP.solids) if (s.kind !== 'wall' && x >= s.x0 && x <= s.x1 && s.y0 >= y - 2 && s.y0 < best) best = s.y0;
-  if (oneway) for (const p of MAP.oneway) if (x >= p.x0 && x <= p.x1 && p.y >= y - 2 && p.y < best) best = p.y;
+  if (oneway) MAP.oneway.forEach((p, i) => { if (!MAP.off?.[i] && x >= p.x0 && x <= p.x1 && p.y >= y - 2 && p.y < best) best = p.y; });
   return best === Infinity ? MAP.floorY + 60 : best;
 }
 

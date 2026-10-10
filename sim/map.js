@@ -1,5 +1,10 @@
-// "Depósito 07 — Turno da Noite". World units; every coordinate is a multiple of 3 so it lands on whole pixels.
-export const MAP = {
+// The arenas. World units (960 x 540, one screen); every coordinate is a multiple of 3 so it lands on
+// whole pixels (S = 2/3). MAP is the arena being played: useMap() fills it with one of MAPS, and the
+// whole simulation and renderer read it from there. windows (view pixels): where the moonlight comes in.
+
+// "Depósito 07 — Turno da Noite".
+const DEPOT = {
+  id: 'depot',
   name: 'DEPÓSITO 07',
   subtitle: 'TURNO DA NOITE',
   floorY: 492,
@@ -21,7 +26,12 @@ export const MAP = {
   ],
   ladders: [{ x: 186, top: 372, bottom: 492 }, { x: 774, top: 372, bottom: 492 }],
   spawns: [[246, 343], [714, 343], [390, 223], [570, 223]],
-  pit: { x0: 432, x1: 528, y0: 504, y1: 558 },
+  // The Cat King's kingdom (sim/kingdom.js): where no banner may go (by floor; no x0/x1: none of it), and
+  // the spots where fish turn up for his workers (on a floor's top).
+  plantBan: [{ node: 'floorL', x0: 0, x1: 150 }, { node: 'floorR', x0: 804, x1: 960 }],
+  fish: [[396, 492], [720, 492], [240, 372], [720, 372], [390, 252], [570, 252], [360, 135], [600, 135], [75, 240], [885, 240]],
+  pit: { x0: 432, x1: 528, y0: 504, y1: 558, text: 'TRITURADO!' },
+  windows: [{ x: 20, y: 18, w: 186, h: 128 }, { x: 246, y: 18, w: 148, h: 104 }, { x: 434, y: 18, w: 186, h: 128 }],
   conveyor: { x0: 165, x1: 372, y: 492, speed: 1.4, lever: { x: 141, y: 468 } },
   press: { x0: 852, x1: 948, rest: 300, bottom: 492, headH: 48, button: { x: 801, y: 321, w: 9, h: 18 }, interval: 8, warn: 1.6 },
   cable: { x: 78, y: 300, segments: 12, segLen: 15 },
@@ -44,11 +54,87 @@ export const MAP = {
   ]
 };
 
+// "Castelo — Salão do Relógio": a gothic hall at midnight. The same bones as the depot (floor with a pit in
+// the middle, two balconies with ladders, two bridges, the high gallery, two towers) so everyone fights
+// the same way, but everything in it can be touched (sim/castle.js):
+//  - candles on stands (candles): break one and it drops something; they light again later;
+//  - the chandelier hangs from the gallery over the pit: cut its chain and it crashes down burning;
+//  - two pendulum blades swing from the gallery across the balconies (pendulums);
+//  - a loose stone over the spike pit (the 'crumble' ledge) gives way under whoever stands on it;
+//  - suits of armor (armors) fall apart under blows and leave their weapon;
+//  - SECRET: the cracked wall at the left end of the floor (cracked) hides a roast in an alcove;
+//  - SECRET: strike the gargoyle at the right tower and its door opens: the hidden room on top of
+//    the tower (towerR) keeps a chest.
+const CASTLE = {
+  id: 'castle',
+  name: 'CASTELO',
+  subtitle: 'SALÃO DO RELÓGIO',
+  floorY: 492,
+  solids: [
+    { id: 'floorL', x0: 0, y0: 492, x1: 432, y1: 564, kind: 'floor' },
+    { id: 'floorR', x0: 528, y0: 492, x1: 960, y1: 564, kind: 'floor' },
+    { id: 'wallL', x0: -48, y0: -420, x1: 0, y1: 564, kind: 'wall' },
+    { id: 'wallR', x0: 960, y0: -420, x1: 1008, y1: 564, kind: 'wall' },
+    { id: 'towerL', x0: 0, y0: 240, x1: 150, y1: 300, kind: 'block' },
+    // The hidden room: its floor (the right tower) and its roof; the door is the gap between them at
+    // x 810..834 (sim/castle.js). The bots never path into it.
+    { id: 'towerR', x0: 810, y0: 240, x1: 960, y1: 300, kind: 'block', nav: false },
+    { id: 'roofR', x0: 810, y0: 117, x1: 960, y1: 150, kind: 'block' },
+    { id: 'pitFloor', x0: 432, y0: 558, x1: 528, y1: 600, kind: 'pit' }
+  ],
+  oneway: [
+    { id: 'balcL', x0: 156, x1: 336, y: 372, h: 12, kind: 'balcony' },
+    { id: 'balcR', x0: 624, x1: 804, y: 372, h: 12, kind: 'balcony' },
+    { id: 'bridgeL', x0: 345, x1: 438, y: 252, h: 12, kind: 'bridge' },
+    { id: 'bridgeR', x0: 522, x1: 615, y: 252, h: 12, kind: 'bridge' },
+    { id: 'gallery', x0: 240, x1: 720, y: 135, h: 12, kind: 'gallery' },
+    { id: 'crumble', x0: 450, x1: 510, y: 420, h: 12, kind: 'crumble', nav: false }
+  ],
+  ladders: [{ x: 186, top: 372, bottom: 492 }, { x: 774, top: 372, bottom: 492 }],
+  spawns: [[246, 343], [714, 343], [390, 223], [570, 223]],
+  // No banner under the pendulums, on the left tower, by the cracked wall, the candles and the armor.
+  plantBan: [{ node: 'balcL' }, { node: 'balcR' }, { node: 'towerL' }, { node: 'floorL', x0: 0, x1: 120 }, { node: 'floorR', x0: 846, x1: 960 }, { node: 'gallery', x0: 306, x1: 330 }, { node: 'gallery', x0: 630, x1: 654 }],
+  fish: [[390, 492], [660, 492], [300, 372], [660, 372], [405, 252], [555, 252], [360, 135], [600, 135], [120, 240], [885, 117]],
+  pit: { x0: 432, x1: 528, y0: 504, y1: 558, text: 'ESPETADO!' },
+  windows: [{ x: 22, y: 18, w: 56, h: 120 }, { x: 178, y: 26, w: 46, h: 96 }, { x: 416, y: 26, w: 46, h: 96 }, { x: 562, y: 18, w: 56, h: 120 }],
+  // The great clock on the back wall over the gallery (view pixels): its hands tell real match time.
+  clock: { x: 320, y: 46, r: 34 },
+  chandelier: { x: 480, anchorY: 147, w: 60, h: 27, chain: 93 },
+  pendulums: [{ x: 246, y: 147, len: 200, amp: 0.5, period: 3.4, phase: 0 }, { x: 714, y: 147, len: 200, amp: 0.5, period: 3.4, phase: 1.7 }],
+  // Candles stand on a surface: x, and y of that surface.
+  candles: [{ x: 96, y: 492 }, { x: 870, y: 492 }, { x: 222, y: 372 }, { x: 738, y: 372 }, { x: 384, y: 252 }, { x: 576, y: 252 }, { x: 318, y: 135 }, { x: 642, y: 135 }, { x: 36, y: 240 }],
+  armors: [{ x: 99, y: 240, weapon: 'axe' }, { x: 918, y: 492, weapon: 'spear' }],
+  cracked: { x0: 30, x1: 54, y0: 420, y1: 492, roast: { x: 15, y: 492 } },
+  gargoyle: { x: 801, y: 141 },
+  door: { x0: 810, x1: 834, y0: 150, y1: 240 },
+  chest: { x: 912, y: 240 },
+  glass: [{ x: 150, y0: 168, y1: 240 }],
+  props: [
+    { kind: 'crate', x: 291, y: 358 }, { kind: 'crate', x: 669, y: 358 },
+    { kind: 'barrel', x: 600, y: 475 }, { kind: 'barrel', x: 330, y: 475 },
+    { kind: 'katana', x: 696, y: 470 }, { kind: 'spear', x: 380, y: 238 }, { kind: 'blade', x: 588, y: 238 },
+    { kind: 'molotov', x: 252, y: 362 }, { kind: 'gun', x: 480, y: 125, weapon: 'pistol' }
+  ]
+};
+
+export const MAPS = { depot: DEPOT, castle: CASTLE };
+export const MAP_IDS = Object.keys(MAPS);
+export const MAP = {};
+// Make id the arena being played (the depot if it is unknown). Cheap when it already is.
+export function useMap(id) {
+  const def = Object.hasOwn(MAPS, id) ? MAPS[id] : DEPOT;
+  if (MAP.id === def.id) return MAP;
+  for (const k of Object.keys(MAP)) delete MAP[k];
+  Object.assign(MAP, def);
+  return MAP;
+}
+useMap('depot');
+
 // Walkable surfaces for the navigation graph.
 export function surfaces() {
   const list = [];
-  for (const s of MAP.solids) if (s.kind === 'floor' || s.kind === 'block') list.push({ id: s.id, x0: Math.max(12, s.x0 + 12), x1: Math.min(948, s.x1 - 12), y: s.y0, oneway: false, solid: s });
-  MAP.oneway.forEach((p, i) => list.push({ id: p.id, x0: p.x0 + 10, x1: p.x1 - 10, y: p.y, oneway: true, index: i }));
+  for (const s of MAP.solids) if ((s.kind === 'floor' || s.kind === 'block') && s.nav !== false) list.push({ id: s.id, x0: Math.max(12, s.x0 + 12), x1: Math.min(948, s.x1 - 12), y: s.y0, oneway: false, solid: s });
+  MAP.oneway.forEach((p, i) => { if (p.nav !== false) list.push({ id: p.id, x0: p.x0 + 10, x1: p.x1 - 10, y: p.y, oneway: true, index: i }); });
   return list;
 }
 

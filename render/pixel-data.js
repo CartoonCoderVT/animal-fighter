@@ -8,13 +8,15 @@
 import { PARTS } from './pixel-parts.js';
 import { FROG_PALETTES, FROG_PARTS, FROG_TAILS } from './pixel-frog.js';
 import { AXO_PALETTES, AXO_PARTS, AXO_TAILS, AXO_ANCHORS, AXO_JOINTS } from './pixel-axolotl.js';
+import { DARK_NOX_PALETTE } from './dark-nox.js';
 
 const FAR = { 1: '2', 2: '3', 4: '5', 6: '7', 9: '8', x: 'y' };
 
 const PALETTES = {
   cat: { o: '#3b1b1e', 1: '#ffb763', 2: '#f08a3c', 3: '#c25e2c', 4: '#fff3dc', 5: '#f0cc9c', 6: '#ffb3c4', 7: '#e8728e', 8: '#a8482a', e: '#1e1420', w: '#ffffff', r: '#ff9c9c' },
   rat: { o: '#2b2238', 1: '#cec7dc', 2: '#a89fbc', 3: '#7b7192', 4: '#efe7f0', 5: '#d4c8d8', 6: '#ffb8ca', 7: '#ee7a9a', e: '#1e1420', w: '#ffffff', r: '#ffa0b6' },
-  rabbit: { o: '#5a2638', 1: '#ffffff', 2: '#fde3ea', 3: '#eab2c4', 4: '#ffffff', 5: '#f6d0dc', 6: '#ffa6bc', 7: '#e8708e', e: '#2a1420', w: '#ffffff', r: '#ff9cb2' },
+  // Lola: pink-white fur under a wine outline, a light-blue bow and dress, a white apron, a gold watch.
+  rabbit: { o: '#5c1f30', 1: '#ffffff', 2: '#ffe4ea', 3: '#f3aebf', 4: '#ffffff', 5: '#efd3df', 6: '#ff9db3', 7: '#e8668a', 8: '#3e64c4', 9: '#6aa2ee', x: '#b8e0ff', y: '#7fb0f0', e: '#2a1420', g: '#ffd47a', h: '#cf893a', r: '#e8405e' },
   ocelot: { o: '#3a2010', 1: '#ffd36c', 2: '#eca83e', 3: '#bf7a26', 4: '#fff2cf', 5: '#f0d39a', 6: '#e0a070', 7: '#d0605e', 8: '#5a2e18', 9: '#8a5028', e: '#1e1420', w: '#ffffff', r: '#ffa08a' },
   // Juma's beast form: deeper fur, near-black rosettes, ivory fangs and claws, burning eyes.
   ocelotBeast: { o: '#220c04', 1: '#f2a848', 2: '#c86c20', 3: '#8a4214', 4: '#f6e2b8', 5: '#d6ad78', 6: '#e09070', 7: '#b8343a', 8: '#2e1408', 9: '#62300f', e: '#140806', w: '#ffffff', r: '#ff7a5a', f: '#fff6e0', g: '#ffd23a', m: '#4a0a10' },
@@ -42,7 +44,7 @@ export const TAILS = {
   cat: { width: 3, colors: ['2', '1', '3'], stripe: '8', every: 2.5, shape: [[1, 0], [-2, 0], [-5, -1], [-7, -3], [-8, -6], [-8, -9], [-6, -11]] },
   ocelot: { width: 3, colors: ['2', '1', '3'], stripe: '8', every: 2.5, tip: '8', shape: [[1, 0], [-2, 0], [-5, -1], [-7, -3], [-8, -6], [-8, -9], [-6, -11]] },
   rat: { width: 1, colors: ['6', '6', '7'], shape: [[0, 0], [-3, 1], [-6, 0], [-8, -2], [-9, -5], [-8, -8]] },
-  rabbit: { blob: true },
+  rabbit: null,
   ocelotBeast: { width: 4, colors: ['2', '1', '3'], stripe: '8', every: 2.5, tip: '8', shape: [[1, 0], [-3, 0], [-7, -1], [-10, -3], [-12, -7], [-12, -11], [-10, -14]] },
   ocelotTitan: { width: 5, colors: ['2', '1', '3'], stripe: '8', every: 3, tip: '8', shape: [[1, 0], [-4, 1], [-9, 1], [-13, -1], [-16, -5], [-17, -10], [-15, -15], [-12, -17]] }
 };
@@ -56,12 +58,23 @@ export const SCARF = {
 export const ANCHOR = { head: [1, -9], body: [0, -2], armF: [4, -7], armB: [1, -8], footF: [2, -1], footB: [-2, -1], tail: [-4, -5], scarf: [0, -7] };
 // Where each part hinges on the body (ragdoll joints and severed stumps).
 export const JOINT = { head: [1, -9], armF: [4, -7], armB: [1, -8], footF: [2, -2], footB: [-2, -2] };
+// Mingau, the Cat King, has one look of his own: 'Proud', the lids half down over his eyes, looking
+// down his nose at everyone (his guard and his walk). The eye is cells 9-10 of rows 6-8 of the head.
+const lidded = (rows, lid) => rows.map((r, y) => (y === 6 ? r.slice(0, 9) + lid + r.slice(11) : r));
+const KING_PARTS = { ...PARTS.cat, headProud: lidded(PARTS.cat.head, '33') };
 const castOf = id => ({
-  id, palette: PALETTES[id] || AXO_PALETTES[id], parts: PARTS[id] || AXO_PARTS[id], tail: TAILS[id] || AXO_TAILS[id] || null, scarf: id === 'bat' ? SCARF : null,
+  id, palette: PALETTES[id] || AXO_PALETTES[id], parts: id === 'cat' ? KING_PARTS : PARTS[id] || AXO_PARTS[id], tail: TAILS[id] || AXO_TAILS[id] || null, scarf: id === 'bat' ? SCARF : null,
   ...(AXO_ANCHORS[id] && { anchor: { ...ANCHOR, ...AXO_ANCHORS[id] }, joint: { ...JOINT, ...AXO_JOINTS[id] } })
 });
+// Lola's head with its bow sits a pixel higher than the others', so more of her dress shows.
+// eye: the eye in head cells from the head's pivot.
+const LOLA_RIG = {
+  anchor: { head: [1, -10], body: [0, -2], armF: [4, -7], armB: [1, -8], footF: [2, -1], footB: [-2, -1], tail: [-4, -5], scarf: [0, -7] },
+  joint: { head: [1, -10], armF: [4, -7], armB: [1, -8], footF: [2, -2], footB: [-2, -2] },
+  eye: [3, -4]
+};
 // The fighters, by type. Alternate forms are casts of their own with their own anchors.
-export const CAST = ['cat', 'rat', 'rabbit', 'ocelot', 'bat', 'frog', 'axolotl'].map(castOf);
+export const CAST = ['cat', 'rat', 'rabbit', 'ocelot', 'bat', 'frog', 'axolotl'].map(id => (id === 'rabbit' ? { ...castOf(id), ...LOLA_RIG } : castOf(id)));
 // The axolotl's clones: a smaller version of itself grown from a lost part, and the demon the
 // special turns it into. The demon borrows the clone's body until it has its own.
 export const AXO_MINI = castOf('axoMini');
@@ -95,11 +108,103 @@ export const FROG_LOOKS = ['frogCat', 'frogRat', 'frogRabbit', 'frogOcelot', 'fr
   id, copyOf: t, palette: FROG_PALETTES[id], parts: FROG_PARTS[id], tail: FROG_TAILS[id] || null, scarf: id === 'frogBat' ? FROG_SCARF : null,
   anchor: CAST[5].anchor, joint: CAST[5].joint, eye: CAST[5].eye, mouth: CAST[5].mouth
 });
-// The look of a fighter's body: Juma's forms, or the frog's borrowed looks ('c0'..'c4').
+// DARK NOX's wings: bat wings grown out of his back, built from bones once at load. Each pose is
+// the wrist, the thumb claw, three finger tips (leading to trailing) and where the membrane meets
+// his flank, in cells from the wing root (upper back), x ahead, y down. The membrane is filled
+// between the bones with a scalloped trailing edge, panel by panel in two shades of blood; the
+// bones are dark with a lit leading edge and a pale hooked thumb. `far` is the other wing, seen
+// past him (a shade darker, drawn first).
+const WING_POSES = {
+  // Folded on his back like a cloak, a hump over the shoulders with the thumb hooked up.
+  fold: [{ w: [-3, -5], th: [-2, -7], f: [[-6, 1], [-5, 5], [-3, 7]], hip: [0, 7] }],
+  // Half open and raised behind him: the feral guard.
+  half: [{ w: [-6, -7], th: [-5, -9], f: [[-13, -6], [-13, -1], [-9, 3]], hip: [-1, 6] }],
+  // Swept back and low for speed: running, dashing, lunging.
+  back: [{ w: [-7, -3], th: [-7, -5], f: [[-14, -2], [-13, 2], [-8, 4]], hip: [-1, 5] }],
+  // Spread wide behind him.
+  open: [{ w: [-7, -6], th: [-6, -8], f: [[-16, -6], [-16, 0], [-11, 4]], hip: [-1, 6] }],
+  // Raised high over him (the jump, the dive gathering, the uppercut).
+  up: [{ w: [-4, -10], th: [-3, -12], f: [[-11, -15], [-14, -8], [-10, -2]], hip: [-1, 5] }, { far: true, w: [0, -17], th: [1, -19], f: [[5, -23], [9, -19], [8, -11]], hip: [2, 0] }],
+  // Flung open as far as they go: the finisher, the pop of the transformation, the bite.
+  flare: [{ w: [-8, -9], th: [-7, -11], f: [[-17, -13], [-19, -5], [-14, 1]], hip: [-1, 6] }, { far: true, w: [2, -17], th: [3, -19], f: [[8, -22], [12, -18], [11, -10]], hip: [2, 0] }],
+  // Wrapped forward round the prey while he drinks.
+  wrap: [{ w: [-3, -9], th: [-2, -11], f: [[-8, -9], [-10, -3], [-7, 2]], hip: [-1, 6] }, { far: true, w: [8, -10], th: [9, -12], f: [[16, -6], [15, 0], [11, 4]], hip: [3, 3] }]
+};
+function wingRows({ w, th, f, hip }, far) {
+  // The membrane outline: root, wrist, each finger tip with a scallop pulled back between them.
+  const poly = [[0, 0], w];
+  const tips = [...f, hip];
+  for (let i = 0; i < tips.length; i++) {
+    poly.push(tips[i]);
+    if (i < tips.length - 1) {
+      const [ax, ay] = tips[i], [bx, by] = tips[i + 1], mx = (ax + bx) / 2, my = (ay + by) / 2;
+      poly.push([mx + (w[0] - mx) * 0.22, my + (w[1] - my) * 0.22]);
+    }
+  }
+  const xs = [...poly.map(p => p[0]), th[0]], ys = [...poly.map(p => p[1]), th[1]];
+  const x0 = Math.floor(Math.min(...xs)) - 1, y0 = Math.floor(Math.min(...ys)) - 1;
+  const W = Math.ceil(Math.max(...xs)) - x0 + 2, H = Math.ceil(Math.max(...ys)) - y0 + 2;
+  const grid = Array.from({ length: H }, () => new Array(W).fill('.'));
+  const inside = (px, py) => {
+    let on = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const [xi, yi] = poly[i], [xj, yj] = poly[j];
+      if ((yi > py) !== (yj > py) && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi) on = !on;
+    }
+    return on;
+  };
+  // Panels between the bones alternate dark wine and near black (the blood is his scarf, his
+  // claws and the glow round him: dark wings keep his shape clear against it); the far wing is all
+  // near black.
+  const wrap = v => Math.atan2(Math.sin(v), Math.cos(v));
+  const a0 = Math.atan2(f[0][1] - w[1], f[0][0] - w[0]);
+  const rel = (x, y) => wrap(Math.atan2(y - w[1], x - w[0]) - a0);
+  const fa = [...f.slice(1), hip].map(([x, y]) => rel(x, y)), sweep = Math.sign(fa[fa.length - 1]) || 1;
+  const lit = far ? '8' : '9', dim = '8';
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const cx = x + x0 + 0.5, cy = y + y0 + 0.5;
+    if (!inside(cx, cy)) continue;
+    const d = rel(cx, cy) * sweep;
+    let panel = 0;
+    for (const v of fa) if (d > v * sweep) panel++;
+    grid[y][x] = panel % 2 ? dim : lit;
+  }
+  const line = (ax, ay, bx, by, c, c2 = c) => {
+    const n = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay) * 1.5));
+    for (let k = 0; k <= n; k++) {
+      const x = Math.round(ax + ((bx - ax) * k) / n) - x0, y = Math.round(ay + ((by - ay) * k) / n) - y0;
+      if (y >= 0 && y < H && x >= 0 && x < W) grid[y][x] = k === n ? c2 : c;
+    }
+  };
+  // Finger bones, the forearm (lit along its top), and the hooked thumb with a slate claw (not white:
+  // his burning eyes stay the only bright points on him).
+  for (const [fx, fy] of f) line(w[0], w[1], fx, fy, far ? '9' : '2');
+  line(0, 0, w[0], w[1], far ? '9' : '2');
+  line(0, -1, w[0], w[1] - 1, far ? '2' : '1');
+  line(w[0], w[1], th[0], th[1], far ? '2' : '1', far ? '1' : '4');
+  return { m: grid.map(r => r.join('')), piv: [-x0, -y0] };
+}
+const WINGS = Object.fromEntries(Object.entries(WING_POSES).map(([k, list]) => [k, list.map(s => ({ ...wingRows(s, s.far), far: !!s.far })).sort((a, b) => b.far - a.far)]));
+
+// DARK NOX: Nox himself (same id, so his scarf moves the same) in his dark palette, cached apart,
+// with the bat wings on his back (the frame's `wing` picks the pose; folded when it names none).
+// His arms are lit along the outside so the blows read against his dark body, and end in two pale
+// hooked claws just past the hand (the hand stays at cell 3, where the blood talons grow from).
+const DARK_ARM = [
+  '11.',
+  '112',
+  '122',
+  '.13',
+  'w.w'
+];
+export const DARK_NOX = { ...castOf('bat'), parts: { ...PARTS.bat, arm: DARK_ARM }, palette: DARK_NOX_PALETTE, paletteId: 'batDark', wings: { root: [-3, -8], poses: WINGS } };
+// The look of a fighter's body: Juma's and Nox's forms, the frog's borrowed looks ('c0'..'c6'), and
+// the axolotl's clones ('mini') and demons ('demon').
 export const castFor = (type, form) => {
   const ch = CAST[type];
   if (!form || !ch) return ch;
-  if (ch.id === 'ocelot') return form === 'titan' ? TITAN : BEAST;
+  if (ch.id === 'ocelot') return form === 'titan' ? TITAN : form === 'beast' ? BEAST : ch;
+  if (ch.id === 'bat') return form === 'dark' ? DARK_NOX : ch;
   if (ch.id === 'frog' && form[0] === 'c') return FROG_LOOKS[+form.slice(1)] || ch;
   if (ch.id === 'axolotl') return form === 'demon' ? AXO_DEMON : form === 'mini' ? AXO_MINI : ch;
   return ch;
@@ -332,7 +437,8 @@ export function placeSlot(ch, slot, frame = {}, opts = {}) {
   const extra = [...(opts.wounds?.[slot] || []), ...(opts.stumps?.[slot] || [])];
   if (extra.length) m0 = applyWounds(m0, piv0, extra);
   const { m, piv } = deg ? rotate(m0, piv0, deg) : { m: m0, piv: piv0 };
-  return { m, x: ax + dx - piv[0], y: ay + dy - piv[1] };
+  // Whole cells only: weapon thrusts ease their offsets in between pixels.
+  return { m, x: Math.round(ax + dx - piv[0]), y: Math.round(ay + dy - piv[1]) };
 }
 
 // Maps a point given in a slot's unrotated matrix space (cells from its pivot) to character space.
@@ -356,7 +462,7 @@ function stumpsFor(severed, ch) {
   return out;
 }
 
-const DRAW = ['tail', 'armB', 'footB', 'blob', 'body', 'footF', 'head', 'scarf', 'armF'];
+const DRAW = ['wings', 'tail', 'armB', 'footB', 'blob', 'body', 'footF', 'head', 'scarf', 'armF'];
 
 // Static scarf ends (ragdolls, previews without motion), offset with the body.
 function scarfPoints(ch, frame, shape) {
@@ -381,6 +487,15 @@ export function composeChars(ch, frame = {}, opts = {}) {
   const bodyOn = want('body');
   const order = frame.front ? DRAW.filter(s => s !== frame.front).concat(frame.front) : DRAW;
   for (const step of order) {
+    if (step === 'wings') {
+      // Wings ride on the body, like the scarf.
+      const set = bodyOn && ch.wings && frame.wing !== false ? ch.wings.poses[frame.wing || 'fold'] || ch.wings.poses.fold : null;
+      if (set) {
+        const [bdx = 0, bdy = 0] = frame.body || [], [rx, ry] = ch.wings.root;
+        for (const wg of set) g.stamp(wg.m, rx + bdx - wg.piv[0], ry + bdy - wg.piv[1]);
+      }
+      continue;
+    }
     if (step === 'tail') {
       if (bodyOn && ch.tail && !ch.tail.blob && frame.tail !== false) tube(g, tailPoints(ch, frame), ch.tail);
       if (bodyOn && ch.scarf && frame.scarf !== false) for (const s of ch.scarf.strands) tube(g, scarfPoints(ch, frame, s), ch.scarf);
@@ -415,7 +530,7 @@ function mixHex(a, b, t) {
 }
 // Palette with optional state tints in the variant string: char1-3, ice, xray, flash.
 export function paletteFor(ch, variant = '') {
-  const key = ch.id + variant;
+  const key = (ch.paletteId || ch.id) + variant;
   let p = paletteCache.get(key);
   if (p) return p;
   p = { ...OVERLAY, ...ch.palette };

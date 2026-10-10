@@ -14,7 +14,7 @@ import { MatchScene } from './scenes/match.js';
 import { LobbyScene, OnlineScene } from './scenes/online.js';
 import { SelectScene } from './scenes/select.js';
 
-const DEFAULTS = { gore: 2, shake: true, camera: true, particles: true, volume: 0.35, music: 0.25, pixel: 'sharp', fps: false, name: '' };
+const DEFAULTS = { gore: 2, shake: true, camera: true, particles: true, volume: 0.35, music: 0.25, pixel: 'sharp', fps: false, name: '', map: 'depot' };
 
 export class Shell {
   constructor(canvas, textInput, live) {
@@ -122,7 +122,7 @@ export class Shell {
     return [{ id: 0, type: this.selected, name, bot: false }, ...[1, 2, 3].slice(0, bots).map(id => ({ id, type: (this.selected + id) % FIGHTERS.length, name: FIGHTERS[(this.selected + id) % FIGHTERS.length].name, bot: true }))];
   }
 
-  startMatch(players = this.makePlayers(), { mode = this.mode, isRemote = false, instant = false } = {}) {
+  startMatch(players = this.makePlayers(), { mode = this.mode, isRemote = false, instant = false, map = this.settings.map } = {}) {
     this.disposeGame();
     this.mode = mode;
     this.renderer.resetMatch();
@@ -131,7 +131,7 @@ export class Shell {
     this.localId = isRemote ? this.net.localId : 0;
     const countdown = mode === 'sandbox' || isRemote ? 0 : 3;
     if (!isRemote) {
-      this.game = new Game({ players, mode, localId: 0, settings: this.settings, onEvent: e => this.gameEvent(e), killsToWin: 5 });
+      this.game = new Game({ players, mode, localId: 0, settings: this.settings, onEvent: e => this.gameEvent(e), killsToWin: 5, map });
       this.game.paused = countdown > 0;
       this.game.countdown = countdown;
     }
@@ -182,11 +182,31 @@ export class Shell {
       const old = new Map(prev[key].map(a => [a.id, a]));
       out[key] = remote[key].map(a => {
         const b = old.get(a.id);
-        if (!b || Math.hypot(a.x - b.x, a.y - b.y) > 180) return a;
+        // Teleports are instant, never a slide: Lola's skips (counted in skips) and long jumps.
+        if (!b || Math.hypot(a.x - b.x, a.y - b.y) > 180 || a.skips !== b.skips) return a;
         const lerpA = (x, y) => x + Math.atan2(Math.sin(y - x), Math.cos(y - x)) * t;
-        return { ...a, x: b.x + (a.x - b.x) * t, y: b.y + (a.y - b.y) * t, angle: Number.isFinite(a.angle) && Number.isFinite(b.angle) ? lerpA(b.angle, a.angle) : a.angle };
+        const out = { ...a, x: b.x + (a.x - b.x) * t, y: b.y + (a.y - b.y) * t, angle: Number.isFinite(a.angle) && Number.isFinite(b.angle) ? lerpA(b.angle, a.angle) : a.angle };
+        // DARK NOX's flying scythe: its spin is sent unwrapped, so it turns the right way between snapshots.
+        const f = a.fam, h = b.fam;
+        if (f && h && Math.hypot(f.x - h.x, f.y - h.y) < 120) out.fam = { ...f, x: h.x + (f.x - h.x) * t, y: h.y + (f.y - h.y) * t, ang: h.ang + (f.ang - h.ang) * t };
+        // The Cat King's court: each familiar slides between snapshots (a blink is a jump, not a slide).
+        if (a.court && b.court) out.court = a.court.map((c, i) => { const d = b.court[i]; return d && c.st !== 'appear' && d.st !== 'gone' && Math.hypot(c.x - d.x, c.y - d.y) < 40 ? { ...c, x: d.x + (c.x - d.x) * t, y: d.y + (c.y - d.y) * t } : c; });
+        return out;
       });
     }
+    // The cut-in and the stopped world are timed by the time stop's own clock: smooth it too.
+    if (remote.timeStop && prev.timeStop && remote.timeStop.owner === prev.timeStop.owner) out.timeStop = { ...remote.timeStop, t: prev.timeStop.t + (remote.timeStop.t - prev.timeStop.t) * t };
+    // The Cat Kings' kingdoms: their units come and go, so they are matched by id; a unit that just
+    // appeared, died or hopped far is not slid.
+    if (remote.kingdoms && prev.kingdoms) out.kingdoms = remote.kingdoms.map(k => {
+      const p = prev.kingdoms.find(q => q.id === k.id);
+      if (!p) return k;
+      const old = new Map(p.u.map(u => [u.id, u]));
+      return { ...k, t: p.lv === k.lv && p.st === k.st ? p.t + (k.t - p.t) * t : k.t, u: k.u.map(u => {
+        const v = old.get(u.id);
+        return v && u.st !== 'appear' && v.st !== 'dead' && Math.hypot(u.x - v.x, u.y - v.y) < 60 ? { ...u, x: v.x + (u.x - v.x) * t, y: v.y + (u.y - v.y) * t } : u;
+      }) };
+    });
     if (remote.hazards && prev.hazards) {
       out.hazards = { ...remote.hazards, lamps: remote.hazards.lamps.map((l, i) => { const p = prev.hazards.lamps[i]; return p ? { ...l, x: p.x + (l.x - p.x) * t, y: p.y + (l.y - p.y) * t } : l; }) };
     }
@@ -199,7 +219,7 @@ export class Shell {
     if (e.type === 'status' || e.type === 'error') { scene.status = e.message; if (!(scene instanceof OnlineScene)) this.toast(e.message); }
     else if (e.type === 'lobby') { if (!this.playing) { if (this.base instanceof LobbyScene) this.base.refresh?.(); else this.go(new LobbyScene(this)); } }
     else if (e.type === 'input') this.game?.inputFor(e.id, e.input);
-    else if (e.type === 'start') { this.mode = 'online'; this.startMatch(e.players, { mode: 'online', isRemote: true }); }
+    else if (e.type === 'start') { this.mode = 'online'; this.startMatch(e.players, { mode: 'online', isRemote: true, map: e.map }); }
     else if (e.type === 'state') {
       this.lastRemote = performance.now();
       this.remotePrev = this.remote;

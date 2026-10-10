@@ -5,18 +5,22 @@ import { S, rnd, clamp } from '../engine/const.js';
 import { knockdown, pushActor, buildRagdoll, ragdollOf, breakJoint, gib, makeLimb, releaseHeld, pinLimb, addStump } from './ragdoll.js';
 import { extendedAttack, dropWeapon, damageProp } from './props.js';
 import { hazardBulletHit, breakLamp } from './hazards.js';
-import { MOVES, HEAVY, AIR, NOX_AIR, JUMA_AIR, BEAST_AIR, TITAN_AIR, AXO_AIR, NATURAL, comboOf, airOf } from './moves.js';
+import { MOVES, AIR, NOX_AIR, DARK_AIR, JUMA_AIR, BEAST_AIR, TITAN_AIR, AXO_AIR, LOLA_AIR, NATURAL, SET, BURST, DARK, POOL, AUTO, comboOf, airOf, heavyOf } from './moves.js';
+import { spill } from './nox.js';
+import { kingOrder, shieldBlocks, strikeCourts, courtInPath, hurtFamiliar } from './court.js';
+import { hurtKingdom } from './kingdom.js';
 import { MAP } from './map.js';
 import { startSpecial, startStomp, throwCarried, startChase, endAct, startPlunge, startSwarm, startBite, startCharge, feedRage, frogPower } from './specials.js';
 import { isMelee, WEAPON_INFO, weaponSlot } from './weapons.js';
 import { axoHit, axoPower, shedStrike, throwClone, blowBubble } from './axolotl.js';
 import { hitMinions, hurtMinion, targetable, queueEcho, pileOn, bubbleBonus } from './minions.js';
+import { skipSpot, skipTo, footing, knifeKnock, knifeKnocked, setKnives, skipKnives, stepSetKnife } from './timestop.js';
 
 export const KIND = {
   punch: 'blunt', board: 'blunt', impact: 'blunt', fall: 'blunt', crush: 'blunt', power: 'blunt', pipe: 'blunt',
   whip: 'blunt', kick: 'blunt', paw: 'blunt', stomp: 'blunt', sonic: 'blunt', slam: 'blunt',
   claw: 'cut', blade: 'cut', katana: 'cut', axe: 'cut', hammer: 'blunt', spear: 'pierce',
-  spit: 'blunt', tongue: 'blunt', slap: 'blunt', croak: 'blunt', belly: 'blunt', bullet: 'pierce', pellet: 'pierce', shard: 'pierce', thrown: 'pierce', fang: 'pierce', bite: 'pierce', blood: 'cut', hemo: 'pierce', scythe: 'cut', roar: 'blunt',
+  spit: 'blunt', tongue: 'blunt', slap: 'blunt', croak: 'blunt', belly: 'blunt', arrow: 'pierce', magic: 'blunt', bash: 'blunt', bullet: 'pierce', pellet: 'pierce', shard: 'pierce', thrown: 'pierce', fang: 'pierce', bite: 'pierce', blood: 'cut', hemo: 'pierce', scythe: 'cut', roar: 'blunt', knife: 'cut',
   gill: 'blunt', fin: 'blunt', gulp: 'blunt', bubble: 'blunt', nibble: 'pierce', ember: 'explosion',
   explosion: 'explosion', fire: 'fire', shock: 'shock', bleed: 'bleed', grind: 'grind', freeze: 'freeze'
 };
@@ -24,7 +28,7 @@ const DOT = new Set(['fire', 'bleed', 'shock', 'freeze']);
 const isGun = w => w === 'pistol' || w === 'shotgun';
 const LIMB = ['armF', 'armB', 'footF', 'footB'];
 const limbOf = part => (LIMB.includes(part) ? part : null);
-const SLASH = { gill: '#ff8fa8', fin: '#ffd6e0', gulp: '#c8f0ff', bubble: '#e0f6ff', belly: '#ffe4ec', slap: '#e8ffd0', tongue: '#ff9cb4', blood: '#ff3a5a', claw: '#f1d9a8', whip: '#ffc8d8', kick: '#ffe8f0', paw: '#ffe0a0', fang: '#e8d0ff', air: '#ffffff', blade: '#f4f8ff', katana: '#ffffff', spear: '#e8f0ff', pipe: '#f0d8c8', axe: '#fff0e0', hammer: '#ffe8d0' };
+const SLASH = { knife: '#e8f4ff', gill: '#ff8fa8', fin: '#ffd6e0', gulp: '#c8f0ff', bubble: '#e0f6ff', belly: '#ffe4ec', slap: '#e8ffd0', tongue: '#ff9cb4', blood: '#ff3a5a', claw: '#f1d9a8', whip: '#ffc8d8', kick: '#ffe8f0', paw: '#ffe0a0', fang: '#e8d0ff', air: '#ffffff', blade: '#f4f8ff', katana: '#ffffff', spear: '#e8f0ff', pipe: '#f0d8c8', axe: '#fff0e0', hammer: '#ffe8d0' };
 const HEAVY_WEAPONS = ['pipe', 'axe', 'hammer'];
 
 // Hitlag (Smash's freeze frames): only the fighters involved in a hit stop for a moment; the
@@ -49,17 +53,19 @@ export function drama(g, t, ...who) {
 export function armUsable(a) {
   return !a.severed.includes('armF') && !a.broken.armF;
 }
-// The limb a move needs: claws and paws use an arm, kicks the feet; tails and fangs always work.
+// The limb a move needs: claws, paws and knives use an arm; tails and fangs always work.
 function moveUsable(a) {
   const s = styleOf(a);
-  if (s === 0 || s === 3) return armUsable(a) || (!a.severed.includes('armB') && !a.broken.armB);
-  if (s === 2) return ['footF', 'footB'].some(f => !a.severed.includes(f) && !a.broken[f]);
+  if (s === 0 || s === 2 || s === 3) return armUsable(a) || (!a.severed.includes('armB') && !a.broken.armB);
   return true;
 }
+const EDGED = ['claw', 'katana', 'axe', 'blade', 'knife'];
 
 export function attack(g, a) {
   if (a.dead || a.attackCd > 0 || a.invincible > 0.8 || a.knocked || a.frozen > 0 || a.parryLag > 0 || a.hitstun > 0) return;
   if (a.act) { if (a.act === 'carry') throwCarried(g, a); return; }
+  // The Cat King never strikes himself: J is an order to his court (sim/court.js).
+  if (a.type === 0) { kingOrder(g, a); return; }
   // The axolotl with a clone in its mouth: J fires it at whoever is ahead (Estilingue).
   if (a.axo?.carry != null) { throwClone(g, a); return; }
   if (!a.ground && !a.climbing && a.input.down && !a.weapon && !a.holding) { startStomp(g, a); return; }
@@ -75,20 +81,25 @@ export function attack(g, a) {
   }
   if (!moveUsable(a)) {
     a.attackCd = 0.8;
-    g.text(a.x, a.y - 26, styleOf(a) === 2 ? 'PERNA QUEBRADA!' : 'SEM GARRAS!', '#d7b5ba');
+    g.text(a.x, a.y - 26, styleOf(a) === 2 ? 'SEM MÃOS!' : 'SEM GARRAS!', '#d7b5ba');
     return;
   }
   // Right after a launcher, J leaps after the target to start an air combo.
   const prey = a.chase && g.time < a.chase.until ? g.actor(a.chase.id) : null;
   if (prey && !prey.dead && !prey.knocked && !prey.ground) { a.chase = null; startChase(g, a, prey); return; }
   let id;
-  const list = comboOf(a), chaining = a.comboTimer > 0 && (list.includes(a.attackKind) || ['shadowCut', 'scytheDash', 'batStrike', 'jBolt', 'jCross', 'fGrapple', 'xSlide'].includes(a.attackKind));
-  const style = styleOf(a), nox = style === 4, side = a.input.left || a.input.right, tapped = g.time - (a.dirTap ?? -9) < 0.2;
-  const juma = style === 3, small = juma && !a.form, titan = juma && a.form === 'titan', frog = style === 5, axo = style === 6;
+  const list = comboOf(a), chaining = a.comboTimer > 0 && (list.includes(a.attackKind) || ['shadowCut', 'scytheDash', 'batStrike', 'dPhantom', 'jBolt', 'jCross', 'fGrapple', 'xSlide', 'lSkip', 'lFan', 'lRain'].includes(a.attackKind));
+  const style = styleOf(a), nox = style === 4, dark = nox && a.form === 'dark', side = a.input.left || a.input.right, tapped = g.time - (a.dirTap ?? -9) < 0.2;
+  // A bot's steering makes fresh taps of its own: its knife branches follow its plan instead.
+  const tapSet = tapped && (!a.bot || !!a.ai?.lola?.plan);
+  const juma = style === 3, small = juma && !a.form, titan = juma && a.form === 'titan', lola = style === 2, frog = style === 5, axo = style === 6;
   if (a.dashStrike) id = 'dashAtk';
   else if (!a.ground && !a.climbing) {
     const air = airOf(a), prev = air.indexOf(a.attackKind);
-    id = air[a.comboTimer > 0 && prev >= 0 ? (prev + 1) % air.length : 0];
+    // Lola, a fresh tap of a direction in her air string: the ring of knives; then the dive.
+    if (lola && a.comboTimer > 0 && (a.attackKind === 'lAirCut' || a.attackKind === 'lAirSpin') && side && tapSet && !(a.setCd > 0)) { a.setCd = SET.cd; id = 'lAirRing'; }
+    else if (lola && a.comboTimer > 0 && a.attackKind === 'lAirRing') id = 'lAirDive';
+    else id = air[a.comboTimer > 0 && prev >= 0 ? (prev + 1) % air.length : 0];
   } else if (a.input.down) {
     // Juma: small, S+J bites (out of a string it rakes low); the beast shakes the whole floor; the
     // titan heaves it, or hammers a downed rival into it.
@@ -98,15 +109,23 @@ export function attack(g, a) {
     // The axolotl: in the string the tail scoops the rival up; over a downed one it feasts; else
     // it blows a bubble.
     else if (axo) id = chaining ? 'xScoop' : downedNear(g, a) ? 'xFeast' : 'xBubble';
-    else id = nox && chaining ? 'scytheSweep' : nox && downedNear(g, a) ? 'execute' : frog && downedNear(g, a) ? 'fSquash' : HEAVY[style];
+    // Lola out of her string: the rain of knives (now and then; else the low cut).
+    else if (lola && chaining && !(a.setCd > 0)) { a.setCd = SET.cd; id = 'lRain'; }
+    // DARK NOX: out of his string the harvest, over a downed rival the scythe's execution, else the kiss.
+    else if (dark) id = chaining ? 'dHarvest' : downedNear(g, a) ? 'dExecute' : 'dKiss';
+    else id = nox && chaining ? 'scytheSweep' : nox && downedNear(g, a) ? 'execute' : frog && downedNear(g, a) ? 'fSquash' : heavyOf(a);
   }
   // The frog with a direction: the tongue-hook, out of the string or on a fresh tap inside it.
   else if (frog && side && (!chaining || tapped) && a.attackKind !== 'fGrapple') { a.face = a.input.right ? 1 : -1; id = 'fGrapple'; }
-  else if (nox && !chaining && side) { a.face = a.input.right ? 1 : -1; id = 'shadowCut'; }
+  else if (nox && !chaining && side) { a.face = a.input.right ? 1 : -1; id = dark ? 'dPhantom' : 'shadowCut'; }
   // The axolotl with a direction: the mud slide out of the string, the tidal bore on a fresh tap inside it.
   else if (axo && side && !chaining) { a.face = a.input.right ? 1 : -1; id = 'xSlide'; }
   else if (axo && side && chaining && tapped && a.attackKind !== 'xPororoca') { a.face = a.input.right ? 1 : -1; id = 'xPororoca'; }
-  else if (nox && chaining && side && tapped && a.attackKind !== 'scytheDash') { a.face = a.input.right ? 1 : -1; id = 'scytheDash'; }
+  else if (nox && chaining && side && tapped && a.attackKind !== 'scytheDash' && a.attackKind !== 'dPhantom') { a.face = a.input.right ? 1 : -1; id = dark ? 'dPhantom' : 'scytheDash'; }
+  // Lola skips through time to a rival a long way off (on a short cooldown, else the string). Inside
+  // her string a fresh tap of a direction is the wall of knives instead.
+  else if (lola && chaining && side && tapSet && !(a.setCd > 0)) { a.setCd = SET.cd; id = 'lFan'; }
+  else if (lola && !chaining && side && !(a.skipCd > 0)) { a.face = a.input.right ? 1 : -1; a.skipCd = 1.1; id = 'lSkip'; }
   // Juma with a direction: small, the lightning pounce (a fresh tap inside the string: the cross);
   // the beast and the titan charge, out of the string too.
   else if (juma && side && (!chaining || tapped) && !(a.form && a.chargeCd > 0) && !(small && chaining && a.attackKind === 'jCross')) {
@@ -116,23 +135,71 @@ export function attack(g, a) {
   }
   else {
     // The shadow cut opens the string at the reap; the phantom reap picks it up at the guillotine;
-    // Juma's pounce goes on into the storm of claws, her cross into the rake.
-    a.combo = chaining ? (a.attackKind === 'shadowCut' || a.attackKind === 'batStrike' ? 1 : a.attackKind === 'scytheDash' ? 3 : a.attackKind === 'jBolt' ? 2 : a.attackKind === 'jCross' ? 3 : a.attackKind === 'fGrapple' ? 3 : a.attackKind === 'xSlide' ? 2 : (a.combo + 1) % list.length) : 0;
+    // Juma's pounce goes on into the storm of claws, her cross into the rake; Lola's skip and wall of
+    // knives into the dance of knives, her rain of knives into the stab in the back.
+    a.combo = chaining ? (a.attackKind === 'shadowCut' || a.attackKind === 'batStrike' || a.attackKind === 'dPhantom' ? 1 : a.attackKind === 'scytheDash' || a.attackKind === 'lRain' || a.attackKind === 'jCross' || a.attackKind === 'fGrapple' ? 3 : a.attackKind === 'jBolt' || a.attackKind === 'lSkip' || a.attackKind === 'lFan' || a.attackKind === 'xSlide' ? 2 : (a.combo + 1) % list.length) : 0;
     // A string can outlive the style it began in (the frog swallowing mid-combo): start the new one over.
     if (!list[a.combo]) a.combo = 0;
     id = list[a.combo];
   }
   // Nox's strings never drop to distance: a rival knocked out of reach of the next blow is chased
-  // as a swarm of bats, and that blow lands as he forms beside them. Small Juma pounces after them.
-  if ((nox || small) && a.comboTimer > 0) {
-    const prey = comboPrey(g, a), mv = MOVES[id];
-    if (prey && mv && !mv.blink && !mv.execute && !mv.pass && (Math.abs(prey.x - a.x) > mv.range + 12 || Math.abs(prey.y - a.y) > mv.band + 14) && Math.hypot(prey.x - a.x, prey.y - a.y) < (nox ? 300 : 190)) {
+  // as a swarm of bats, and that blow lands as he forms beside them. Small Juma pounces after them;
+  // Lola skips through time to them.
+  if ((nox || small || lola) && a.comboTimer > 0) {
+    const prey = comboPrey(g, a), mv = moveOf(a, MOVES[id]);
+    if (prey && mv && !mv.blink && !mv.execute && !mv.pass && !mv.warp && (Math.abs(prey.x - a.x) > mv.range + 12 || Math.abs(prey.y - a.y) > mv.band + 14) && Math.hypot(prey.x - a.x, prey.y - a.y) < (nox ? 300 : 190)) {
       if (nox) startSwarm(g, a, { prey, then: id });
       else startChase(g, a, prey, id);
       return;
     }
   }
   startMove(g, a, id);
+}
+
+// Lola's skip inside a move: time stops for her alone for an instant and she is beside the rival
+// she is working on (or the nearest one in reach), behind them, in front of them or over their
+// head. With nobody there the skip forward still carries her a stretch.
+function warpMove(g, a, mv) {
+  if (mv.warp === 'away') { awaySkip(g, a, mv); return; }
+  const tall = mv.warp === 'above' ? 150 : 60;
+  // The skip forward goes where she points: the rival she was cutting only counts if it is that way.
+  const prey = comboPrey(g, a);
+  const b = (prey && (mv.warp !== 'front' || (prey.x - a.x) * a.face > -10) ? prey : null) || g.enemies(a).filter(b => !b.dead && !b.knocked && Math.abs(b.x - a.x) < mv.reach && Math.abs(b.y - a.y) < tall && (mv.warp !== 'front' || (b.x - a.x) * a.face > -10))
+    .sort((p, q) => Math.hypot(p.x - a.x, p.y - a.y) - Math.hypot(q.x - a.x, q.y - a.y))[0];
+  if (!b || Math.abs(b.x - a.x) > mv.reach + 30 || Math.abs(b.y - a.y) > tall + 20) {
+    if (mv.warp !== 'front') return;
+    const x = clamp(a.x + a.face * 64, 18, 942);
+    if (blocked(x, a.y) || (x > MAP.pit.x0 - 8 && x < MAP.pit.x1 + 8 && !footing(x, a.y, 60, 0)) || (a.ground && !footing(x, a.y))) return;
+    skipTo(g, a, x, a.y, { ground: a.ground });
+    return;
+  }
+  const spot = skipSpot(a, b, mv.warp);
+  if (!spot) return;
+  const x0 = a.x, y0 = a.y;
+  skipTo(g, a, spot.x, spot.y, { face: Math.sign(b.x - spot.x) || a.face, ground: spot.ground });
+  skipKnives(g, a, x0, y0, b);
+  if (!b.ground) b.float = Math.max(b.float || 0, 0.35);
+  // Over their head she drops with both knives down; in the air beside them she hangs there.
+  if (mv.warp === 'above') shove(a, 0, 4);
+  else if (!spot.ground) a.float = Math.max(a.float || 0, mv.dur);
+  b.stun = Math.max(b.stun || 0, 0.12);
+}
+
+// Out of reach of the rival she is working on: a skip straight back from them (for the wall of
+// knives), onto something to stand on if she was standing, never into a wall or over the shredder.
+function awaySkip(g, a, mv) {
+  const prey = comboPrey(g, a);
+  const b = prey && Math.abs(prey.x - a.x) < mv.reach && Math.abs(prey.y - a.y) < 60 ? prey : null;
+  const dir = b ? Math.sign(a.x - b.x) || -(a.face || 1) : -(a.face || 1);
+  for (const d of [52, 44, 36]) {
+    const x = clamp((b ? b.x : a.x) + dir * d, 18, 942);
+    if (Math.abs(x - a.x) < 8) continue;
+    if (blocked(x, a.y) || (x > MAP.pit.x0 - 8 && x < MAP.pit.x1 + 8 && !footing(x, a.y, 60, 0)) || (a.ground && !footing(x, a.y))) continue;
+    if (MAP.press && g.hz.press?.state !== 'up' && x > MAP.press.x0 - 12 && x < MAP.press.x1 + 12) continue;
+    skipTo(g, a, x, a.y, { face: b ? Math.sign(b.x - x) || a.face : a.face, ground: a.ground });
+    if (!a.ground) a.float = Math.max(a.float || 0, mv.dur);
+    return;
+  }
 }
 
 // The rival Nox's string is on: the last one he hit, a moment ago, still standing.
@@ -170,6 +237,7 @@ export function startMove(g, a, id) {
   a.comboTimer = mv.dur + 0.45;
   a.attackSeq = (a.attackSeq || 0) + 1;
   a.hits = mv.hits.map((p, i) => ({ at: mv.dur * (1 - p), i }));
+  a.warpDone = false; a.setDone = false;
   if (a.dashStrike) {
     a.dashStrike = false;
     Body.setVelocity(a.body, { x: a.face * 8.5, y: Math.min(a.body.velocity.y, 0) });
@@ -190,9 +258,13 @@ export function startMove(g, a, id) {
 
 // Called every step: strikes land on their animation frame.
 export function tickAttack(g, a) {
-  if (!a.hits?.length) return;
+  if (!a.hits) return;
   const mv = MOVES[a.attackKind];
   if (!mv || a.attack <= 0) { a.hits = null; return; }
+  if (!a.hits.length && !mv.warp && !mv.set) return;
+  if (mv.warp && !a.warpDone && a.attack <= mv.dur * (1 - mv.warpAt)) { a.warpDone = true; warpMove(g, a, mv); }
+  // Lola lays her knives in the air (sim/timestop.js).
+  if (mv.set && !a.setDone && a.attack <= mv.dur * (1 - mv.setAt)) { a.setDone = true; setKnives(g, a, mv); }
   while (a.hits?.length && a.attack <= a.hits[0].at) strike(g, a, mv, a.hits.shift().i);
 }
 
@@ -211,9 +283,50 @@ function reaches(a, mv, x, y, pad = 0, low = !!mv.low) {
   return inReach(a, x, y, mv.range + pad, mv.band + pad, low);
 }
 
+// DARK NOX: the same moves, far more destructive and reaching much further (made once per move).
+const darkMoves = new Map();
+export function darkMove(mv) {
+  if (mv.dark) return mv;
+  let d = darkMoves.get(mv);
+  if (d) return d;
+  d = { ...mv, dark: true, range: Math.round(mv.range * DARK.range), band: Math.round(mv.band * DARK.band), dmg: mv.dmg.map(x => x * DARK.dmg), kb: mv.kb.map(([x, y]) => [x * DARK.kb, y * (y < 0 ? 1.1 : DARK.kb)]) };
+  if (mv.blink) d.blink = Math.round(mv.blink * 1.5);
+  if (mv.spikes) d.spikes = mv.spikes.map(s => Math.round(s * DARK.range));
+  for (const k of ['sweep', 'floor']) if (mv[k]) d[k] = Math.round(mv[k] * DARK.range);
+  if (mv.shock) d.shock = Math.round(mv.shock * 1.4);
+  darkMoves.set(mv, d);
+  return d;
+}
+// The move as this fighter throws it right now.
+export const moveOf = (a, mv) => (mv && a.form === 'dark' ? darkMove(mv) : mv);
+
+// Nox's blows make the rival bleed, and the blood they lose is his (tickStatuses).
+export function bleedFor(g, nox, b, amount) {
+  b.bleed = Math.min(6, (b.bleed || 0) + amount);
+  b.bleedBy = nox.id; b.bleedByT = g.time;
+}
+// Nox drinks what a rival bleeds from his blows: it fills his meter (not while he is DARK NOX).
+function drink(g, nox, b, amount) {
+  if (nox.form === 'dark' || nox.act === 'darkRise') return;
+  if (Math.hypot(b.x - nox.x, b.y - nox.y) < 520) g.fx('drain', { x: b.x, y: b.y - 4, tx: nox.x, ty: nox.y - 4, n: 2 });
+  fillBlood(g, nox, amount * DARK.drink);
+}
+// Points into Nox's blood meter (from a bleeding rival or a pool on the floor); full, he says so.
+export function fillBlood(g, nox, pts) {
+  if (nox.form === 'dark' || nox.act === 'darkRise') return;
+  const was = nox.blood || 0;
+  nox.blood = Math.min(DARK.max, was + pts);
+  if (was < DARK.max && nox.blood >= DARK.max) {
+    g.text(nox.x, nox.y - 38, 'SANGUE CHEIO! K', '#ff3a5a');
+    g.fx('ring', { x: nox.x, y: nox.y, size: 34, color: '#ff3a5a' });
+    g.sound('charge', nox.x);
+  }
+}
+
 export function strike(g, a, mv, i) {
   // Moves whose hits reach differently (the frog's tongue-hook: far for the tongue, close for the knees).
   if (mv.reach) mv = { ...mv, range: mv.reach[i] ?? mv.range };
+  if (a.form === 'dark') mv = darkMove(mv);
   if (mv.blink) { blinkCut(g, a, mv); return; }
   if (mv.execute) { execute(g, a, mv); return; }
   if (mv.pound) { pound(g, a, mv, i); return; }
@@ -230,7 +343,7 @@ export function strike(g, a, mv, i) {
   const low = !!mv.low;
   let struck = false;
   const hit = new Set();
-  const vamp = styleOf(a) === 4, juma = styleOf(a) === 3;
+  const vamp = styleOf(a) === 4, juma = styleOf(a) === 3, lola = styleOf(a) === 2;
   let first = null;
   for (const b of g.enemies(a)) {
     if (b.knocked) continue;
@@ -249,17 +362,20 @@ export function strike(g, a, mv, i) {
     if (feast) { b.bloodMark = 0; g.fx('bloodBurst', { x: b.x, y: b.y - 4, n: feast }); g.text(b.x, b.y - 36, 'BANQUETE!', '#ff5a6e'); }
     // A rival trapped in the axolotl's bubble: its blow pops it for a little more.
     const pop = bubbleBonus(g, b, a.id);
-    const dealt = damage(g, b, amount + feast * 4 + pop, point, a.id, kind, { kb: { x: side * kb[0] * (counter ? 1.6 : 1), y: kb[1] }, knock: (mv.knock && last) || (counter && last), launch: !!(mv.launch || mv.lift || mv.bounce), dir: kind === 'claw' || kind === 'katana' || kind === 'axe' || kind === 'blade' ? rnd(-0.9, 0.9) : undefined, part, lag: mv.lag });
+    const dealt = damage(g, b, amount + feast * 4 + pop, point, a.id, kind, { kb: { x: side * kb[0] * (counter ? 1.6 : 1), y: kb[1] }, knock: (mv.knock && last) || (counter && last), launch: !!(mv.launch || mv.lift || mv.bounce), dir: EDGED.includes(kind) ? rnd(-0.9, 0.9) : undefined, part, lag: mv.lag });
     if (!dealt) continue;
     struck = true;
     first ||= b;
     // Small Juma's claws wind her up: every one that lands brings the frenzy closer.
     if (juma && !a.form) a.abilityCd = Math.max(0, a.abilityCd - 0.3);
-    if (mv.lift && !b.knocked && !b.dead) { Body.setVelocity(b.body, { x: side * kb[0], y: kb[1] / weightOf(b) }); b.stun = Math.max(b.stun, 0.55); b.float = 0.5; }
+    // Lola's watch winds up a little with every knife that lands.
+    if (lola) a.abilityCd = Math.max(0, a.abilityCd - 0.12);
+    if (mv.lift && !b.knocked && !b.dead) { Body.setVelocity(b.body, { x: side * kb[0], y: kb[1] / weightOf(b) }); b.stun = Math.max(b.stun, 0.55); b.float = 0.5; reeling(b); }
     if (mv.launch && last && !b.knocked && !b.dead) {
       Body.setVelocity(b.body, { x: face * kb[0], y: kb[1] / weightOf(b) });
       b.stun = Math.max(b.stun, 0.7);
       b.float = 0.75;
+      reeling(b);
       a.chase = { id: b.id, until: g.time + 1.1 };
       g.fx('focus', { x: b.x, y: b.y, p: 0.7 });
     }
@@ -281,8 +397,8 @@ export function strike(g, a, mv, i) {
       else { b.bounced = true; b.bounceArm = g.time; b.bounceBy = a.id; b.float = 0; shove(b, side * kb[0], 12); }
     }
     // Air strings rise with the rival: the attacker is carried along with them, so the next hit connects.
-    if (vamp && !a.ground && NOX_AIR.includes(a.attackKind)) shove(a, a.body.velocity.x * 0.5, Math.min(a.body.velocity.y, -0.6));
-    else if (!vamp && !a.ground && !mv.spike && !b.knocked && (AIR.includes(a.attackKind) || JUMA_AIR.includes(a.attackKind) || BEAST_AIR.includes(a.attackKind) || TITAN_AIR.includes(a.attackKind) || AXO_AIR.includes(a.attackKind))) shove(a, b.body.velocity.x * 0.9, Math.min(a.body.velocity.y, b.body.velocity.y));
+    if (vamp && !a.ground && (NOX_AIR.includes(a.attackKind) || DARK_AIR.includes(a.attackKind))) shove(a, a.body.velocity.x * 0.5, Math.min(a.body.velocity.y, -0.6));
+    else if (!vamp && !a.ground && !mv.spike && !b.knocked && (AIR.includes(a.attackKind) || JUMA_AIR.includes(a.attackKind) || BEAST_AIR.includes(a.attackKind) || TITAN_AIR.includes(a.attackKind) || AXO_AIR.includes(a.attackKind) || LOLA_AIR.includes(a.attackKind))) shove(a, b.body.velocity.x * 0.9, Math.min(a.body.velocity.y, b.body.velocity.y));
     if (mv.drain) {
       a.hp = Math.min(a.maxHp, a.hp + dealt * (mv.drain + feast * 0.1));
       g.fx(last ? 'drainStream' : 'drain', { x: b.x, y: b.y - 6, tx: a.x + a.face * 3, ty: a.y - 6 });
@@ -292,7 +408,10 @@ export function strike(g, a, mv, i) {
       g.fx('drain', { x: b.x, y: b.y - 4, tx: a.x, ty: a.y - 4, n: 3 });
     }
     if (vamp && !mv.feast && !b.dead) markBlood(g, b);
+    if (vamp && !b.dead) bleedFor(g, a, b, mv.dark ? DARK.bleed * 2 : DARK.bleed);
   }
+  // The Cat King's court in the way takes the blow too (sim/court.js).
+  strikeCourts(g, a, (x, y) => reaches(a, mv, x, y, 4, low), amount, f => Math.sign(f.x - a.x) || face);
   // Eco: the axolotl's clones close to the rival repeat the blow a beat later.
   if (mv.echo && first && a.type === 6 && (i === mv.hits.length - 1)) queueEcho(g, a, a.attackKind, first, amount);
   // The axolotl's clones in reach take the blow too.
@@ -332,7 +451,7 @@ export function strike(g, a, mv, i) {
         damage(g, owner, amount * 0.8, { x: l.x, y: l.y }, a.id, kind, { part: l.part, kb: { x: 0, y: 0 }, force: true });
         struck = true;
       }
-    } else if ((kind === 'claw' || kind === 'katana' || kind === 'axe' || kind === 'blade') && gore === 2 && l.ragdoll && l.part !== 'body' && owner?.dead) cutCorpse(g, l);
+    } else if (EDGED.includes(kind) && gore === 2 && l.ragdoll && l.part !== 'body' && owner?.dead) cutCorpse(g, l);
   }
   for (const p of [...g.props]) {
     if (p.held || p.fixed || !reaches(a, mv, p.x, p.y, 8 + (mv.wreck ? 8 : 0))) continue;
@@ -351,7 +470,13 @@ export function strike(g, a, mv, i) {
   // A storm of claws scatters its gashes up and down the rival.
   const fy = mv.flurry ? [-5, 4, -2, 6, -7][i % 5] : 0;
   g.fx('slash', { x: a.x + face * Math.round(mv.range * 0.6), y: a.y + (low ? 12 : mv.launch ? -6 : 2) + fy, face, size: Math.max(18, mv.range * 0.55), kind, fin: finisher ? 1 : 0, color: SLASH[kind] || '#fff', up: mv.launch ? 1 : 0, down: mv.spike ? 1 : 0 });
-  if (struck) g.sound(kind === 'claw' ? 'slash' : kind === 'fang' ? 'squish' : kind === 'blood' ? 'blood' : kind === 'slap' ? 'slap' : 'punch', a.x);
+  if (struck) g.sound(kind === 'claw' ? 'slash' : kind === 'knife' ? 'cut' : kind === 'fang' ? 'squish' : kind === 'blood' ? 'blood' : kind === 'slap' ? 'slap' : 'punch', a.x);
+}
+
+// Thrown up and stunned: reeling as long as the stun lasts, so the combo breaker works there too.
+function reeling(b) {
+  b.hitstun = Math.max(b.hitstun || 0, b.stun);
+  b.hitstunMax = Math.max(b.hitstunMax || 0, b.hitstun);
 }
 
 // The titan is a much bigger target than her body box.
@@ -374,6 +499,7 @@ function clapRing(g, a, already) {
     damage(g, b, 4 + 4 * k, { x: b.x - s * 4, y: b.y }, a.id, 'sonic', { kb: { x: s * (4 + 5 * k), y: -2 - 2 * k } });
   }
   areaMinions(g, a, x, y, 70, 40, k => 4 + 4 * k, 'sonic');
+  strikeCourts(g, a, (fx, fy) => Math.abs(fx - x) < 70 && Math.abs(fy - y) < 40, 6, f => Math.sign(f.x - x) || a.face);
   g.fx('clap', { x, y, face: a.face });
   g.sound('thud', x);
 }
@@ -388,6 +514,7 @@ function croakRing(g, a, mv, already) {
     if (dealt > 0 && !b.dead && !b.knocked && b.form !== 'titan') b.stun = Math.max(b.stun, 0.3 + 0.3 * k);
   }
   areaMinions(g, a, x, y, R, R * 0.6, k => 3 + 5 * k, 'croak');
+  strikeCourts(g, a, (fx, fy) => Math.hypot(fx - x, (fy - y) * 1.6) < R, 6, f => Math.sign(f.x - x) || a.face);
   for (const l of g.limbs) { const d = Math.hypot(l.x - x, l.y - y); if (d < R) Body.setVelocity(l.body, { x: l.body.velocity.x + Math.sign(l.x - x) * 5 * (1 - d / R), y: l.body.velocity.y - 3 * (1 - d / R) }); }
   g.fx('croak', { x, y, r: R, face: a.face });
   g.shake = Math.max(g.shake, 4);
@@ -460,7 +587,9 @@ function blinkCut(g, a, mv) {
     if (!b.dead) markBlood(g, b);
     g.fx('shadowX', { x: b.x, y: b.y, delay: 0.1 });
   }
-  if (first) { a.turnTo = first.id; a.turnT = g.time + 0.14; }
+  // The Cat Kings' courts and kingdoms on the way are cut too.
+  if (strikeCourts(g, a, (px, py) => (px - x0) * face >= -4 && (px - x0) * face <= dist + 10 && Math.abs(py - y) <= mv.band + 9, mv.dmg[0], () => face)) first ||= true;
+  if (first?.id != null) { a.turnTo = first.id; a.turnT = g.time + 0.14; }
   g.sound(first ? 'slash' : 'whoosh', x1);
 }
 
@@ -481,7 +610,8 @@ function execute(g, a, mv) {
   const dealt = damage(g, b, mv.dmg[0], { x: b.x, y: b.y }, a.id, mv.kind, { part: 'body', kb: { x: 0, y: 3 }, force: true });
   if (!dealt) return;
   a.hp = Math.min(a.maxHp, a.hp + dealt * 0.4);
-  b.knock = Math.max(b.knock || 0, 0.9);
+  // It keeps them down a moment longer, once: executions cannot pin someone down forever.
+  if (!(b.executedAt > (b.knockedAt ?? -9))) { b.knock = Math.max(b.knock || 0, 0.9); b.executedAt = g.time; }
   g.fx('bloodGeyser', { x: b.x, y: b.y });
   g.fx('drainStream', { x: b.x, y: b.y - 4, tx: a.x + a.face * 3, ty: a.y - 6 });
   g.text(b.x, b.y - 30, 'EXECUÇÃO!', '#ff4a64');
@@ -499,6 +629,7 @@ function shockwave(g, a, mv, amount, already) {
   }
   if (areaMinions(g, a, x, y - 10, mv.shock, 34, k => amount * (0.4 + 0.4 * k), mv.kind)) struck = true;
   for (const l of g.limbs) if (Math.abs(l.x - x) < mv.shock && Math.abs(l.y - y) < 40) Body.setVelocity(l.body, { x: l.body.velocity.x + Math.sign(l.x - x) * 3, y: l.body.velocity.y - 4 });
+  if (strikeCourts(g, a, (px, py) => Math.abs(px - x) < mv.shock && Math.abs(py - y) < 40, amount * 0.6, f => Math.sign(f.x - x) || a.face)) struck = true;
   g.fx('ring', { x, y, size: mv.shock, color: '#ffe6c8' });
   g.fx('land', { x, y, p: 1 });
   g.fx('dust', { x, y, n: 6 + Math.round(mv.shock / 10) });
@@ -530,8 +661,27 @@ function ricochet(g, a, b) {
 }
 
 // A blow caught in the parry window: no damage, the attacker reels and the defender counters.
-function parried(g, a, o, point) {
+// familiar: the blow came from a familiar (DARK NOX's scythe, one of the King's court): it is batted
+// away (the callback sends it off) and its master, somewhere else, is left alone.
+// Parried while reeling: the combo is broken, and they are free (and untouchable for an instant).
+function breakFree(a) {
+  if (!(a.hitstun > 0)) return false;
+  a.hitstun = 0; a.hitstunMax = 0; a.hitHeavy = false; a.stun = 0; a.iframes = Math.max(a.iframes || 0, BURST.safe); a.stunN = 0;
+  return true;
+}
+
+function parried(g, a, o, point, familiar = null) {
+  const burst = breakFree(a);
   a.parry = 0; a.parryLag = 0; a.counter = 0.9;
+  if (familiar) {
+    familiar();
+    a.face = point.x >= a.x ? 1 : -1;
+    g.fx('parry', { x: point.x, y: point.y });
+    g.text(a.x, a.y - 34, burst ? 'QUEBROU O COMBO!' : 'REBATEU!', burst ? '#ffe070' : '#7ce8ff');
+    drama(g, 0.2, a);
+    g.sound('ricochet', a.x);
+    return;
+  }
   a.face = o.x >= a.x ? 1 : -1;
   if (o.act) endAct(g, o);
   o.attack = 0; o.hits = null; o.attackCd = 0.6;
@@ -539,7 +689,7 @@ function parried(g, a, o, point) {
   if (!o.knocked) Body.setVelocity(o.body, { x: (o.x >= a.x ? 1 : -1) * 5, y: -2.5 });
   g.fx('parry', { x: point.x, y: point.y });
   g.fx('impact', { x: point.x, y: point.y, p: 2, a: 0, clash: 1, parry: 1 });
-  g.text(a.x, a.y - 34, 'PARRY!', '#7ce8ff');
+  g.text(a.x, a.y - 34, burst ? 'QUEBROU O COMBO!' : 'PARRY!', burst ? '#ffe070' : '#7ce8ff');
   if (isMelee(a.weapon)) { g.fx('clang', { x: a.x + a.face * 7, y: a.y, big: 1 }); g.sound('clang', a.x); }
   drama(g, 0.3, a, o);
   hitlag(a, o, 0.1);
@@ -547,7 +697,7 @@ function parried(g, a, o, point) {
 }
 
 // Dodging through a blow at the last moment.
-function perfectDodge(g, a) {
+export function perfectDodge(g, a) {
   a.perfect = true;
   a.perfectT = 0.45;
   g.text(a.x, a.y - 34, 'ESQUIVA!', '#c8f0ff');
@@ -557,7 +707,7 @@ function perfectDodge(g, a) {
   g.sound('swing', a.x);
 }
 
-function cutCorpse(g, limb) {
+export function cutCorpse(g, limb) {
   const r = limb.ragdoll;
   const j = r.joints.find(j => !j.broken && (j.child === limb.part || j.parent === limb.part));
   if (j) breakJoint(g, r, j, 'cut');
@@ -565,7 +715,9 @@ function cutCorpse(g, limb) {
 
 export function shoot(g, a) {
   let ang = a.aim ?? (a.face > 0 ? 0 : Math.PI);
-  if (a.bot || a.input.aimX === null) {
+  // A bot set on razing a kingdom aims at it.
+  if (a.bot && a.ai?.aimAt) ang = Math.atan2(a.ai.aimAt.y - (a.y + 5), a.ai.aimAt.x - a.x);
+  else if (a.bot || a.input.aimX === null) {
     const t = g.closest(a, 680);
     if (t && (a.bot || a.input.padAim == null)) ang = Math.atan2(t.y - (a.y + 5), t.x - a.x);
   }
@@ -598,12 +750,16 @@ export function shoot(g, a) {
 export function stepBullets(g, dt) {
   const statics = g.staticBodies;
   for (const b of [...g.bullets]) {
+    // Lola's laid knives hang where she put them until they fly (sim/timestop.js).
+    if (b.set && (b.k < 1 || b.hold > 0) && stepSetKnife(g, b, dt)) continue;
     b.life -= dt;
     if (b.life <= 0) {
-      g.fx('decal', { x: b.x, y: b.y, k: 'hole', s: 1, layer: 'wall' });
+      if (!b.court) g.fx('decal', { x: b.x, y: b.y, k: 'hole', s: 1, layer: 'wall' });
       removeBullet(g, b);
       continue;
     }
+    // Arrows fall a little as they fly.
+    if (b.grav) b.vy = Math.min(16, b.vy + b.grav);
     const nx = b.x + b.vx, ny = b.y + b.vy;
     const candidates = [...statics];
     for (const a of g.actors) if (!a.dead && !a.knocked && a.swallowedBy == null && a.id !== b.owner && a.team !== b.team) candidates.push(a.body);
@@ -619,6 +775,17 @@ export function stepBullets(g, dt) {
       if (t < bestT) { bestT = t; best = body; }
     }
     hazardBulletHit(g, b, nx, ny);
+    // A familiar of the Cat King's (or a rival's kingdom: its structure stops shots) on the way, before
+    // anything else it would hit.
+    const fam = b.damage > 0 ? courtInPath(g, b, nx, ny) : null;
+    if (fam && fam.u <= bestT) {
+      const dir = Math.sign(b.vx) || 1;
+      if (fam.kg) hurtKingdom(g, fam.kg, fam.f, fam.f === fam.kg ? b.damage : b.damage * (b.kind === 'pellet' ? 1 : 0.8), b.owner, dir, b.kind === 'pellet' ? 'pellet' : 'shot');
+      else hurtFamiliar(g, fam.k, fam.f, b.damage * (b.kind === 'pellet' ? 1 : 0.8), b.owner, dir);
+      if (fam.kg && fam.f === fam.kg) g.fx('spark', { x: Math.round(b.x + (nx - b.x) * fam.u), y: Math.round(b.y + (ny - b.y) * fam.u), n: 3, a: Math.atan2(-b.vy, -b.vx) });
+      removeBullet(g, b);
+      continue;
+    }
     b.px = b.x; b.py = b.y;
     if (best) {
       const t = Math.max(0, Math.min(1, bestT));
@@ -648,6 +815,21 @@ export function removeBullet(g, b) {
   if (i >= 0) g.bullets.splice(i, 1);
 }
 
+// A knife of Lola's super landing: a sliver of damage each, and past a little over half of the
+// knives aimed at a rival the next one knocks them down. A few stay stuck in them.
+function knifeHit(g, b, a, point, angle) {
+  const knock = knifeKnock(g, b, a), s = Math.sign(b.vx) || 1;
+  const dealt = damage(g, a, b.damage, point, b.owner, 'knife', { kb: knock ? { x: s * 5, y: -4.5 } : { x: b.vx * 0.08, y: b.vy * 0.05 - 0.4 }, dir: angle, knock, solo: true });
+  if (!dealt) return;
+  knifeKnocked(g, b, a, knock);
+  if (a.dead) return;
+  g.fx('knifeHit', { x: point.x, y: point.y, a: angle });
+  if (a.embedded.filter(e => e.kind === 'knife').length < 3 && Math.random() < 0.3) {
+    const part = ['body', 'head', 'body', 'armF', 'footF'][Math.floor(rnd(0, 5))];
+    if (!a.severed.includes(part)) a.embedded.push({ part, kind: 'knife', a: angle * (a.face || 1), u: 0, v: 0 });
+  }
+}
+
 // Returns true when the bullet is consumed.
 function bulletHit(g, b, body, point) {
   const angle = Math.atan2(b.vy, b.vx);
@@ -665,18 +847,30 @@ function bulletHit(g, b, body, point) {
       if (swingDeflect) g.fx('clang', { x: point.x, y: point.y });
       b.vx = -b.vx; b.vy = -b.vy; b.owner = a.id; b.team = a.team; b.life = 0.9;
       b.x = point.x + b.vx * 0.5; b.y = point.y + b.vy * 0.5;
+      // A shot parried while reeling breaks the combo as well.
+      const burst = a.parry > 0 && breakFree(a);
       a.parry = 0; a.parryLag = 0;
-      g.text(a.x, a.y - 34, 'REBATEU!', '#7ce8ff');
+      g.text(a.x, a.y - 34, burst ? 'QUEBROU O COMBO!' : 'REBATEU!', burst ? '#ffe070' : '#7ce8ff');
       g.fx('parry', { x: point.x, y: point.y });
       g.sound('ricochet', a.x);
       return true;
     }
-    damage(g, a, b.damage, point, b.owner, b.kind, { kb: { x: b.vx * 0.16, y: b.vy * 0.1 - 1 }, dir: angle });
+    if (b.kind === 'knife') knifeHit(g, b, a, point, angle);
+    else if (b.court) {
+      // The court's arrows: no freeze on the King far away, and they keep the rival reeling. A castle's
+      // archers' (gate) make them reel only once every so often, with the court's own blows.
+      const light = !!b.gate && g.time - (a.courtReelT ?? -9) < AUTO.stagger;
+      if (b.gate && !light) a.courtReelT = g.time;
+      const dealt = damage(g, a, b.damage, point, b.owner, b.kind, { kb: { x: b.vx * 0.12, y: Math.min(0, b.vy * 0.05) - 0.8 }, dir: angle, solo: true, light });
+      if (dealt && !a.dead && !a.knocked && b.hold && !light) { a.hitstun = Math.max(a.hitstun || 0, b.hold); a.hitstunMax = Math.max(a.hitstunMax || 0, a.hitstun); }
+      if (dealt && !b.auto) { const k = g.actor(b.owner); if (k) { k.lastPrey = a.id; k.lastPreyT = g.time; } }
+    }
+    else damage(g, a, b.damage, point, b.owner, b.kind, { kb: { x: b.vx * 0.16, y: b.vy * 0.1 - 1 }, dir: angle });
   } else if (l) {
     const owner = g.actor(l.actor);
     if (l.attached && owner && !owner.dead && owner.knocked) {
       if (owner.team === b.team) return false;
-      damage(g, owner, b.damage, point, b.owner, b.kind, { part: l.part, kb: { x: b.vx * 0.05, y: b.vy * 0.05 } });
+      damage(g, owner, b.damage, point, b.owner, b.kind, { part: l.part, kb: { x: b.vx * 0.05, y: b.vy * 0.05 }, solo: b.kind === 'knife' });
     } else {
       woundLimb(g, l, point, 'hole', 1);
       l.hp -= b.damage;
@@ -696,7 +890,13 @@ function bulletHit(g, b, body, point) {
     Body.setVelocity(body, { x: body.velocity.x + b.vx * 0.3, y: body.velocity.y + b.vy * 0.3 });
     return false;
   } else if (body.isStatic) {
-    {
+    // A knife that misses stays stuck in the wall or the floor for a while.
+    if (b.kind === 'knife') {
+      if (body === g.hz?.press?.body) g.fx('spark', { x: point.x, y: point.y, n: 4, a: angle + Math.PI });
+      else g.fx('knifeStick', { x: point.x, y: point.y, a: angle });
+      g.sound('knifeStick', point.x);
+    }
+    else {
       const bb = body.bounds;
       const fromTop = b.y <= bb.min.y + 1, fromSide = b.x <= bb.min.x + 1 || b.x >= bb.max.x - 1;
       const n = fromTop ? [0, -1] : fromSide ? [b.x <= bb.min.x + 1 ? -1 : 1, 0] : [0, 1];
@@ -760,9 +960,10 @@ export function damage(g, a, amount, point, ownerId, kind = 'punch', opts = {}) 
   if (a.swallowedBy != null) return 0;
   const cat = KIND[kind] || 'blunt';
   const owner = g.actor(ownerId);
-  // Mid-requiem Nox is a blur of blood, and a swarm of bats has nothing to hit: fighters cannot touch him.
-  // Neither can they touch Juma tearing into someone in her frenzy, or turning into her next form.
-  if ((a.act === 'requiem' || a.act === 'swarm' || (a.act === 'frenzy' && a.frenzy?.prey != null)) && owner && owner !== a) return 0;
+  // Mid-requiem Nox is a blur of blood, a swarm of bats has nothing to hit, and Lola holding the
+  // world still is out of everyone's time: fighters cannot touch them. Neither can they touch Juma
+  // tearing into someone in her frenzy, or turning into her next form.
+  if ((a.act === 'requiem' || a.act === 'swarm' || a.act === 'world' || (a.act === 'frenzy' && a.frenzy?.prey != null)) && owner && owner !== a) return 0;
   if (a.act === 'morph' && owner && owner !== a && !opts.environment && !['crush', 'grind'].includes(kind)) { if (!DOT.has(cat)) g.fx('armor', { x: point.x, y: point.y, a: 0 }); return 0; }
   if ((a.invincible > 0 || a.iframes > 0) && !['grind', 'bleed', 'crush'].includes(cat) && !opts.force) {
     if (a.iframes > 0 && a.dodge > 0 && owner && owner !== a && !DOT.has(cat) && !a.perfect) perfectDodge(g, a);
@@ -771,16 +972,20 @@ export function damage(g, a, amount, point, ownerId, kind = 'punch', opts = {}) 
   if (a.parry > 0 && owner && owner !== a && owner.team !== a.team && !DOT.has(cat) && !opts.environment && !['explosion', 'grind'].includes(cat) && kind !== 'fall' && kind !== 'crush') {
     // A clone's bite caught in the parry: the clone reels, not the axolotl across the arena.
     if (opts.src) parriedClone(g, a, opts.src, point);
-    else parried(g, a, owner, point);
+    else parried(g, a, owner, point, opts.familiar);
     return 0;
   }
   if (owner && ownerId !== a.id && owner.team === a.team) return 0;
+  // The Cat King's shield-bearer takes the blow for him (sim/court.js).
+  if (a.type === 0 && !DOT.has(cat) && !opts.environment && !['explosion', 'grind'].includes(cat) && kind !== 'fall' && kind !== 'crush' && shieldBlocks(g, a, owner, amount, point)) return 0;
   if (a.act === 'ball') amount *= 0.5;
   // Juma's beast and titan take blows on a thick hide. The beast does not flinch while she swings
   // or charges (super armor); the titan does not flinch at all. Explosions still throw them and
-  // the press still crushes them.
+  // the press still crushes them. DARK NOX, rising, takes half; as DARK NOX his own share.
   if (a.type === 3 && a.form && !DOT.has(cat)) amount *= formOf(a).armor;
-  const tough = ((a.form === 'beast' && (a.attack > 0 || ['charge', 'leap', 'meteor', 'clap', 'crush'].includes(a.act))) || a.form === 'titan' || a.act === 'morph') && cat !== 'explosion' && !opts.environment && kind !== 'crush' && kind !== 'grind';
+  if (a.act === 'darkRise') amount *= 0.5;
+  if (a.form === 'dark' && !DOT.has(cat)) amount *= DARK.armor;
+  const tough = ((a.form === 'beast' && (a.attack > 0 || ['charge', 'leap', 'meteor', 'clap', 'crush'].includes(a.act))) || a.form === 'titan' || a.act === 'morph' || a.act === 'darkRise') && cat !== 'explosion' && !opts.environment && kind !== 'crush' && kind !== 'grind';
   if (a.frozen > 0 && (cat === 'blunt' || cat === 'explosion' || cat === 'pierce') && amount >= 14) {
     a.lastHit = ownerId; a.lastHitTime = g.time;
     kill(g, a, ownerId, { kind: 'shatter' });
@@ -803,11 +1008,18 @@ export function damage(g, a, amount, point, ownerId, kind = 'punch', opts = {}) 
   if (a.belly != null) a.bellyT -= amount * 0.06;
   a.hurt = 0.16;
   if (!DOT.has(cat) || ownerId !== a.id) { a.lastHit = ownerId; a.lastHitTime = g.time; }
+  // Real blows only (not bleeding or burning): who just struck this fighter (the Cat King's court watches).
+  if (!DOT.has(cat) && owner && owner !== a) { a.blowBy = ownerId; a.blowT = g.time; }
   a.lastHitKind = kind;
   if (owner && ownerId !== a.id) owner.stats.damage += amount;
-  if (owner && owner !== a && !DOT.has(cat) && !opts.src) { owner.lastPrey = a.id; owner.lastPreyT = g.time; }
+  // The rival a fighter's string is on: blows only, not a thrown knife that strays into a bystander
+  // nor a clone's bite.
+  if (owner && owner !== a && !DOT.has(cat) && !opts.solo && !opts.src) { owner.lastPrey = a.id; owner.lastPreyT = g.time; }
   const gore = g.settings.gore ?? 2;
   if (gore && !DOT.has(cat)) g.fx('blood', { x: point.x, y: point.y, dx: (opts.kb?.x || 0) * 0.4, dy: -1.5, n: Math.round(Math.min(40, amount * (gore === 2 ? 1.5 : 0.5))), s: cat === 'cut' ? 4.5 : 3 });
+  // The blood a blow draws ends up on the floor (Nox drinks it there).
+  const spilt = cat === 'cut' || cat === 'grind' ? 1 : cat === 'pierce' ? 0.8 : cat === 'blunt' && amount >= 8 && kind !== 'fall' ? 0.5 : 0;
+  if (spilt) spill(g, point.x + (opts.kb?.x || 0) * 2, point.y, amount * POOL.spill * spilt);
 
   if (cat === 'blunt' && limbOf(part) && a.partDmg[part] >= 42 && amount >= 12) breakBone(g, a, part);
   // The axolotl does not bleed out: it closes over and grows back.
@@ -819,8 +1031,8 @@ export function damage(g, a, amount, point, ownerId, kind = 'punch', opts = {}) 
   // The axolotl sheds by its own rule; only its head can be cut off the usual way.
   if (a.type === 6 && !DOT.has(cat)) {
     axoHit(g, a, part, amount, cat, !!opts.low);
-    if (gore === 2 && cat === 'cut' && part === 'head' && a.partDmg.head > 30 && a.hp < 25 && ['claw', 'blade', 'katana', 'axe'].includes(kind)) sever(g, a, 'head', ownerId);
-  } else if (gore === 2 && cat === 'cut' && part !== 'body' && a.partDmg[part] > (kind === 'axe' ? 22 : 30) && (kind === 'claw' || kind === 'blade' || kind === 'katana' || kind === 'axe' || amount > 18) && (part !== 'head' || a.hp < 25)) sever(g, a, part, ownerId);
+    if (gore === 2 && cat === 'cut' && part === 'head' && a.partDmg.head > 30 && a.hp < 25 && EDGED.includes(kind)) sever(g, a, 'head', ownerId);
+  } else if (gore === 2 && cat === 'cut' && part !== 'body' && a.partDmg[part] > (kind === 'axe' ? 22 : 30) && (EDGED.includes(kind) || amount > 18) && (part !== 'head' || a.hp < 25)) sever(g, a, part, ownerId);
   if (a.dead) return amount;
 
   const w = weightOf(a);
@@ -849,19 +1061,21 @@ export function damage(g, a, amount, point, ownerId, kind = 'punch', opts = {}) 
     else if (mag > 0.1) {
       const v = a.body.velocity;
       // Hits in the air keep the target afloat so combos can continue there (juggles).
-      const juggle = !a.ground && !DOT.has(cat) && owner && owner !== a;
+      // (noLift: the Cat King's court striking on its own does not juggle anyone up)
+      const juggle = !a.ground && !DOT.has(cat) && owner && owner !== a && !opts.noLift;
       const lift = owner && !owner.ground ? -1.4 : -3.2;
       Body.setVelocity(a.body, { x: juggle ? kx * 0.5 : v.x + kx, y: juggle ? Math.min(ky, lift) : Math.min(v.y, ky < 0 ? ky : v.y + ky) });
       if (juggle) a.float = 0.35;
       a.stun = Math.max(a.stun, 0.08 + mag * 0.022);
     }
-    if (!knock && !a.knocked && !tough && !DOT.has(cat) && kind !== 'fall') stagger(g, a, amount, Math.sign(kx) || (owner && owner !== a ? Math.sign(a.x - owner.x) : 0));
+    if (!knock && !a.knocked && !tough && !DOT.has(cat) && kind !== 'fall' && !opts.light) stagger(g, a, amount, Math.sign(kx) || (owner && owner !== a ? Math.sign(a.x - owner.x) : 0));
   }
   if (!DOT.has(cat)) {
     const heavy = knock || amount >= 14;
     g.shake = Math.max(g.shake, Math.min(heavy ? 9 : 6, amount / (heavy ? 4 : 7)));
     // A fighter plunging through the air (stomps, the beast's leap and meteor) keeps falling.
-    hitlag(a, owner && owner !== a && !opts.src && Math.abs(owner.x - a.x) < 70 && !['stomp', 'leap', 'meteor'].includes(owner.act) ? owner : null, (heavy ? clamp(amount * 0.005, 0.07, 0.13) : clamp(amount * 0.003, 0.03, 0.06)) * (opts.lag || 1));
+    // A thrown knife freezes only whoever it hits (solo), not the thrower; a clone's bite only its victim.
+    hitlag(a, owner && owner !== a && !opts.solo && !opts.src && Math.abs(owner.x - a.x) < 70 && !['stomp', 'leap', 'meteor'].includes(owner.act) ? owner : null, (heavy ? clamp(amount * 0.005, 0.07, 0.13) : clamp(amount * 0.003, 0.03, 0.06)) * (opts.lag || 1));
     const dir = Math.atan2(ky, kx || (owner ? a.x - owner.x : 1));
     g.fx('hit', { x: point.x, y: point.y, p: Math.min(3, amount / 8), a: dir, cut: cat === 'cut' ? 1 : 0, blood: kind === 'blood' || kind === 'hemo' ? 1 : 0 });
     if (heavy && owner && owner !== a) {
@@ -972,6 +1186,7 @@ export function sever(g, a, part, owner) {
   if (part === 'head') { a.hp = 0; kill(g, a, owner, { kind: 'decap' }); }
   if (part === 'armF') { a.weapon = null; releaseHeld(g, a); }
   g.fx('blood', { x: a.x, y: a.y, dx: -a.face * 2, dy: -4, n: 26, s: 5 });
+  spill(g, a.x, a.y, 5);
   g.text(a.x, a.y - 30, 'CRAC!', '#e99598');
   g.sound('squish', a.x);
   if (owner != null) { const o = g.actor(owner); if (o) o.stats.limbs++; }
@@ -990,19 +1205,21 @@ export function kill(g, a, ownerId, { kind = 'punch', kb = { x: 0, y: -2 }, over
     credit.kills++;
     credit.stats.kills++;
     g.onEvent({ type: 'kill', killer: credit.name, victim: a.name, kind });
-    g.netEvents.push({ id: ++g.eventId, time: g.time, type: 'kill', killer: credit.name, victim: a.name, kind });
+    g.netEvents.push({ id: ++g.eventId, time: g.time, seq: g.seq, type: 'kill', killer: credit.name, victim: a.name, kind });
     if (g.mode !== 'sandbox' && g.mode !== 'attract' && credit.kills >= g.killsToWin && g.winPending === null) {
       g.winPending = credit.id;
       g.slowmo = 1.2;
     }
   } else {
     g.onEvent({ type: 'kill', killer: null, victim: a.name, kind });
-    g.netEvents.push({ id: ++g.eventId, time: g.time, type: 'kill', killer: null, victim: a.name, kind });
+    g.netEvents.push({ id: ++g.eventId, time: g.time, seq: g.seq, type: 'kill', killer: null, victim: a.name, kind });
   }
   releaseHeld(g, a);
   a.act = null;
   a.hits = null;
   if (a.weapon) dropWeapon(g, a);
+  // The dead bleed out where they fall: a pool for Nox (nothing from a frozen statue).
+  if (kind !== 'shatter') spill(g, a.x, a.y, kind === 'grind' || kind === 'crush' || kind === 'explosion' ? 12 : 7);
   for (const e of a.embedded) if (e.kind === 'blade') { /* the blade stays in the corpse */ }
   const gore = g.settings.gore ?? 2;
   if (kind === 'shatter') {
@@ -1068,7 +1285,10 @@ export function tickStatuses(g, dt) {
     if (a.bleed > 0.35 && a.bleedTick <= 0) {
       a.bleedTick = 0.5;
       const owner = a.lastHit != null && g.time - (a.lastHitTime ?? -9) < 8 ? a.lastHit : a.id;
-      damage(g, a, a.bleed * 0.5, { x: a.x, y: a.y }, owner, 'bleed', { kb: { x: 0, y: 0 }, force: true, environment: true });
+      const lost = damage(g, a, a.bleed * 0.5, { x: a.x, y: a.y }, owner, 'bleed', { kb: { x: 0, y: 0 }, force: true, environment: true });
+      if (lost) spill(g, a.x + rnd(-4, 4), a.y, lost * 0.6);
+      const nox = a.bleedBy != null && g.time - (a.bleedByT ?? -9) < 10 ? g.actor(a.bleedBy) : null;
+      if (lost && nox && nox !== a && nox.type === 4 && !nox.dead) drink(g, nox, a, lost);
     }
     if (a.freeze > 0 && a.frozen <= 0) a.freeze = Math.max(0, a.freeze - dt * 0.3);
     if (a.freeze >= 1 && a.frozen <= 0) {

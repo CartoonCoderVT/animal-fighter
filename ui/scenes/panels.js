@@ -49,7 +49,7 @@ export class SettingsScene extends Overlay {
 const CONTROLS = [
   [['A', 'D'], 'MOVER'], [['W', 'ESPAÇO'], 'PULAR · SEGURE PARA IR MAIS ALTO · NOX PLANA'], [['S'], 'AGACHAR · SEGURE NA PLATAFORMA PARA DESCER'],
   [['J', 'CLIQUE'], 'LEVE · COM DIREÇÃO MUDA O GOLPE · J DE NOVO PERSEGUE'], [['K', 'DIREITO'], 'PODER ESPECIAL · COM ARMA: GOLPE PESADO'], [['E', 'MEIO'], 'PEGAR ARMAS E RIVAIS CAÍDOS · ARREMESSAR'],
-  [['SHIFT'], 'PARADO: PARRY · COM DIREÇÃO: ESQUIVA'], [['L'], 'NOX: REVOADA · VIRA MORCEGOS E ATACA O MAIS PERTO'], [['R', 'Q'], 'LARGAR ARMA · DETONAR C4'], [['ESC'], 'PAUSAR']
+  [['SHIFT'], 'PARRY · ESQUIVA · APANHANDO: QUEBRA O COMBO'], [['L'], 'NOX: REVOADA · VIRA MORCEGOS E ATACA O MAIS PERTO'], [['R', 'Q'], 'LARGAR ARMA · DETONAR C4'], [['ESC'], 'PAUSAR']
 ];
 
 export class HelpScene extends Overlay {
@@ -71,12 +71,15 @@ export class HelpScene extends Overlay {
     } else {
       const tips = [
         'Golpes fortes, explosões e quedas derrubam: o lutador vira ragdoll e levanta depois. Aperte pulo para levantar mais rápido.',
-        'Dano em cada parte do corpo: ossos quebram (braço pendurado, perna mancando), cortes sangram até matar, lâminas arremessadas cravam e prendem corpos na parede.',
-        'Extintor congela e empurra; congelado, um golpe forte estilhaça. Rolar apaga o fogo e cancela dano de queda.',
-        'A prensa desce a cada 9 segundos (ou com o botão vermelho). O fosso no meio tritura. O cabo elétrico eletrifica a poça.',
-        'Atire na corrente da carga para derrubá-la. Botijão atingido vira foguete. Lâmpadas quebram com tiro.',
+        'Ossos quebram, cortes sangram até matar, lâminas cravam corpos na parede. Extintor congela (um golpe forte estilhaça); rolar apaga o fogo.',
+        'No DEPÓSITO: a prensa desce a cada 9 s, o fosso tritura, o cabo eletrifica a poça. Atire na corrente da carga; botijão atingido vira foguete.',
+        'Mingau, o Rei Gato, não ataca: a corte o protege, e cada J manda um deles. K finca a BANDEIRA REAL (vira casa e castelo); com ela de pé, K leva o rei de volta.',
+        'Lola salta no tempo e deixa facas paradas no ar. No combo: S+J chuva de facas, lado+J muralha (no ar, anel). K: ZA WARUDO.',
+        'Nox bebe sangue, até das poças no chão. Barra cheia + K: DARK NOX por 30 s (nem a morte tira); a foice voa sozinha e comba junto.',
+        'No CASTELO (M na escolha do lutador): velas soltam itens, o lustre cai se a corrente for cortada, pêndulos cortam e a pedra sobre as estacas desaba. Dizem que o castelo guarda segredos...',
         'Juma não tem botão de transformação: cada pancada que leva enche a barra de FÚRIA. Cheia, ela vira a FERA; cheia de novo, a TITÃ, enorme e com muita vida.',
-        'Don Sapone engole: segure K para sugar. Com alguém na pança ele vira um híbrido e luta como o engolido; K cospe, S+K usa o especial dele. Quem está dentro aperta tudo para sair.'
+        'Don Sapone engole: segure K para sugar. Com alguém na pança ele vira um híbrido e luta como o engolido; K cospe, S+K usa o especial dele. Quem está dentro aperta tudo para sair.',
+        'Xolo regenera: cada parte que perde cresce de novo e vira um broto (até 3) que copia seus golpes. S+K solta a cauda; E pega e J joga um broto. K: os brotos viram demônios de Xolotl.'
       ];
       let yy = y;
       for (const t of tips) yy += paragraph(g, '· ' + t, x, yy, 428, '#d8cde8') + 6;

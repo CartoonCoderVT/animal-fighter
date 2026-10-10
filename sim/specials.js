@@ -1,7 +1,10 @@
 // Specials (K) and the moves everyone shares: aerial stomp and carrying a downed fighter.
 // A running special lives in a.act; stepSpecial runs it each step and may lock movement.
 import { Body, Composite } from './physics.js';
-import { SPECIALS, NOX_AIR, airOf } from './moves.js';
+import { SPECIALS, LOLA_AIR, DARK, noxAir, airOf } from './moves.js';
+import { freeScythe } from './nox.js';
+import { kingSpecial, stepPlant, stepRecall } from './kingdom.js';
+import { strikeCourts } from './court.js';
 import { FIGHTERS, formOf, weightOf, styleOf, RAGE_MAX, NEXT_FORM, BELLY } from './fighters.js';
 import { damage, startMove, landPlunge, markOf, drama } from './combat.js';
 import { MOVES } from './moves.js';
@@ -11,12 +14,13 @@ import { breakLamp } from './hazards.js';
 import { rnd, clamp } from '../engine/const.js';
 import { HALF_H } from '../render/rig.js';
 import { MAP } from './map.js';
+import { startWorld, skipSpot, skipTo, skipKnives } from './timestop.js';
 import { blastMinions, hitMinions, hurtMinion, inhaleMinions } from './minions.js';
 import { axoSpecial, stepXolotl } from './axolotl.js';
 
 const LOCK = { lock: true };
 
-function setAct(a, act, max) {
+export function setAct(a, act, max) {
   a.act = act;
   a.actT = 0;
   a.actMax = max;
@@ -30,13 +34,17 @@ export function endAct(g, a) {
   }
   a.act = null;
   a.actT = 0;
-  a.rideOn = null;
   a.frenzy = null;
 }
 
 export function startSpecial(g, a) {
   const style = styleOf(a);
+  // The Cat King's BANDEIRA REAL, or with his kingdom standing, VOLTA AO REINO (sim/kingdom.js).
+  if (a.type === 0) { kingSpecial(g, a); return; }
   if (style === 3) { jumaSpecial(g, a); return; }
+  if (style === 4) { noxSpecial(g, a); return; }
+  // Lola's ZA WARUDO (sim/timestop.js); nothing happens while time is already stopped.
+  if (style === 2) { if (startWorld(g, a)) { a.powerSeq = (a.powerSeq || 0) + 1; a.abilityCd = SPECIALS[2].cd; } return; }
   // The axolotl's style (the frog that swallowed one gets only the maw).
   if (style === 6) { axoSpecial(g, a); return; }
   const sp = SPECIALS[style];
@@ -46,29 +54,13 @@ export function startSpecial(g, a) {
   a.attack = 0;
   a.hits = null;
   g.fx('focus', { x: a.x, y: a.y, p: 0.6 });
-  if (sp.id === 'pounce') {
-    setAct(a, 'pounce', sp.dur);
-    Body.setVelocity(a.body, { x: a.face * 9.5, y: a.ground ? -5.5 : Math.min(v.y, -2.5) });
-    a.ground = false;
-    g.text(a.x, a.y - 30, 'BOTE!', '#ffb763');
-    g.sound('swing', a.x);
-  } else if (sp.id === 'ball') {
+  if (sp.id === 'ball') {
     setAct(a, 'ball', sp.dur);
     a.ballV = a.face * 8.5;
     a.ballHit = {};
     g.text(a.x, a.y - 30, 'BOLA DE HAMSTER!', '#cec7dc');
     g.fx('ring', { x: a.x, y: a.y + 4, size: 30, color: '#d8f0ff' });
     g.sound('pickup', a.x);
-  } else if (sp.id === 'sky') {
-    setAct(a, 'sky', 0.75);
-    a.slamHit = {};
-    a.skyFrom = a.body.position.y + HALF_H;
-    Body.setVelocity(a.body, { x: v.x * 0.4, y: -13.5 });
-    a.ground = false;
-    g.fx('dust', { x: a.x, y: a.y + 16, n: 8 });
-    g.fx('ring', { x: a.x, y: a.y + 16, size: 26, color: '#ffd6e4' });
-    g.text(a.x, a.y - 30, 'PISÃO DO CÉU!', '#ffa6bc');
-    g.sound('jump', a.x);
   } else if (sp.id === 'beam') {
     // Close to a rival carrying three blood marks, K is the requiem instead of the beam.
     const prey = g.enemies(a).find(b => !b.dead && !b.knocked && markOf(g, b) >= 3 && Math.abs(b.x - a.x) < 80 && Math.abs(b.y - a.y) < 50);
@@ -81,16 +73,96 @@ export function startSpecial(g, a) {
   }
 }
 
+// Nox's K. With his blood meter full: DARK NOX. As DARK NOX: the blood beam (by a rival carrying three
+// blood marks, the requiem). Otherwise there is nothing to drink from yet.
+function noxSpecial(g, a) {
+  const v = a.body.velocity;
+  // DARK NOX's K is his blood beam; so is the frog's who swallowed Nox (he drinks no blood of his own).
+  if (a.form === 'dark' || a.type !== 4) {
+    a.powerSeq = (a.powerSeq || 0) + 1;
+    a.abilityCd = a.type === 4 ? DARK.beamCd : SPECIALS[4].cd;
+    a.attack = 0; a.hits = null;
+    const prey = g.enemies(a).find(b => !b.dead && !b.knocked && markOf(g, b) >= 3 && Math.abs(b.x - a.x) < 120 && Math.abs(b.y - a.y) < 60);
+    if (prey) { startRequiem(g, a, prey); return; }
+    setAct(a, 'beam', SPECIALS[4].dur);
+    a.beamFired = false;
+    a.beamAir = !a.ground;
+    Body.setVelocity(a.body, { x: v.x * 0.3, y: a.ground ? v.y : Math.min(v.y, 0) });
+    g.sound('charge', a.x);
+    return;
+  }
+  if ((a.blood || 0) < DARK.max) {
+    if (!(a.thirstT > g.time)) { a.thirstT = g.time + 1.2; g.text(a.x, a.y - 30, 'SEDE...', '#a83048'); }
+    return;
+  }
+  a.powerSeq = (a.powerSeq || 0) + 1;
+  a.attack = 0; a.hits = null;
+  setAct(a, 'darkRise', DARK.rise);
+  Body.setVelocity(a.body, { x: v.x * 0.2, y: a.ground ? v.y : Math.min(v.y, 0) });
+  g.fx('darkNox', { x: a.x, y: a.y, who: a.id });
+  g.fx('focus', { x: a.x, y: a.y, p: 0.9 });
+  g.text(a.x, a.y - 30, 'O SANGUE CHAMA...', '#ff3a5a');
+  a.riseText = g.effects[g.effects.length - 1];
+  drama(g, 0.7, a);
+  g.sound('bats', a.x);
+}
+
+// The moment he turns: a burst of blood and bats that throws everyone close back, bleeding.
+function becomeDark(g, a) {
+  const said = g.effects.indexOf(a.riseText);
+  if (said >= 0) g.effects.splice(said, 1);
+  a.form = 'dark';
+  a.formT = DARK.time;
+  a.blood = DARK.max;
+  a.abilityCd = 0.6;
+  // The scythe leaves his hand and flies on its own (sim/nox.js); anything else in it is dropped.
+  freeScythe(g, a);
+  if (a.weapon) dropWeapon(g, a);
+  const x = a.x, y = a.y, R = 96;
+  for (const b of enemiesNear(g, a, b => !b.knocked && Math.abs(b.x - x) < R && Math.abs(b.y - y) < 60)) {
+    const s = Math.sign(b.x - x) || a.face, f = 1 - Math.abs(b.x - x) / R;
+    const dealt = damage(g, b, 5 + 6 * f, { x: b.x - s * 4, y: b.y }, a.id, 'hemo', { kb: { x: s * (5 + 5 * f), y: -3.5 - 2 * f } });
+    if (dealt && !b.dead && !b.knocked) { b.hitstun = Math.max(b.hitstun || 0, 0.5); b.hitstunMax = Math.max(b.hitstunMax || 0, b.hitstun); b.bleed = Math.min(6, (b.bleed || 0) + 1); b.bleedBy = a.id; b.bleedByT = g.time; }
+  }
+  for (const l of g.limbs) if (Math.abs(l.x - x) < R + 10 && Math.abs(l.y - y) < 60) Body.setVelocity(l.body, { x: l.body.velocity.x + Math.sign(l.x - x) * 5, y: l.body.velocity.y - 3 });
+  g.fx('darkNoxPop', { x, y, who: a.id });
+  g.fx('bloodBurst', { x, y: y - 4, n: 3 });
+  g.text(x, y - 44, 'DARK NOX!', '#ff2a4a');
+  g.shake = Math.max(g.shake, 9);
+  g.flash = Math.max(g.flash, 0.25);
+  drama(g, 0.6, a);
+  g.sound('explosion', x);
+}
+
+export function startDarkFade(g, a) {
+  setAct(a, 'darkFade', DARK.fade);
+  a.attack = 0; a.hits = null;
+  a.abilityCd = 0;
+}
+
 // After a launcher: leap straight at the airborne target, then open the air combo on arrival.
 // then: the move to throw on arrival (small Juma pouncing after a rival her string knocked away).
 export function startChase(g, a, prey, then = null) {
-  if (styleOf(a) === 4) { startSwarm(g, a, { prey, then: then || NOX_AIR[0] }); return; }
+  if (styleOf(a) === 4) { startSwarm(g, a, { prey, then: then || noxAir(a)[0] }); return; }
+  if (styleOf(a) === 2) { startBlink(g, a, prey, then || LOLA_AIR[0]); return; }
   setAct(a, 'chase', 0.42);
   a.chaseId = prey.id;
   a.chaseThen = then;
   a.ground = false;
   g.fx('dash', { x: a.x, y: a.y, face: prey.x >= a.x ? 1 : -1 });
   g.sound('jump', a.x);
+}
+
+// Lola after a launcher, or after a rival her string knocked out of reach: she is gone for a few
+// frames (time stopped for her alone) and steps out of it beside them, already cutting.
+const BLINK_T = 0.07;
+export function startBlink(g, a, prey, then) {
+  setAct(a, 'blink', BLINK_T);
+  a.blinkTo = prey.id;
+  a.blinkThen = then;
+  a.attack = 0; a.hits = null;
+  g.fx('skipOut', { x: a.x, y: a.y, face: a.face, who: a.id });
+  g.sound('skip', a.x);
 }
 
 // Weapon ground pound: hold the strike pose and fall fast; the blow lands on touchdown.
@@ -171,34 +243,6 @@ export function stepSpecial(g, a, input, pressed, dt) {
   a.actT += dt;
   const v = a.body.velocity;
   switch (a.act) {
-    case 'pounce': {
-      const b = enemiesNear(g, a, b => !b.knocked && Math.abs(b.x - a.x) < 16 && Math.abs(b.y - a.y) < 26)[0];
-      if (b) {
-        setAct(a, 'ride', 1.3);
-        a.rideOn = b.id;
-        a.rideTick = 0;
-        b.stun = Math.max(b.stun, 0.3);
-        g.text(b.x, b.y - 34, 'MONTOU!', '#ffb763');
-        return LOCK;
-      }
-      if ((a.ground && a.actT > 0.12) || a.actT > a.actMax) endAct(g, a);
-      return a.act ? LOCK : null;
-    }
-    case 'ride': {
-      const b = g.actor(a.rideOn);
-      if (!b || b.dead || b.knocked || a.actT > a.actMax || pressed('jump')) { kickoff(g, a, b); return LOCK; }
-      const tx = b.x - a.face * 2, ty = b.y - 35;
-      Body.setPosition(a.body, { x: a.body.position.x + clamp(tx - a.body.position.x, -7, 7), y: a.body.position.y + clamp(ty - a.body.position.y, -7, 7) });
-      Body.setVelocity(a.body, { x: b.body.velocity.x, y: b.body.velocity.y });
-      a.rideTick -= dt;
-      if (a.rideTick <= 0) {
-        a.rideTick = 0.16;
-        damage(g, b, 4, { x: b.x + rnd(-4, 4), y: b.y - 8 }, a.id, 'claw', { kb: { x: 0, y: 0 }, part: 'head', dir: rnd(-1.2, 1.2) });
-        b.stun = Math.max(b.stun, 0.2);
-        g.fx('slash', { x: b.x, y: b.y - 8, face: Math.random() < 0.5 ? 1 : -1, size: 12, kind: 'claw', fin: 0, color: '#f1d9a8' });
-      }
-      return LOCK;
-    }
     case 'chase': {
       const b = g.actor(a.chaseId);
       if (!b || b.dead || b.knocked) { endAct(g, a); return null; }
@@ -228,9 +272,21 @@ export function stepSpecial(g, a, input, pressed, dt) {
       if (a.ground || a.climbing || a.actT > a.actMax) { endAct(g, a); landPlunge(g, a); return null; }
       return { lock: true, vx: v.x * 0.95, vy: Math.max(v.y, 14) };
     }
-    case 'kickoff':
-      if (a.actT > 0.3 || (a.ground && a.actT > 0.1)) endAct(g, a);
-      return null;
+    case 'blink': {
+      if (a.actT < a.actMax) return { lock: true, vx: 0, vy: 0 };
+      const b = g.actor(a.blinkTo), then = a.blinkThen;
+      endAct(g, a);
+      if (!b || b.dead || b.knocked) return null;
+      const spot = skipSpot(a, b, 'front') || { x: b.x - (Math.sign(b.x - a.x) || a.face) * 18, y: b.y - 8, ground: false };
+      const x0 = a.x, y0 = a.y;
+      skipTo(g, a, spot.x, spot.y, { face: Math.sign(b.x - spot.x) || a.face, ground: spot.ground, quiet: true, ghost: false });
+      skipKnives(g, a, x0, y0, b);
+      if (!b.ground) { Body.setVelocity(b.body, { x: 0, y: -1 }); b.float = Math.max(b.float || 0, 0.6); }
+      startMove(g, a, then);
+      return LOCK;
+    }
+    // Stopped time runs from Game.step (sim/timestop.js); this only holds her if it ever gets here.
+    case 'world': return LOCK;
     case 'ball': {
       const dir = (input.right ? 1 : 0) - (input.left ? 1 : 0);
       if (dir) { a.ballV = clamp(a.ballV + dir * 0.6, -9.5, 9.5); a.face = Math.sign(a.ballV) || a.face; }
@@ -255,26 +311,6 @@ export function stepSpecial(g, a, input, pressed, dt) {
       for (const p of g.props) if (!p.held && !p.fixed && !p.body.isStatic && Math.hypot(p.x - a.x, p.y - a.y) < 24) Body.setVelocity(p.body, { x: p.body.velocity.x + a.ballV * 0.3, y: p.body.velocity.y - 1 });
       if (a.actT > a.actMax) { endAct(g, a); g.fx('poof', { x: a.x, y: a.y }); return null; }
       return { lock: true, vx: a.ballV, vy };
-    }
-    case 'sky': {
-      const steer = ((input.right ? 1 : 0) - (input.left ? 1 : 0)) * 2.5;
-      if (v.y >= -1 || a.actT > a.actMax || pressed('power') || pressed('attack')) {
-        setAct(a, 'slam', 2);
-        return { lock: true, vx: v.x * 0.3, vy: 19 };
-      }
-      return { lock: true, vx: v.x + (steer - v.x) * 0.1, vy: v.y };
-    }
-    case 'slam': {
-      // Come back down to the floor she jumped from, through any catwalk on the way.
-      MAP.oneway.forEach((p, i) => { if (p.y < (a.skyFrom ?? 0) - 4) a.drop[i] = 0.1; });
-      for (const b of enemiesNear(g, a, b => !a.slamHit[b.id] && Math.abs(b.x - a.x) < 14 && b.y - a.y > 8 && b.y - a.y < 40)) {
-        a.slamHit[b.id] = true;
-        damage(g, b, 12, { x: b.x, y: b.y - 12 }, a.id, 'slam', { kb: { x: 0, y: 3 }, part: 'head', knock: true });
-      }
-      if (a.ground) { shockwave(g, a); endAct(g, a); return null; }
-      if (a.actT > a.actMax) endAct(g, a);
-      const steer = ((input.right ? 1 : 0) - (input.left ? 1 : 0)) * 1.5;
-      return { lock: true, vx: steer, vy: Math.max(v.y, 18) };
     }
     case 'bite': {
       const grab = biteTarget(g, a);
@@ -312,6 +348,19 @@ export function stepSpecial(g, a, input, pressed, dt) {
     case 'toss':
       if (a.actT > a.actMax) endAct(g, a);
       return null;
+    case 'plant': return stepPlant(g, a);
+    case 'recall': return stepRecall(g, a);
+    case 'darkRise': {
+      // The blood gathers into him, shivering; then he turns.
+      if (a.form !== 'dark' && a.actT >= DARK.pop) becomeDark(g, a);
+      if (a.actT > a.actMax) { endAct(g, a); return null; }
+      return { lock: true, vx: v.x * 0.8, vy: a.ground ? v.y : Math.min(v.y, 0.3) };
+    }
+    case 'darkFade': {
+      if (a.form === 'dark' && a.actT >= DARK.fade * 0.5) { a.form = null; a.formT = 0; a.blood = 0; g.fx('darkFade', { x: a.x, y: a.y, who: a.id }); g.sound('bats', a.x); }
+      if (a.actT > a.actMax) { endAct(g, a); return null; }
+      return { lock: true, vx: v.x * 0.8, vy: v.y };
+    }
     case 'morph': {
       // Hunched and shivering, swelling, then the pop into the next form and the roar. Swelling
       // into the titan she shakes the floor around her.
@@ -403,14 +452,6 @@ export function stepSpecial(g, a, input, pressed, dt) {
   return null;
 }
 
-function kickoff(g, a, b) {
-  if (b && !b.dead) damage(g, b, 6, { x: b.x, y: b.y - 10 }, a.id, 'kick', { kb: { x: a.face * 7, y: -4 }, knock: true });
-  setAct(a, 'kickoff', 0.35);
-  a.rideOn = null;
-  Body.setVelocity(a.body, { x: -a.face * 4, y: -7 });
-  g.sound('punch', a.x);
-}
-
 function biteTarget(g, a) {
   const inFront = (x, y) => { const along = (x - a.x) * a.face; return along > -4 && along < 30 && Math.abs(y - a.y) < 26; };
   const b = g.enemies(a).find(b => !b.dead && !b.knocked && inFront(b.x, b.y));
@@ -446,7 +487,7 @@ function seize(g, a, { actor, limb }) {
   g.sound('squish', a.x);
 }
 
-// Lola lands, or the beast: everything near the impact is knocked away.
+// The beast lands: everything near the impact is knocked away.
 function shockwave(g, a, R = 120, beast = false) {
   const x = a.x, y = a.y + 16;
   for (const b of g.enemies(a)) {
@@ -468,6 +509,7 @@ function shockwave(g, a, R = 120, beast = false) {
     if (p.kind === 'glass' && d < 60) { damageProp(g, p, 60, a.id); continue; }
     Body.setVelocity(p.body, { x: p.body.velocity.x + Math.sign(p.x - x) * 5 * (1 - d / R), y: p.body.velocity.y - 6 * (1 - d / R) });
   }
+  strikeCourts(g, a, (px, py) => Math.abs(px - x) < R && Math.abs(py - y) < 50, (beast ? 8 : 6) + 7, f => Math.sign(f.x - x) || a.face);
   g.fx('ring', { x, y, size: R, color: beast ? '#ffb070' : '#ffd6e4' });
   g.fx('ring', { x, y, size: R * 0.6, color: '#ffffff' });
   g.fx('land', { x, y, p: 1 });
@@ -502,7 +544,15 @@ export function feedRage(g, a, amount) {
   a.rage = Math.min(RAGE_MAX, (a.rage || 0) + amount * formOf(a).rage);
 }
 
-export function tickForm(g, a) {
+export function tickForm(g, a, dt) {
+  // DARK NOX lasts while his blood does (the meter is his time left), then he turns back.
+  if (a.form === 'dark') {
+    if (a.act === 'darkRise' || a.act === 'darkFade') return;
+    a.formT = Math.max(0, (a.formT || 0) - dt);
+    a.blood = (DARK.max * a.formT) / DARK.time;
+    if (a.formT <= 0 && !a.act && !(a.attack > 0) && !a.knocked && !(a.hitstun > 0) && !(a.frozen > 0)) startDarkFade(g, a);
+    return;
+  }
   if (a.type !== 3 || a.dead || a.knocked || a.frozen > 0 || a.act === 'morph' || a.swallowedBy != null) return;
   const next = NEXT_FORM[a.form || null];
   // A change cut short before the pop (a blast threw her down) starts over once she is back up.
@@ -661,6 +711,7 @@ function thunderclap(g, a) {
     const k = ahead ? 1 - Math.max(0, (b.x - x0) * face) / R : 0.3, s = ahead ? face : Math.sign(b.x - a.x) || -face;
     damage(g, b, ahead ? 10 + 14 * k : 6, { x: b.x - s * 4, y: b.y }, a.id, 'sonic', { kb: { x: s * (6 + 9 * k), y: -4 - 4 * k }, knock: ahead && k > 0.2, lag: 1.6 });
   }
+  strikeCourts(g, a, (x, y) => inCone(x, y) || (Math.abs(x - a.x) < 50 && Math.abs(y - a.y) < 40), 16, f => (inCone(f.x, f.y) ? face : Math.sign(f.x - a.x) || -face));
   hitMinions(g, a.team, m => inCone(m.x, m.y) || (Math.abs(m.x - a.x) < 50 && Math.abs(m.y - a.y) < 40), m => { const s = inCone(m.x, m.y) ? face : Math.sign(m.x - a.x) || -face; hurtMinion(g, m, inCone(m.x, m.y) ? 16 : 6, { x: m.x, y: m.y }, a.id, 'sonic', { kb: { x: s * 9, y: -5 } }); });
   for (const l of g.limbs) if (inCone(l.x, l.y)) Body.setVelocity(l.body, { x: l.body.velocity.x + face * 10, y: l.body.velocity.y - 5 });
   for (const p of [...g.props]) {
@@ -904,7 +955,7 @@ function stepSwarm(g, a) {
   a.ground = !!(prey && prey.ground && Math.abs(prey.y - a.y) < 4);
   g.fx('batSwarm', { x: a.x, y: a.y, arrive: 1, n: 18 });
   g.fx('ring', { x: a.x, y: a.y, size: 26, color: '#ff4a64' });
-  startMove(g, a, sw.then || 'batStrike');
+  startMove(g, a, sw.then || (a.form === 'dark' ? 'dFrenzy' : 'batStrike'));
   return LOCK;
 }
 
@@ -987,13 +1038,15 @@ function bloodBeam(g, a) {
     return Math.hypot(x0 + dx * t - px, y0 + dy * t - py) < r ? t : -1;
   };
   let drank = 0;
-  hitMinions(g, a.team, m => along(m.x, m.y, 15) >= 0, m => hurtMinion(g, m, 14, { x: m.x, y: m.y }, a.id, 'hemo', { kb: { x: dx * 6, y: dy * 6 - 2 } }));
+  // As DARK NOX the beam is wider and hits harder.
+  const dark = a.form === 'dark', wide = dark ? 22 : 15, hard = dark ? 1.4 : 1;
+  hitMinions(g, a.team, m => along(m.x, m.y, wide) >= 0, m => hurtMinion(g, m, 14 * hard, { x: m.x, y: m.y }, a.id, 'hemo', { kb: { x: dx * 6, y: dy * 6 - 2 } }));
   for (const b of g.enemies(a)) {
-    if (b.dead || b.knocked || along(b.x, b.y, 15) < 0) continue;
+    if (b.dead || b.knocked || along(b.x, b.y, wide) < 0) continue;
     if (b.iframes > 0 && b.dodge > 0) continue;
     const marks = markOf(g, b), nova = marks >= 3;
     b.bloodMark = 0;
-    const dealt = damage(g, b, 14 + marks * 5, { x: b.x - dx * 5, y: b.y }, a.id, 'hemo', { kb: { x: dx * (nova ? 9 : 6), y: dy * 6 - (nova ? 5 : 2) }, knock: nova || marks >= 2 });
+    const dealt = damage(g, b, (14 + marks * 5) * hard, { x: b.x - dx * 5, y: b.y }, a.id, 'hemo', { kb: { x: dx * (nova ? 9 : 6), y: dy * 6 - (nova ? 5 : 2) }, knock: nova || marks >= 2 });
     drank += dealt || 0;
     if (nova) {
       g.fx('supernova', { x: b.x, y: b.y });
@@ -1017,9 +1070,11 @@ function bloodBeam(g, a) {
     if (g.props.includes(p) && !p.body.isStatic) Body.setVelocity(p.body, { x: p.body.velocity.x + dx * 6, y: p.body.velocity.y + dy * 6 - 2 });
   }
   for (const lamp of g.hz?.lamps || []) if (along(lamp.body.position.x, lamp.body.position.y, 12) >= 0) breakLamp(g, lamp, { vx: dx * 20, vy: dy * 20 });
+  // The Cat Kings' courts and kingdoms in its way.
+  strikeCourts(g, a, (px, py) => along(px, py, wide) >= 0, 14 * hard, () => Math.sign(dx) || a.face);
   if (drank) a.hp = Math.min(a.maxHp, a.hp + drank * 0.25);
   Body.setVelocity(a.body, { x: -dx * 3, y: a.beamAir ? -2.5 : a.body.velocity.y });
-  g.fx('bloodBeam', { x: x0, y: y0, x2: x0 + dx * len, y2: y0 + dy * len });
+  g.fx('bloodBeam', { x: x0, y: y0, x2: x0 + dx * len, y2: y0 + dy * len, dark: dark ? 1 : 0 });
   g.text(a.x, a.y - 32, 'SANGUE PERFURANTE!', '#ff5a6e');
   g.shake = Math.max(g.shake, 5);
   g.flash = Math.max(g.flash, 0.15);
@@ -1037,7 +1092,14 @@ const SPIT = { at: 0.12, dur: 0.42, dmg: 10, v: 12.5 };
 export function frogPower(g, a) {
   a.attack = 0; a.hits = null;
   if (a.belly != null) {
-    if (a.input.down && a.copy != null) { if (!(a.abilityCd > 0)) startSpecial(g, a); return; }
+    if (a.input.down && a.copy != null) {
+      // S+K spends the press either way, so letting go of down a moment later never spits.
+      a.bufP = 0;
+      // The Cat King's banner needs a court and a kingdom: the frog has neither.
+      if (a.copy === 0) { if (!(a.thirstT > g.time)) { a.thirstT = g.time + 1.2; g.text(a.x, a.y - 30, 'SEM CORTE!', '#f68268'); } return; }
+      if (!(a.abilityCd > 0)) startSpecial(g, a);
+      return;
+    }
     a.powerSeq = (a.powerSeq || 0) + 1;
     setAct(a, 'spit', SPIT.dur);
     a.spat = false;
