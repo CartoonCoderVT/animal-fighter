@@ -17,9 +17,11 @@ import { frameFor } from './anim.js';
 import { Secondary } from './secondary.js';
 import { drawBloodArt, drawMarks } from './blood-art.js';
 import { NoxHero, JumaHero, FrogHero } from './hero.js';
+import * as HEROES from './hero.js';
 import { MOVES, COMBOS, comboOf } from '../sim/moves.js';
-import { castFor } from './pixel-data.js';
-import { lookOf, styleOf } from '../sim/fighters.js';
+import { castFor, composeChars, composeTubes, paletteFor, tailPoints, snapDeg, ANCHOR, JOINT } from './pixel-data.js';
+import { BITS_PAL, TAIL_PIECE, BUD, REGROW, regrowStage, PUDDLE, bitCanvas, turn } from './axo-bits.js';
+import { FIGHTERS, lookOf, styleOf } from '../sim/fighters.js';
 import { isMelee, WEAPON_INFO } from '../sim/weapons.js';
 
 const mk = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
@@ -37,14 +39,14 @@ const MORPH_T = { beast: { swell: 0.12, pop: 0.6, end: 1.0 }, titan: { swell: 0.
 const morphT = a => MORPH_T[titanMorph(a) ? 'titan' : 'beast'];
 // The instant of the transformation: the figure burns white just before and after the pop.
 function morphFlash(a) {
-  if (a.act !== 'morph') return null;
+  if (a.act !== 'morph' || a.type !== 3) return null;
   const t = a.actT ?? 0, m = morphT(a);
   if (t >= m.pop - 0.1 && t < m.pop + 0.07) return Math.floor(t * 40) % 2 ? '#ffffff' : '#ffe2a0';
   return null;
 }
 // Shivering as she swells: the whole figure jitters, harder the closer the pop (two pixels for the titan).
 function morphJitter(a, time) {
-  if (a.act !== 'morph') return 0;
+  if (a.act !== 'morph' || a.type !== 3) return 0;
   const t = a.actT ?? 0, m = morphT(a);
   if (t <= m.swell || t >= m.pop) return 0;
   return (Math.floor(time * 34) % 2 ? 1 : -1) * (titanMorph(a) && t > m.pop * 0.6 ? 2 : 1);
@@ -52,6 +54,32 @@ function morphJitter(a, time) {
 const JUMA_TRAIL = { null: '#ffd27a', beast: '#ff7a2a', titan: '#ff4a1a' };
 // Specials the menu preview carries forward across the pedestal.
 const DEMO_MOVES = ['pounce', 'ball', 'sky', 'bite'];
+
+// The axolotl's minions. Seeds (lost parts in flight), buds and bubbles are drawn as small sprites;
+// clones and demons go through the fighters' pipeline.
+const kindOf = m => m.kind || (m.form === 'demon' ? 'demon' : 'mini');
+const BITS = ['seed', 'bud', 'bubble'];
+// Each axolotl's brood: the colour of its clones' pips, and the tint that tells a second (third…)
+// axolotl's clones from the first's in a mirror match.
+const BROOD = ['#ff9cb8', '#8fd0ff', '#ffd36c', '#a8f08a'];
+// What glows on a demon (eyes, cracks, flame gills), and the axolotl's gills that burn while its
+// demons are out (6 light, 7 dark), as packed RGB.
+const rgbKey = h => parseInt(h.slice(1), 16);
+const HELL = ['#fff2a0', '#ffd040', '#ff5a1a', '#ff2a3a'];
+// The axolotl's state as the renderer reads it ({ tail, regrow: { part: 0..1 }, demon: seconds
+// left, shed, carry, load }): a snapshot already has that shape online; in a local game it is
+// worked out from the live record (regrowth clocks and the end of the demon phase).
+export function axoOf(a, time) {
+  const ax = a?.axo;
+  if (!ax || !('tailCut' in ax)) return ax || null;
+  const regrow = {};
+  for (const [p, r] of Object.entries(ax.regrow || {})) regrow[p] = typeof r === 'number' ? r : clamp((time - r.t0) / (r.dur || 1), 0, 1);
+  return { tail: ax.tailCut ? 1 : 0, regrow, demon: Math.max(0, (ax.demonEnd || 0) - time), shed: Math.max(0, (ax.shedReady || 0) - time), carry: ax.carry ?? null, load: ax.load || 0 };
+}
+// The axolotl's regrowing tissue on top of its own palette, for the tail growing back.
+const CAP = { c: '#ffe4ec', k: '#fff4f6' };
+// How far the tail has grown back at each regrowth stage.
+const TAIL_GROWN = [0, 0.3, 0.6, 0.85];
 
 function vignette() {
   const c = mk(VIEW_W, VIEW_H), g = c.getContext('2d');
@@ -266,7 +294,7 @@ export class Renderer {
   hype(e, settings) {
     const c = this.cam, p = e.p || 1, x = X(e.x ?? 0), y = X(e.y ?? 0);
     // Nox's big moments shake and punch in too: the burst, the requiem, the bounce, the beam.
-    const PUNCH = { supernova: 0.05, requiemBurst: 0.07, groundBounce: 0.025, bloodBeam: 0.03, morphPop: e.titan ? 0.1 : 0.07, wallSplat: 0.05, quake: p >= 6 ? 0.03 : 0, thunderclap: 0.07, clap: 0.025 };
+    const PUNCH = { supernova: 0.05, requiemBurst: 0.07, groundBounce: 0.025, bloodBeam: 0.03, morphPop: e.titan ? 0.1 : 0.07, wallSplat: 0.05, quake: p >= 6 ? 0.03 : 0, thunderclap: 0.07, clap: 0.025, xolotlCast: 0.06, sacrifice: 0.05, pororoca: 0.02, geyser: 0.02 };
     if (PUNCH[e.fx] && this.visible(x, y, 20)) {
       c.punch = Math.max(c.punch, PUNCH[e.fx]);
       if ((e.fx === 'requiemBurst' || e.fx === 'morphPop' || e.fx === 'thunderclap') && settings.shake !== false) {
@@ -274,8 +302,10 @@ export class Renderer {
         this.focusLines.push({ x, y, life: 0.3, max: 0.3, seed: (e.id || 1) * 7, p: 3 });
         this.impact = { x, y, frames: e.fx === 'requiemBurst' || e.titan ? 4 : 3, n: 0, seed: e.id || 1, clash: e.fx === 'requiemBurst' };
       }
+      // Xolotl's cast: the lines rush in on the axolotl.
+      if (e.fx === 'xolotlCast' && settings.shake !== false) this.focusLines.push({ x, y: y - 20, life: 0.35, max: 0.35, seed: (e.id || 1) * 7, p: 3 });
     }
-    const TRAUMA = { quake: 0.03 * p, morphPop: e.titan ? 0.7 : 0.45, thunderclap: 0.55, clap: 0.15, wallSplat: 0.32, roar: 0.12, armor: 0.03, supernova: 0.35, requiemBurst: 0.5, groundBounce: 0.16, bloodBeam: 0.2, bloodSpikes: 0.07, requiemCut: 0.03, shadowX: 0.05, hit: 0.035 + 0.035 * p, impact: e.ko ? 0.4 : 0.12 + 0.06 * p, explosion: 0.5, clang: e.big ? 0.12 : 0.05, clash: 0.18, land: p >= 0.9 ? 0.08 : 0, parry: 0.12 };
+    const TRAUMA = { quake: 0.03 * p, morphPop: e.titan ? 0.7 : 0.45, thunderclap: 0.55, clap: 0.15, wallSplat: 0.32, roar: 0.12, armor: 0.03, supernova: 0.35, requiemBurst: 0.5, groundBounce: 0.16, bloodBeam: 0.2, bloodSpikes: 0.07, requiemCut: 0.03, shadowX: 0.05, hit: 0.035 + 0.035 * p, impact: e.ko ? 0.4 : 0.12 + 0.06 * p, explosion: 0.5, clang: e.big ? 0.12 : 0.05, clash: 0.18, land: p >= 0.9 ? 0.08 : 0, parry: 0.12, xolotlCast: 0.35, sacrifice: 0.4, demonMorph: 0.08, geyser: 0.12, pororoca: 0.15, bubblePop: 0.03, toothMarks: 0.06 };
     const t = TRAUMA[e.fx];
     if (!t) return;
     const seen = this.visible(x, y, e.fx === 'explosion' ? 60 : 4);
@@ -337,7 +367,8 @@ export class Renderer {
     // Juma's smears and glints are amber, the beast's a hot orange, the titan's molten; Nox's are blood.
     // The frog's (and whatever style he borrowed besides these) are slime green.
     const st = styleOf(a), juma = st === 3, beast = juma && !!a.form, titan = juma && a.form === 'titan';
-    const c = juma ? (titan ? { c1: '#ffe08a', c2: '#ff4a1a' } : beast ? { c1: '#ffb070', c2: '#ff6a2a' } : { c1: '#fff1c8', c2: '#ffd27a' }) : st === 4 ? {} : { c1: '#e8ffd0', c2: '#9be05a' };
+    // The axolotl's are pink, its demons' embers.
+    const c = juma ? (titan ? { c1: '#ffe08a', c2: '#ff4a1a' } : beast ? { c1: '#ffb070', c2: '#ff6a2a' } : { c1: '#fff1c8', c2: '#ffd27a' }) : st === 4 ? {} : st === 6 ? (a.form === 'demon' ? { c1: '#ffd040', c2: '#ff5a1a' } : { c1: '#fff4f6', c2: '#ff8fa8' }) : { c1: '#e8ffd0', c2: '#9be05a' };
     if (last && last.name !== name && this.simDt > 0) {
       const dust = (x, dir, n) => this.fx.burst('dust', x, f.hy - 1, n, { a: dir > 0 ? -0.35 : Math.PI + 0.35, spread: 0.7, s: beast ? 2 : 1.5, life: beast ? 0.6 : 0.45, colors: ['#8a7f95', '#6a6078', '#a89cb8'], g: -0.02, drag: 0.9, size: 2 });
       if (/X2?$/.test(name)) {
@@ -357,11 +388,11 @@ export class Renderer {
     const FAST = ['pounce', 'kickoff', 'slam', 'chase', 'stomp', 'requiem', 'charge', 'leap', 'meteor', 'bite', 'frenzy'];
     for (const f of figures) {
       const a = f.a, list = this.trails.get(a.id) || [];
-      const fast = FAST.includes(a.act) || a.dodge > 0 || a.perfectT > 0 || (a.attack > 0 && ['dashAtk', 'spike', 'shadowCut', 'nAirScythe', 'nAirVortex', 'scytheGuillotine', 'scytheSpin', 'scytheReap', 'jBolt', 'jRake', 'jPounceUp', 'jFlurry', 'jAirSpin', 'jAirDive', 'jCross', 'bHammer', 'bUpper', 'bAirSmash', 'bClap', 'bAirClaw', 'tHook', 'tUpper', 'tAirClaw', 'tAirSmash'].includes(a.attackKind));
+      const fast = FAST.includes(a.act) || a.dodge > 0 || a.perfectT > 0 || (a.attack > 0 && ['dashAtk', 'spike', 'shadowCut', 'nAirScythe', 'nAirVortex', 'scytheGuillotine', 'scytheSpin', 'scytheReap', 'jBolt', 'jRake', 'jPounceUp', 'jFlurry', 'jAirSpin', 'jAirDive', 'jCross', 'bHammer', 'bUpper', 'bAirSmash', 'bClap', 'bAirClaw', 'tHook', 'tUpper', 'tAirClaw', 'tAirSmash', 'xSlide', 'xPororoca', 'xMaw', 'xAirFlop'].includes(a.attackKind));
       f.trail = list;
       if (fast && dt > 0 && (list.stepT = (list.stepT || 0) + dt) > 0.05) {
         list.stepT = 0;
-        list.push({ s: f.info.sprite, o: f.info.overlay, x: f.hx, y: f.hy, face: a.face || 1, life: 0.2, tint: a.perfectT > 0 ? '#bfe8ff' : styleOf(a) === 4 ? '#e2445c' : a.type === 3 ? JUMA_TRAIL[a.form || null] : null });
+        list.push({ s: f.info.sprite, o: f.info.overlay, x: f.hx, y: f.hy, face: a.face || 1, life: 0.2, tint: a.perfectT > 0 ? '#bfe8ff' : styleOf(a) === 4 ? '#e2445c' : a.type === 3 ? JUMA_TRAIL[a.form || null] : a.type === 6 ? (a.form === 'demon' ? '#ff5a1a' : '#ff9cb8') : null });
       }
       for (const g of list) g.life -= dt;
       while (list.length && list[0].life <= 0) list.shift();
@@ -454,27 +485,33 @@ export class Renderer {
 
     // Each fighter is painted once into a small CPU canvas. From its pixels we derive the wall
     // shadow and true silhouette rim lights, so internal limb edges never light up.
-    const figures = [];
+    const figures = [], st0 = state.time ?? t;
+    // The axolotl's minions: whoever is trapped in a bubble, and which brood each clone belongs to.
+    const minions = state.minions || [], trapped = new Set();
+    for (const m of minions) if (kindOf(m) === 'bubble' && m.trap != null) trapped.add(m.trap);
+    this.broods = state.actors.filter(a => a.type === 6).map(a => a.id).sort((p, q) => p - q);
     for (const a of state.actors) {
       // Swallowed fighters are inside the frog: nothing of them shows.
       if (a.dead || a.knocked || a.swallowedBy != null) continue;
       const fx = Math.round(a.x * S), fy = Math.round((a.y + FOOT) * S);
       const fc = this.figureCanvases(a.id);
       fc.body.g.clearRect(0, 0, FIG_W, FIG_H);
-      const info = this.paintFighter(fc.body.g, a, FIG_X, FIG_Y, state.time ?? t);
+      const info = this.paintFighter(fc.body.g, a, FIG_X, FIG_Y, st0);
+      this.readBack(fc);
+      const f = { a, hx: fx, hy: fy, cx: fx, cy: fy - 10, info, fc, x: fx - FIG_X + ox, y: fy - FIG_Y + oy };
+      // While its demons are out, the axolotl's gills burn; a rival in a bubble shows through it cyan.
+      let dirty = false;
+      if (a.type === 6 && axoOf(a, st0)?.demon > 0) dirty = this.burnGills(f, st0) || dirty;
+      if (trapped.has(a.id)) dirty = this.tintFigure(f, '#7ae8ff', 0.15) || dirty;
+      if (dirty) fc.body.g.putImageData(fc.img, 0, 0);
       for (const k of ['eye', 'hand']) { info[k].x += fx - FIG_X; info[k].y += fy - FIG_Y; }
-      fc.alpha = fc.body.g.getImageData(0, 0, FIG_W, FIG_H).data;
-      figures.push({ a, hx: fx, hy: fy, cx: fx, cy: fy - 10, info, fc, x: fx - FIG_X + ox, y: fy - FIG_Y + oy });
+      figures.push(f);
     }
     // The axolotl's clones go through the same pipeline: lit, rimmed and shadowed like fighters.
-    for (const a of state.minions || []) {
-      const fx = Math.round(a.x * S), fy = Math.round((a.y + (a.foot ?? FOOT)) * S);
-      const fc = this.figureCanvases('m' + a.owner + '_' + a.slot);
-      fc.body.g.clearRect(0, 0, FIG_W, FIG_H);
-      const info = this.paintFighter(fc.body.g, a, FIG_X, FIG_Y, state.time ?? t);
-      for (const k of ['eye', 'hand']) { info[k].x += fx - FIG_X; info[k].y += fy - FIG_Y; }
-      fc.alpha = fc.body.g.getImageData(0, 0, FIG_W, FIG_H).data;
-      figures.push({ a, minion: true, hx: fx, hy: fy, cx: fx, cy: fy - 6, info, fc, x: fx - FIG_X + ox, y: fy - FIG_Y + oy });
+    for (const m of minions) {
+      if (BITS.includes(kindOf(m))) continue;
+      const f = this.paintMinion(m, figures, ox, oy, st0);
+      if (f) figures.push(f);
     }
     this.updateTrails(figures, this.simDt);
     for (const f of figures) if (f.a.type >= 3 || styleOf(f.a) >= 3) this.keyFx(f);
@@ -509,6 +546,7 @@ export class Renderer {
     this.drawContactShadows(lg, state, ox, oy);
     for (const p of state.props) this.drawProp(lg, p, ox, oy, t);
     this.drawLimbs(lg, state, ox, oy, t);
+    this.drawAxoBits(lg, minions, figures, ox, oy, st0);
     this.drawTrails(lg, figures, ox, oy);
     for (const f of figures) {
       if (f.a.invincible > 0.1 && Math.floor(t * 12) % 2) lg.globalAlpha = 0.55;
@@ -534,6 +572,12 @@ export class Renderer {
     lg.globalAlpha = 1;
     for (const f of figures) if (f.info.smear) this.drawSmear(lg, f.a, f.info.smear.frame, f.info.smear.sm, f.hx + ox, f.hy + oy, f.a.face || 1, 1);
     if (state.limbs?.length) this.drawLimbs(lg, state, ox, oy, t, 0.38);
+    if (minions.length) {
+      lg.globalAlpha = 0.38; this.drawAxoBits(lg, minions, figures, ox, oy, st0); lg.globalAlpha = 1;
+      // Bubbles, water and goo read bright and clean over the lighting.
+      for (const m of minions) if (kindOf(m) === 'bubble') this.drawBubble(lg, m, ox, oy, st0);
+    }
+    this.fx.drawOver(lg, ox, oy, t);
 
     // ---- rim light on fighters
     lg.globalCompositeOperation = 'lighter';
@@ -564,6 +608,15 @@ export class Renderer {
     sg.globalAlpha = 1;
     sg.drawImage(this.back, 0, 0);
     sg.drawImage(this.lit, 0, 0);
+    // Xolotl's cast: the room sinks into a dark red, and only what burns stays bright.
+    const dk = this.fx.dimK();
+    if (dk > 0) {
+      sg.globalCompositeOperation = 'multiply'; sg.globalAlpha = dk * 0.8;
+      sg.fillStyle = '#a8202e'; sg.fillRect(0, 0, VIEW_W, VIEW_H);
+      sg.globalCompositeOperation = 'lighter'; sg.globalAlpha = dk * 0.75;
+      sg.drawImage(this.emit, 0, 0);
+      sg.globalAlpha = 1; sg.globalCompositeOperation = 'source-over';
+    }
     if (rich) {
       sg.globalCompositeOperation = 'lighter';
       sg.globalAlpha = 0.06;
@@ -592,25 +645,36 @@ export class Renderer {
       sg.fillStyle = `rgba(255,244,220,${Math.min(0.45, this.flashT * 1.2)})`;
       sg.fillRect(0, 0, VIEW_W, VIEW_H);
     }
+    if (minions.length) this.drawMinionPips(sg, minions, ox, oy);
     for (const e of state.effects || []) if (e.kind === 'text') drawText(sg, e.text, X(e.x) + ox, X(e.y) + oy - 20, { color: e.color, outline: '#140f1f', align: 'center', alpha: clamp(e.life * 3, 0, 1) });
     this.worldDrawn = true;
     return figures;
   }
 
   // Paints a live fighter with its feet at (fx, fy); returns the eye and hand points.
-  paintFighter(g, a, fx, fy, time, { scale = 1 } = {}) {
+  // only: the slots to draw (a clone hatching has no hind feet yet).
+  paintFighter(g, a, fx, fy, time, { scale = 1, only = null } = {}) {
     const face = a.face || 1;
     // Frozen in the hitlag of a blow it took: the body shivers along the hit.
     if (a.hitlag > 0 && a.hitstun > 0) fx += (Math.floor(time * 60) % 2 ? 1 : -1) * (a.hitHeavy ? 2 : 1) * scale;
     fx += morphJitter(a, time) * scale;
     // Someone kicking about inside the frog's belly shakes him.
     if (a.wobble > 0) { fx += (Math.floor(time * 40) % 2 ? 1 : -1) * scale; fy += (Math.floor(time * 30) % 2 ? 0 : -1) * scale; }
-    const f = frameFor(a, time), frame = f.frame;
-    const chains = this.secondary.update(a, frame, time, this.simDt);
-    const sprites = figureSprite(a, f, variantOf(a, this.time), chains), flash = morphFlash(a);
+    let f = frameFor(a, time);
+    const frame = f.frame;
+    const ch = castFor(a.type, lookOf(a)), eye = ch.eye || EYE;
+    let chains = this.secondary.update(a, frame, time, this.simDt);
+    const all = chains;
+    // The axolotl without its tail: it stays off the figure until it has grown back.
+    const axo = a.type === 6 ? axoOf(a, time) : null;
+    if (axo?.tail && ch.tail) {
+      if (chains) chains = chains.filter(c => c.spec !== ch.tail);
+      else f = { ...f, frame: { ...frame, tail: false } };
+    }
+    const variant = variantOf(a, this.time);
+    const sprites = only ? { s: this.customSprite(a, f, variant, only), overlay: null } : figureSprite(a, f, variant, chains), flash = morphFlash(a);
     const s = flash ? tintOf(sprites.s, flash) : sprites.s, overlay = sprites.overlay && flash ? tintOf(sprites.overlay, flash) : sprites.overlay;
     const severed = a.severed || [];
-    const ch = castFor(a.type, lookOf(a)), eye = ch.eye || EYE;
     const hand = figurePoint(frame, 'armF', HAND[0], HAND[1], fx, fy, face, scale, ch);
     const behind = a.weapon === 'extinguisher', bats = a.act === 'swarm';
     if (behind && !severed.includes('armF')) this.drawWeapon(g, a, frame, hand, face, scale);
@@ -624,9 +688,313 @@ export class Renderer {
       for (let i = 0; i < 5; i++) { g.fillStyle = i < 2 ? '#3e2c2c' : i === 4 ? '#ffffff' : '#c9d3de'; g.fillRect(Math.round(p.x + Math.cos(da) * (i - 1)), Math.round(p.y + Math.sin(da) * (i - 1)), 1, 1); }
     }
     if (f.ball) this.drawBall(g, fx, fy, scale, time);
+    // The axolotl's lost parts growing back where they came off.
+    if (axo?.regrow && !only) {
+      const list = Object.entries(axo.regrow).filter(([p]) => (p === 'tail' ? axo.tail : severed.includes(p)));
+      if (list.length) this.drawRegrow(g, list, frame, fx, fy, face, scale, ch, all);
+    }
     // Weapon smears are drawn later, over the lighting, so they read as bright streaks.
     const smear = f.smear && isMelee(a.weapon) && !severed.includes('armF') ? { sm: f.smear, frame } : null;
     return { eye: figurePoint(frame, 'head', eye[0], eye[1], fx, fy, face, scale, ch), hand, sprite: s, overlay, smear, frame, name: f.name };
+  }
+
+  // ---- the axolotl -----------------------------------------------------------------------
+
+  // Reads a painted figure back from its canvas: its alpha for the rims and shadows, and its
+  // pixels for the touch-ups below (written back with putImageData when they change anything).
+  readBack(fc) {
+    fc.img = fc.body.g.getImageData(0, 0, FIG_W, FIG_H);
+    fc.alpha = fc.img.data;
+  }
+
+  // A figure composed from only some of its parts (a hatching clone has no hind feet yet).
+  customSprite(a, f, variant, only) {
+    const ch = castFor(a.type, lookOf(a)), key = ch.id + '|' + JSON.stringify(f.frame) + '|' + f.expr + '|' + variant + '|' + only.join(',');
+    this.customs ||= new Map();
+    let s = this.customs.get(key);
+    if (!s) {
+      const out = composeChars(ch, f.frame, { expr: f.expr, only });
+      if (!out) return figureSprite(a, f, variant).s;
+      s = this.rowsSprite(out, paletteFor(ch, variant), 'cs' + key);
+      if (this.customs.size > 200) this.customs.delete(this.customs.keys().next().value);
+      this.customs.set(key, s);
+    }
+    return s;
+  }
+  // Composed rows ({ rows, x0, y0, w, h }) as a sprite drawFigure can place by the feet.
+  rowsSprite(out, pal, key) {
+    return { canvas: bitCanvas(out.rows, pal, key), flipped: null, x0: out.x0, y0: out.y0, w: out.w, h: out.h };
+  }
+  // A cast's palette with the pale regrowing tissue added.
+  capPal(ch) {
+    this.capPals ||= new Map();
+    if (!this.capPals.has(ch.id)) this.capPals.set(ch.id, { ...paletteFor(ch), ...CAP });
+    return this.capPals.get(ch.id);
+  }
+
+  // Lost parts growing back where they came off, in four stages: a sealed pale cap, a bud, a
+  // paddle, then the part with its digits still pale. Far-side parts tuck in behind the body.
+  // list: [[part, progress 0..1], ...].
+  drawRegrow(g, list, frame, fx, fy, face, scale, ch, chains) {
+    const AN = ch.anchor || ANCHOR, JT = ch.joint || JOINT, B = AN.body;
+    for (const [part, k] of list) {
+      if (part === 'tail') { this.drawTailBud(g, k, frame, fx, fy, face, scale, ch, chains); continue; }
+      if (!JT[part]) continue;
+      const n = regrowStage(k), st = REGROW[part[0] === 'a' ? 'arm' : 'foot'][n];
+      const p = figurePoint(frame, 'body', JT[part][0] - B[0], JT[part][1] - B[1], fx, fy, face, scale, ch);
+      const w = st.m[0].length, h = st.m.length, px = face > 0 ? st.piv[0] : w - 1 - st.piv[0];
+      g.globalCompositeOperation = part.endsWith('B') && !st.bare ? 'destination-over' : 'source-over';
+      g.drawImage(bitCanvas(st.m, BITS_PAL, 'rg' + part[0] + n, face), Math.round(p.x) - px * scale, Math.round(p.y) - st.piv[1] * scale, w * scale, h * scale);
+    }
+    g.globalCompositeOperation = 'source-over';
+  }
+
+  // The tail growing back: a sealed cap, then a short tube with a pale tip that lengthens stage
+  // by stage along the curve the tail would have (it sways with the body like the real one).
+  drawTailBud(g, k, frame, fx, fy, face, scale, ch, chains) {
+    const full = chains?.find(c => c.spec === ch.tail)?.pts || tailPoints(ch, frame);
+    if (!full || full.length < 2) return;
+    const n = regrowStage(k), pal = this.capPal(ch);
+    g.globalCompositeOperation = 'destination-over';
+    if (n > 0) {
+      let total = 0;
+      for (let i = 1; i < full.length; i++) total += Math.hypot(full[i][0] - full[i - 1][0], full[i][1] - full[i - 1][1]);
+      let want = total * TAIL_GROWN[n];
+      const pts = [full[0]];
+      for (let i = 1; i < full.length && want > 0; i++) {
+        const [ax, ay] = full[i - 1], [bx, by] = full[i], d = Math.hypot(bx - ax, by - ay);
+        if (d >= want) { pts.push([ax + ((bx - ax) * want) / d, ay + ((by - ay) * want) / d]); want = 0; } else { pts.push(full[i]); want -= d; }
+      }
+      const out = pts.length > 1 && composeTubes(ch, [{ pts, spec: { ...ch.tail, tip: 'c' } }]);
+      if (out) drawFigure(g, this.rowsSprite(out, pal, 'tb' + ch.id + out.x0 + ',' + out.y0 + out.rows.join('/')), fx, fy, face, scale);
+    } else {
+      const [rx, ry] = full[0], cap = REGROW.foot[0];
+      const x = fx + Math.round(rx - 2) * face * scale - (face > 0 ? 0 : (cap.m[0].length - 1) * scale), y = fy + Math.round(ry - 1) * scale;
+      g.drawImage(bitCanvas(cap.m, BITS_PAL, 'rgcap', face), x, y, cap.m[0].length * scale, cap.m.length * scale);
+    }
+    g.globalCompositeOperation = 'source-over';
+  }
+
+  // While the demons are out the axolotl's gills burn: their two pinks become a flickering flame
+  // (only behind the eye, so the mouth stays pink) and every burning pixel glows.
+  burnGills(f, t) {
+    const pal = castFor(6, null).palette, light = rgbKey(pal['6']), dark = rgbKey(pal['7']);
+    const d = f.fc.alpha, face = f.a.face || 1, ex = f.info.eye.x, glow = (f.glow ||= []), tick = Math.floor(t * 20);
+    let hit = false;
+    for (let i = 0; i < FIG_W * FIG_H; i++) {
+      const k = i * 4;
+      if (!d[k + 3]) continue;
+      const c = (d[k] << 16) | (d[k + 1] << 8) | d[k + 2];
+      if (c !== light && c !== dark) continue;
+      const x = i % FIG_W;
+      if ((x - ex) * face > -2) continue;
+      const y = (i - x) / FIG_W, flick = (x * 7 + y * 13 + tick) % 5 === 0;
+      const col = c === light ? (flick ? '#fff2a0' : '#ffd040') : flick ? '#ffd040' : '#ff5a1a';
+      const v = rgbKey(col);
+      d[k] = v >> 16; d[k + 1] = (v >> 8) & 255; d[k + 2] = v & 255;
+      glow.push([x, y, col]);
+      hit = true;
+    }
+    return hit;
+  }
+
+  // Mixes a figure's colours toward hex by k (outlines stay dark unless all is set).
+  tintFigure(f, hex, k, all = false) {
+    const d = f.fc.alpha, [r, g, b] = hexToRgb(hex);
+    for (let i = 0; i < d.length; i += 4) {
+      if (!d[i + 3] || (!all && d[i] + d[i + 1] + d[i + 2] < 150)) continue;
+      d[i] += (r - d[i]) * k; d[i + 1] += (g - d[i + 1]) * k; d[i + 2] += (b - d[i + 2]) * k;
+    }
+    return true;
+  }
+
+  // A demon's eyes, cracks and flame gills glow; the flames' tips flicker white-hot.
+  demonGlow(f, t) {
+    if (!this.demonKeys) {
+      const p = castFor(6, 'demon').palette;
+      this.demonKeys = new Map(['e', 'v', '6', '7'].filter(k => p[k]).map(k => [rgbKey(p[k]), k]));
+    }
+    const d = f.fc.alpha, glow = (f.glow ||= []), tick = Math.floor(t * 15);
+    let eyes = 0, ex = 0, ey = 0, hit = false;
+    for (let i = 0; i < FIG_W * FIG_H; i++) {
+      const k4 = i * 4;
+      if (!d[k4 + 3]) continue;
+      const rgb = (d[k4] << 16) | (d[k4 + 1] << 8) | d[k4 + 2], key = this.demonKeys.get(rgb);
+      if (!key) continue;
+      const x = i % FIG_W, y = (i - x) / FIG_W;
+      let col = '#' + rgb.toString(16).padStart(6, '0');
+      if (key === '6' && (x * 5 + y * 11 + tick) % 7 === 0) { col = '#fff6c0'; d[k4] = 255; d[k4 + 1] = 246; d[k4 + 2] = 192; hit = true; }
+      if (key === 'e') { eyes++; ex += x; ey += y; }
+      glow.push([x, y, col]);
+    }
+    if (eyes) f.eyeGlow = [ex / eyes, ey / eyes];
+    return hit;
+  }
+
+  // A ring of light r pixels wide around a figure's silhouette (a demon about to burst).
+  halo(f, r, col) {
+    const A = f.fc.alpha, glow = (f.glow ||= []);
+    const solid = (x, y) => x >= 0 && y >= 0 && x < FIG_W && y < FIG_H && A[(y * FIG_W + x) * 4 + 3] > 0;
+    for (let y = 0; y < FIG_H; y++) for (let x = 0; x < FIG_W; x++) {
+      if (solid(x, y)) continue;
+      let near = false;
+      for (let dy = -r; dy <= r && !near; dy++) for (let dx = -r; dx <= r; dx++) if (Math.abs(dx) + Math.abs(dy) <= r && solid(x + dx, y + dy)) { near = true; break; }
+      if (near) glow.push([x, y, col]);
+    }
+  }
+
+  // The front of a fighter's mouth, in view pixels.
+  mouthOf(o) {
+    const a = o.a, ch = castFor(a.type, lookOf(a)), m = ch.mouth || [7, -3];
+    return figurePoint(o.info.frame, 'head', m[0], m[1], o.hx, o.hy, a.face || 1, 1, ch);
+  }
+
+  // A clone or a demon, painted like a fighter, with what its act needs on top: carried in its
+  // owner's mouth, diving into goo, turning demon, swelling to burst, melting, hatching.
+  paintMinion(m, figures, ox, oy, st) {
+    const act = m.act, at = m.actT ?? 0, demon = m.form === 'demon';
+    const fc = this.figureCanvases('m' + m.owner + '_' + m.slot), g = fc.body.g;
+    g.clearRect(0, 0, FIG_W, FIG_H);
+    let fx = Math.round(m.x * S), fy = Math.round((m.y + (m.foot ?? FOOT)) * S), view = m, info, sink = 0, jitter = 0;
+    const morph = act === 'morph' ? m.morph ?? Math.min(1, at / 0.3) : 0;
+    // Turning demon: the clone's body until halfway, the demon's after; it shivers before the swap.
+    if (act === 'morph') { view = { ...m, form: morph > 0.5 ? 'demon' : 'mini' }; if (morph < 0.5) jitter = Math.floor(st * 34) % 2 ? 1 : -1; }
+    if (act === 'burst' && at > 0.1) jitter = Math.floor(st * 40) % 2 ? 1 : -1;
+    // Diving into goo and rising back out of it; melting down into it.
+    if (act === 'dive') sink = Math.round((at < 0.35 ? at / 0.35 : Math.max(0, 1 - (at - 0.35) / 0.35)) * (demon ? 19 : 15));
+    if (act === 'dying') sink = Math.round(Math.min(1, at / 0.4) ** 2 * (demon ? 17 : 13));
+    if (act === 'carried') {
+      const o = figures.find(f => f.a.id === m.owner);
+      if (!o) return null;
+      const p = this.mouthOf(o);
+      fx = Math.round(p.x); fy = Math.round(p.y);
+      info = this.paintCarried(g, view, o.a.face || 1, st);
+    } else {
+      const hatch = act === 'hatch' && at < 0.6;
+      info = this.paintFighter(g, view, FIG_X + jitter, FIG_Y + sink, st, hatch ? { only: ['head', 'body', 'armF', 'armB'] } : {});
+      // Hatching, its hind feet bud out where they will grow.
+      if (hatch) this.drawRegrow(g, [['footB', 0.05 + at * 0.55], ['footF', 0.05 + at * 0.55]], info.frame, FIG_X + jitter, FIG_Y, view.face || 1, 1, castFor(6, view.form), null);
+      // Below the floor nothing shows: it is under the goo.
+      if (sink) g.clearRect(0, FIG_Y + 1, FIG_W, FIG_H - FIG_Y - 1);
+    }
+    this.readBack(fc);
+    const f = { a: view, minion: true, kind: kindOf(m), hx: fx, hy: fy, cx: fx, cy: fy - 6, info, fc, x: fx - FIG_X + ox, y: fy - FIG_Y + oy };
+    const brood = (this.broods || []).indexOf(m.owner);
+    let dirty = false;
+    if (brood > 0) dirty = this.tintFigure(f, BROOD[brood % BROOD.length], 0.22);
+    if (view.form === 'demon') dirty = this.demonGlow(f, st) || dirty;
+    // Two flashes of white and gold around the swap to the demon.
+    if (morph > 0.35 && morph < 0.65) dirty = this.tintFigure(f, Math.floor(st * 30) % 2 ? '#ffffff' : '#ffd040', 0.85, true);
+    // About to burst it swells white-hot, ringed with light.
+    if (act === 'burst') { const k = Math.min(1, at / 0.3); dirty = this.tintFigure(f, '#fff6e0', 0.25 + k * 0.7, k > 0.7); this.halo(f, k > 0.6 ? 2 : 1, k > 0.5 ? '#ffffff' : '#ffd040'); }
+    // Melting, it pales as it sinks into its puddle.
+    if (act === 'dying') dirty = this.tintFigure(f, demon ? '#ff9a6a' : '#ffe4ec', Math.min(1, at / 0.4) * 0.6) || dirty;
+    if (dirty) g.putImageData(fc.img, 0, 0);
+    for (const k of ['eye', 'hand']) { info[k].x += fx - FIG_X; info[k].y += fy - FIG_Y; }
+    return f;
+  }
+
+  // A clone held across its owner's jaws: head forward, legs kicking, wiggling as it goes.
+  paintCarried(g, m, face, st) {
+    const ch = castFor(6, m.form), kick = Math.floor(st * 7) % 2;
+    const f = frameFor({ ...m, act: null, attack: 0, hitstun: 0, hurt: 0, stun: 0, ground: false, vx: 0, vy: kick ? -2 : 2, face: 1 }, st);
+    const out = composeChars(ch, f.frame, { expr: 'Hurt' });
+    const info = { eye: { x: FIG_X, y: FIG_Y }, hand: { x: FIG_X, y: FIG_Y }, frame: f.frame, name: 'carried', sprite: null };
+    if (!out) return info;
+    const key = 'car' + ch.id + f.name, deg = Math.floor(st * 5) % 2 ? 101.25 : 78.75;
+    const t = turn(out.rows, [-out.x0, -4 - out.y0], deg, key);
+    const w = t.rows[0].length, px = face > 0 ? t.piv[0] : w - 1 - t.piv[0];
+    g.drawImage(bitCanvas(t.rows, paletteFor(ch, ''), key + snapDeg(deg), face), FIG_X - px, FIG_Y - t.piv[1]);
+    return info;
+  }
+
+  // Where a bud sits this frame: its stage (one per fifth of a second), its breath, its place.
+  budOf(m, st) {
+    const stage = Math.min(3, Math.floor((m.actT ?? 0) / 0.2)), pulse = Math.floor(st * (5 + stage * 3)) % 2, mat = BUD[stage][pulse];
+    const w = mat[0].length, h = mat.length, bottom = Math.round((m.y + (m.foot ?? 0)) * S);
+    return { m: mat, key: 'bud' + stage + pulse, face: m.face || 1, x: Math.round(m.x * S) - (w >> 1), y: bottom - h + 1 };
+  }
+  // The goo puddle under a clone diving or melting: a drop, a pool, then a drop again.
+  puddleOf(m) {
+    const at = m.actT ?? 0, demon = m.form === 'demon';
+    const k = m.act === 'dive' ? (at < 0.35 ? at / 0.35 : 1 - (at - 0.35) / 0.35) : Math.min(1, at / 0.4);
+    const n = m.act === 'dying' && k > 0.88 ? 1 : k < 0.12 ? 0 : k < 0.3 ? 1 : demon ? 3 : 2, mat = PUDDLE[n];
+    const fy = Math.round((m.y + (m.foot ?? FOOT)) * S);
+    return { m: mat, n, x: Math.round(m.x * S) - (mat[0].length >> 1), y: fy - mat.length + 1 };
+  }
+
+  // The axolotl's bits in the lit layer: lost parts tumbling through the air (the severed tail
+  // piece, or the limb itself), buds swelling on the floor, the puddles clones dive and melt into.
+  drawAxoBits(g, minions, figures, ox, oy, st) {
+    for (const m of minions) {
+      const kind = kindOf(m), at = m.actT ?? 0, x = Math.round(m.x * S) + ox, y = Math.round(m.y * S) + oy;
+      if (kind === 'seed') {
+        const deg = (at * 720 * ((m.vx ?? 0) < 0 ? -1 : 1)) % 360;
+        if (!m.part || m.part === 'tail') {
+          const t = turn(TAIL_PIECE, [7, 3], deg, 'tailPiece');
+          g.drawImage(bitCanvas(t.rows, BITS_PAL, 'tailPiece' + snapDeg(deg)), x - t.piv[0], y - t.piv[1]);
+        } else {
+          const sp = partSprite({ type: 6, form: null, part: m.part, angle: (deg * Math.PI) / 180, face: m.face || 1 });
+          if (sp) g.drawImage(sp.canvas, x - sp.px, y - sp.py);
+        }
+      } else if (kind === 'bud') {
+        const b = this.budOf(m, st);
+        g.drawImage(bitCanvas(b.m, BITS_PAL, b.key, b.face), b.x + ox, b.y + oy);
+      } else if (m.act === 'dive' || m.act === 'dying') {
+        const p = this.puddleOf(m);
+        g.drawImage(bitCanvas(p.m, BITS_PAL, 'pud' + p.n), p.x + ox, p.y + oy);
+      }
+    }
+  }
+
+  // The bubble, over the lighting: a faint wobbling film and a rim lit on the top-left and
+  // shadowed on the bottom-right. Its shine is drawn in the emissive pass (bubbleShine).
+  drawBubble(g, m, ox, oy, st) {
+    const R = Math.max(4, (m.r || 9) * S), cx = Math.round(m.x * S) + ox, cy = Math.round(m.y * S) + oy;
+    const w = Math.sin(st * 9 + (m.id || 0)) * 0.8, rx = R + w, ry = R - w;
+    g.globalAlpha = 0.16;
+    g.fillStyle = '#bfeaff';
+    for (let y = -Math.floor(ry); y <= Math.floor(ry); y++) { const hw = Math.round(rx * Math.sqrt(Math.max(0, 1 - (y / ry) ** 2))); g.fillRect(cx - hw, cy + y, hw * 2 + 1, 1); }
+    g.globalAlpha = 0.9;
+    const n = Math.round(R * 8);
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2, lit = Math.cos(a + 2.356);
+      g.fillStyle = lit > 0.55 ? '#ffffff' : lit < -0.4 ? '#5aa0d0' : '#a8e4f8';
+      g.fillRect(Math.round(cx + Math.cos(a) * rx), Math.round(cy + Math.sin(a) * ry), 1, 1);
+    }
+    g.globalAlpha = 1;
+  }
+  bubbleShine(g, m, ox, oy, st) {
+    const R = Math.max(4, (m.r || 9) * S), cx = Math.round(m.x * S) + ox, cy = Math.round(m.y * S) + oy, w = Math.sin(st * 9 + (m.id || 0)) * 0.8;
+    g.fillStyle = '#ffffff';
+    for (let a = -2.75; a <= -1.95; a += 0.12) g.fillRect(Math.round(cx + Math.cos(a) * (R + w - 2)), Math.round(cy + Math.sin(a) * (R - w - 2)), 1, 1);
+    g.fillRect(Math.round(cx - R * 0.42), Math.round(cy - R * 0.2), 1, 1);
+    g.fillStyle = '#d8f6ff';
+    for (let a = 0.45; a <= 0.95; a += 0.15) g.fillRect(Math.round(cx + Math.cos(a) * (R + w - 2)), Math.round(cy + Math.sin(a) * (R - w - 2)), 1, 1);
+  }
+
+  // The white core of a bud breathing in the dark.
+  budCore(g, m, ox, oy, st) {
+    const b = this.budOf(m, st), w = b.m[0].length;
+    b.m.cores ||= b.m.flatMap((row, y) => [...row].map((c, x) => (c === 'w' ? [x, y] : null)).filter(Boolean));
+    g.globalAlpha = 0.6 + 0.4 * Math.sin(st * 14);
+    g.fillStyle = '#ffffff';
+    for (const [x, y] of b.m.cores) g.fillRect(b.x + ox + (b.face < 0 ? w - 1 - x : x), b.y + oy + y, 1, 1);
+    g.globalAlpha = 1;
+  }
+
+  // A clone's life when it has taken damage: a 6x1 pip over its head in its brood's colour.
+  drawMinionPips(g, minions, ox, oy) {
+    for (const m of minions) {
+      const kind = kindOf(m);
+      if ((kind !== 'mini' && kind !== 'demon') || !(m.hp < m.maxHp) || ['dying', 'burst', 'carried', 'dive'].includes(m.act)) continue;
+      const brood = Math.max(0, (this.broods || []).indexOf(m.owner));
+      const x = Math.round(m.x * S) + ox - 3, y = Math.round((m.y + (m.foot ?? FOOT)) * S) + oy - (kind === 'demon' ? 22 : 17);
+      g.fillStyle = '#0b0812'; g.fillRect(x - 1, y - 1, 8, 3);
+      g.fillStyle = '#3a2030'; g.fillRect(x, y, 6, 1);
+      g.fillStyle = kind === 'demon' ? '#ff5a1a' : BROOD[brood % BROOD.length];
+      g.fillRect(x, y, Math.max(1, Math.round((6 * Math.max(0, m.hp)) / m.maxHp)), 1);
+    }
   }
 
   // The frog's tongue: out in a blink to the move's reach, held there, and reeled back in.
@@ -824,7 +1192,11 @@ export class Renderer {
       lg.drawImage(sh, Math.round(X(x) - sh.width / 2) + ox, X(top) - 2 + oy);
       lg.globalAlpha = 1;
     };
-    for (const a of state.minions || []) put(a.x, a.y + (a.foot ?? FOOT), a.form === 'demon' ? 9 : 6);
+    for (const a of state.minions || []) {
+      const k = kindOf(a);
+      if (k === 'bubble' || k === 'seed' || ['carried', 'dive', 'dying'].includes(a.act)) continue;
+      put(a.x, a.y + (a.foot ?? FOOT), k === 'bud' ? 5 : a.form === 'demon' ? 9 : 6);
+    }
     for (const a of state.actors) if (!a.dead && !a.knocked && a.act !== 'swarm' && a.swallowedBy == null) put(a.x, a.y + FOOT, a.act === 'ball' ? 16 : a.form === 'titan' ? 24 : a.form === 'beast' ? 15 : 11);
     for (const p of state.props) if (p.kind !== 'glass' && p.kind !== 'cargo') put(p.x, p.y + p.h / 2, X(p.w) + 2);
   }
@@ -969,6 +1341,18 @@ export class Renderer {
       if (f.a.form && f.info?.eye && !(f.a.severed || []).includes('head')) add({ x: f.info.eye.x, y: f.info.eye.y, r: titan ? 14 : 10, color: titan ? '#fff2a0' : '#ffc040', i: titan ? 0.9 : 0.7, noRim: true });
       if (k > 0.05) add({ x: f.hx, y: f.hy - (titan ? 18 : 12), r: (titan ? 36 : 26) + k * 46, color: k > 0.8 ? '#ffe2a0' : titan ? '#ff5a1a' : '#ff8a3a', i: k * 1.3 });
     }
+    // The axolotl: its demons smoulder red with burning eyes; while they are out its gills light
+    // up its face; a demon about to burst flares white; buds give off a soft pink.
+    for (const f of figures) {
+      if (f.a.type !== 6) continue;
+      if (f.minion && f.a.form === 'demon') {
+        add({ x: f.hx, y: f.hy - 8, r: 30, color: '#ff4a1a', i: 0.45 + 0.1 * Math.sin(t * 13 + f.a.id) });
+        if (f.eyeGlow) add({ x: f.hx - FIG_X + f.eyeGlow[0], y: f.hy - FIG_Y + f.eyeGlow[1], r: 12, color: '#fff2a0', i: 0.8, noRim: true });
+      }
+      if (!f.minion && axoOf(f.a, state.time ?? t)?.demon > 0) add({ x: f.hx - (f.a.face || 1) * 5, y: f.hy - 16, r: 36, color: '#ff6a1a', i: 0.6 + 0.15 * Math.sin(t * 17) });
+      if (f.a.act === 'burst') add({ x: f.hx, y: f.hy - 8, r: 44, color: '#fff2a0', i: 1.3 * Math.min(1, (f.a.actT || 0) / 0.3) });
+    }
+    for (const m of state.minions || []) if (kindOf(m) === 'bud') add({ x: X(m.x), y: X(m.y + (m.foot ?? 0)) - 3, r: 16, color: '#ff9cc0', i: 0.35, noRim: true });
     for (const f of figures) if (styleOf(f.a) === 4 && f.info?.eye) {
       if (f.a.type === 4) add({ x: f.info.eye.x, y: f.info.eye.y, r: 10, color: '#ff4f6e', i: 0.7, noRim: true });
       // The blood orb lights the claw up as it condenses.
@@ -1032,6 +1416,13 @@ export class Renderer {
         if (sc && f.a.ground && Math.abs(f.a.vx || 0) > 3 && sc.y >= f.hy + oy - 3 && this.simDt > 0 && Math.random() < 0.6) this.fx.burst('spark', sc.x - ox, f.hy - 1, 1, { a: (f.a.face || 1) > 0 ? Math.PI + 0.4 : -0.4, spread: 0.8, s: 1.8, life: 0.25, colors: ['#ffffff', '#ffd0a0', this.fx.pal().light], g: 0.1, b: 0.3, em: true });
       }
       if (f.a.bloodMark) drawMarks(eg, f.a, f.hx + ox, f.hy + oy - 31, st, this.fx.gore);
+    }
+    // The axolotl: whatever burns on its demons and on its gills, the cores of buds, bubble shine.
+    for (const f of figures) if (f.glow) for (const [x, y, c] of f.glow) { eg.fillStyle = c; eg.fillRect(f.x + x, f.y + y, 1, 1); }
+    for (const m of state.minions || []) {
+      const kind = kindOf(m);
+      if (kind === 'bud') this.budCore(eg, m, ox, oy, st);
+      else if (kind === 'bubble') this.bubbleShine(eg, m, ox, oy, st);
     }
     this.fx.drawHemo(eg, ox, oy, t);
     this.fx.drawEmissive(eg, ox, oy, t);
@@ -1129,6 +1520,19 @@ export class Renderer {
         fx.add({ k: 'spark', x: mx + f * d, y, vx: -f * (3.4 + d * 0.03), vy: (my - y) * 0.06, life: 0.18 + d / 400, c: ['#ffffff', '#d8eeff', '#a8c8e0'][i], s: 1, g: 0, b: 0, em: true, drag: 1, stick: false, grow: 0 });
       }
     }
+    // The axolotl: its demons shed embers and wisps of smoke; while they are out its gills spit
+    // sparks; melting clones break up into bubbles; a diving clone splashes its puddle; buds twinkle.
+    for (const m of state.minions || []) {
+      const kind = kindOf(m), x = X(m.x), y = X(m.y + (m.foot ?? FOOT));
+      if (kind === 'demon' && m.act !== 'dying') {
+        if (Math.random() < dt * 3) fx.burst('spark', x + rnd(-4, 4), y - rnd(4, 14), 1, { a: -Math.PI / 2, spread: 0.7, s: 0.7, life: 0.9, colors: HELL, g: -0.025, drag: 0.97, em: true });
+        if (Math.random() < dt * 1.5) fx.burst('smoke', x + rnd(-3, 3), y - 14, 1, { a: -Math.PI / 2, spread: 0.5, s: 0.4, life: 0.8, colors: ['#3a2a2a', '#2a1a1c'], g: -0.02, drag: 0.96, size: 1, grow: 0.03 });
+      }
+      if (m.act === 'dying' && Math.random() < dt * 14) fx.part({ k: 'bubl', x: x + rnd(-5, 5), y: y - rnd(1, 8), vx: rnd(-0.2, 0.2), vy: -rnd(0.3, 0.8), life: rnd(0.4, 0.8), c: m.form === 'demon' ? '#ff9a6a' : '#ffd0de', s: 1 + Math.floor(rnd(0, 3)), g: -0.006, drag: 0.98, ov: true, seed: rnd(0, 9) });
+      if (m.act === 'dive' && Math.random() < dt * 10) fx.burst('drop', x + rnd(-5, 5), y - 1, 1, { a: -Math.PI / 2, spread: 1.2, s: 1.2, life: 0.35, colors: ['#ffffff', '#ffd0de', '#f69bb7'], g: 0.15, ov: true });
+      if (kind === 'bud' && Math.random() < dt * 2.5) fx.burst('spark', X(m.x) + rnd(-3, 3), X(m.y + (m.foot ?? 0)) - rnd(2, 7), 1, { a: -Math.PI / 2, spread: 0.6, s: 0.4, life: 0.6, colors: ['#ffffff', '#ffd0de'], g: -0.01, drag: 0.97, em: true });
+    }
+    for (const a of state.actors) if (a.type === 6 && !a.dead && !a.knocked && axoOf(a, state.time ?? this.time)?.demon > 0 && Math.random() < dt * 6) fx.burst('spark', X(a.x) - (a.face || 1) * 6 + rnd(-4, 4), X(a.y) - rnd(4, 12), 1, { a: -Math.PI / 2, spread: 0.8, s: 0.9, life: 0.7, colors: HELL, g: -0.03, drag: 0.96, em: true });
     for (const f of state.fires || []) if (Math.random() < 0.9) fx.burst('fire', X(f.x) + rnd(-12, 12), X(f.y) - 2, 2, { a: -Math.PI / 2, spread: 0.7, s: 0.9, life: 0.6, colors: [P.fire0, P.fire1, P.fire2], g: -0.04, drag: 0.96, size: 2, em: true });
     for (const a of state.actors) {
       if (a.dead || a.swallowedBy != null) continue;
@@ -1175,6 +1579,7 @@ export class Renderer {
     if (type === 4) { (this.noxHero ||= new NoxHero(this)).draw(g, x, y, t, { density, dt, gore: this.fx.gore }); return; }
     if (type === 3) { (this.jumaHero ||= new JumaHero(this)).draw(g, x, y, t, { density, dt }); return; }
     if (type === 5) { (this.frogHero ||= new FrogHero(this)).draw(g, x, y, t, { density, dt }); return; }
+    if (type === 6 && HEROES.XoloHero) { (this.xoloHero ||= new HEROES.XoloHero(this)).draw(g, x, y, t, { density, dt }); return; }
     this.drawPreview(g, type, x, y, { density, mode: 'demo', key, face: 1, dt });
   }
 

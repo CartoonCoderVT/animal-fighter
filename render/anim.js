@@ -425,7 +425,102 @@ export const FRAMES = {
   fGulp1: { head: [0, -2, -22.5], body: [0, -1], armF: [2, -2, -160], armB: [-2, -2, 160], footF: [3, 0], footB: [-3, 0], tailDeg: 10 },
   fGulp2: { head: [1, 3], body: [0, 2], armF: [4, 1, -80], armB: [-3, 1, 80], footF: [5, 0], footB: [-5, 0], tailDeg: -6 },
   fSpitA: { head: [-3, 2, -22.5], body: [-2, 1], armF: [0, 1, 60], armB: [-1, 0, 70], footF: [4, 0], footB: [-4, 0], tailDeg: -18 },
-  fSpitX: { head: [4, 0, 11.25], body: [2, 0], armF: [-1, 0, 50], armB: [-2, 0, 60], footF: [5, 0], footB: [-4, -1, 22.5], tailDeg: 18 }
+  fSpitX: { head: [4, 0, 11.25], body: [2, 0], armF: [-1, 0, 50], armB: [-2, 0, 60], footF: [5, 0], footB: [-4, -1, 22.5], tailDeg: 18 },
+  // Xolo, the axolotl. Low and wide like something that lives on the bottom of a pond, little hands
+  // up, the gills flared; the big flat head does most of the acting. Its weapons are the gills (the
+  // whole head whips them across), the paddle of a tail and the throat. Tail strikes bring the tail
+  // round in front of the body (front: 'tail'); explicit tails are point lists from the tail root.
+  xStance1: { head: [1, 2], body: [0, 1], armF: [2, 1, -56.25], armB: [1, 0, -33.75], footF: [3, 0], footB: [-3, 0], tailDeg: -6 },
+  xStance2: { head: [1, 3], body: [0, 2], armF: [2, 2, -56.25], armB: [1, 1, -33.75], footF: [3, 0], footB: [-3, 0], tailDeg: -2 },
+  // The waddle: low, the head bobbing ahead, the tail sculling from side to side.
+  xRun1: { head: [2, 1], body: [1, 0], armF: [1, 0, 33.75], armB: [2, 0, -45], footF: [3, 0], footB: [-3, -1], tailDeg: 8 },
+  xRunP: { head: [2, 0], body: [1, -1], armF: [1, -1, -11.25], armB: [1, -1, -11.25], footF: [0, -1], footB: [0, 0], tailDeg: 0 },
+  xRun2: { head: [2, 1], body: [1, 0], armF: [2, 0, -45], armB: [1, 0, 33.75], footF: [-2, -1], footB: [3, 0], tailDeg: -8 },
+  xRunP2: { head: [2, 0], body: [1, -1], armF: [1, -1, -11.25], armB: [1, -1, -11.25], footF: [0, 0], footB: [0, -1], tailDeg: 0 },
+  // Gill whip: the head reared back (gills down behind it), then snapped forward and down so the
+  // fronds lash over the top at the rival, a little slap of the hand to go with it.
+  xGlA: { head: [-2, 1, -22.5], body: [-1, 0], armF: [-2, -1, 123.75], armB: [1, 0, -45], footF: [3, 0], footB: [-2, 0], tailDeg: -14 },
+  xGlX: { head: [3, 0, 11.25], body: [2, 0], armF: [3, -1, -101.25], armB: [-1, 0, 33.75], footF: [4, 0], footB: [-3, -1, 22.5], tailDeg: 10 },
+  xGlI: { head: [4, 2, 11.25], body: [3, 1], armF: [4, 1, -45], armB: [-1, 0, 45], footF: [4, 0], footB: [-3, 0], tailDeg: 16 },
+  xGlR: { head: [1, 2], body: [1, 1], armF: [2, 1, -56.25], armB: [0, 0, -33.75], footF: [3, 0], footB: [-2, 0], tailDeg: 4 },
+  // The backhand: tucked low with the head down, then whipped up through the rival.
+  xGl2A: { head: [0, 3, 22.5], body: [-1, 2], armB: [-2, 0, 135], armF: [2, 2, -22.5], footF: [3, 0], footB: [-3, 0], tailDeg: 12 },
+  xGl2X: { head: [3, 0, -11.25], body: [2, 0], armB: [3, -2, -123.75], armF: [-1, 0, 45], footF: [4, 0], footB: [-3, -1, 22.5], front: 'armB', tailDeg: -8 },
+  xGl2I: { head: [4, -1, -11.25], body: [3, -1], armB: [4, -2, -157.5], armF: [-1, 0, 56.25], footF: [4, 0], footB: [-3, 0], front: 'armB', tailDeg: -16 },
+  // The paddle: cocked high behind, then the body twists and the tail comes round in front, low
+  // and then flat out at the rival; it drops back behind on the recovery.
+  xTlA: { head: [-2, 2, -11.25], body: [-1, 1], armF: [0, 1, 56.25], armB: [-1, 0, 67.5], footF: [3, 0], footB: [-2, 0], tail: [[1, 0], [-3, 1], [-7, 1], [-11, 0], [-14, -3], [-15, -7]] },
+  xTlX: { head: [1, 2, 11.25], body: [0, 1], armF: [-1, 0, 78.75], armB: [-2, 0, 90], footF: [3, 0], footB: [-3, -1, 22.5], front: 'tail', tail: [[1, 0], [3, 1], [6, 1], [10, 1], [14, 0], [18, -1]] },
+  xTlI: { head: [-1, 1, -11.25], body: [-1, 0], armF: [-2, -1, 90], armB: [-3, -1, 101.25], footF: [4, 0], footB: [-3, 0], front: 'tail', tail: [[1, 0], [4, 0], [8, -1], [12, -2], [16, -2], [20, -1]] },
+  xTlR: { head: [1, 2], body: [0, 1], armF: [1, 0, -33.75], armB: [0, 0, -22.5], footF: [3, 0], footB: [-3, 0], tailDeg: -6 },
+  // The suction gulp: the throat filling, the jaws dropped into a gape that pulls, the lunge and
+  // the jaws slammed shut on the rival.
+  xGuA: { head: [-1, 0, -11.25], body: [-1, 0], armF: [1, -1, -135], armB: [-1, -1, 135], footF: [4, 0], footB: [-3, 0], tailDeg: -10 },
+  xGuS: { head: [2, 1], body: [1, 1], armF: [-1, 0, 45], armB: [-2, 0, 56.25], footF: [4, 0], footB: [-4, 0], tailDeg: -16 },
+  xGuX: { head: [4, 0, 11.25], body: [3, 0], armF: [3, -1, -90], armB: [2, -1, -101.25], footF: [5, 0], footB: [-4, -1, 22.5], tailDeg: 12 },
+  xGuI: { head: [5, 2, 11.25], body: [3, 1], armF: [4, 1, -56.25], armB: [3, 0, -67.5], footF: [5, 0], footB: [-4, 0], tailDeg: 18 },
+  xGuR: { head: [2, 2], body: [1, 1], armF: [2, 1, -45], armB: [0, 0, -33.75], footF: [3, 0], footB: [-3, 0], tailDeg: 6 },
+  // The geyser: crouched with the tail flat on the floor behind, then a hop and the tail flipped
+  // under and up in front of it, where the column of water bursts out.
+  xGyA: { head: [0, 4, 11.25], body: [0, 3], armF: [1, 2, 33.75], armB: [0, 2, 22.5], footF: [3, 0], footB: [-3, 0], tail: [[1, -1], [-3, -1], [-6, -1], [-9, -1], [-12, -1], [-15, -2]] },
+  xGyX: { head: [2, -2, -11.25], body: [1, -2], armF: [2, -3, -146.25], armB: [0, -3, -157.5], footF: [1, -2], footB: [-1, -1], front: 'tail', tail: [[1, 0], [2, 3], [5, 4], [9, 4], [13, 4], [17, 3]] },
+  xGyI: { head: [1, -3, -22.5], body: [0, -2], armF: [1, -4, -168.75], armB: [-1, -3, 168.75], footF: [1, -2], footB: [-1, -2], front: 'tail', tail: [[1, 0], [3, 3], [8, 4], [13, 3], [17, 0], [19, -5], [19, -10]] },
+  xGyR: { head: [1, 2], body: [0, 1], armF: [2, 1, -45], armB: [0, 0, -33.75], footF: [3, 0], footB: [-3, 0], tailDeg: 10 },
+  // The scoop: sat back low, the tail swept along the floor in front and flicked up under the rival.
+  xScA: { head: [-1, 3, -11.25], body: [-1, 2], armF: [0, 2, 45], armB: [-1, 1, 56.25], footF: [4, 0], footB: [-3, 0], tail: [[1, 0], [-3, 0], [-7, 0], [-11, -1], [-14, -2], [-17, -4]] },
+  xScX: { head: [2, 3, 11.25], body: [1, 2], armF: [3, 2, -67.5], armB: [1, 1, -45], footF: [4, 0], footB: [-4, 0, 22.5], front: 'tail', tail: [[1, 0], [3, 0], [7, 0], [11, 0], [15, -1], [19, -1]] },
+  xScI: { head: [2, 2, -22.5], body: [2, 1], armF: [3, 0, -123.75], armB: [1, 0, -101.25], footF: [4, 0], footB: [-4, 0], front: 'tail', tail: [[1, 0], [4, 1], [8, 1], [12, 0], [15, -3], [16, -7], [16, -11]] },
+  xScR: { head: [1, 2], body: [0, 1], armF: [2, 1, -45], armB: [0, 0, -33.75], footF: [3, 0], footB: [-3, 0], tailDeg: 8 },
+  // The pororoca: squashed down with the tail coiled up over its back like a wave about to break,
+  // coiled tighter, then the whole thing let go over its head and down on the rival in front.
+  xPrA1: { head: [-2, 3, -11.25], body: [-1, 2], armF: [-1, 2, 56.25], armB: [-2, 1, 67.5], footF: [3, 0], footB: [-3, 0], tail: [[1, 0], [-4, 0], [-8, -1], [-10, -4], [-8, -7], [-6, -5]] },
+  xPrA2: { head: [-3, 4, -22.5], body: [-2, 3], armF: [-2, 3, 67.5], armB: [-3, 2, 78.75], footF: [3, 0], footB: [-3, 0], tail: [[1, -1], [-3, -1], [-7, -2], [-9, -5], [-7, -8], [-5, -6]] },
+  xPrX: { head: [3, -1, 11.25], body: [2, -1], armF: [3, -2, -112.5], armB: [2, -2, -123.75], footF: [4, 0], footB: [-4, -1, 33.75], front: 'tail', tail: [[1, 0], [2, 3], [6, 3], [10, 3], [14, 2], [18, 0]] },
+  xPrI: { head: [4, 2, 22.5], body: [3, 1], armF: [5, 1, -45], armB: [4, 0, -56.25], footF: [5, 0], footB: [-4, 0, 22.5], front: 'tail', tail: [[1, 0], [5, 1], [9, 1], [13, 1], [17, 1], [21, 0]] },
+  xPrR: { head: [1, 2, 11.25], body: [1, 1], armF: [2, 1, -45], armB: [1, 0, -33.75], footF: [4, 0], footB: [-3, 0], tailDeg: 16 },
+  // The bubble: the throat pumped twice (up on the breath in, squashed on the push), then the blow,
+  // the snout up after the bubble.
+  xBbA: { head: [0, 0, -11.25], body: [0, 0], armF: [1, -1, -33.75], armB: [0, -1, -22.5], footF: [3, 0], footB: [-3, 0], tailDeg: -6 },
+  xBbA2: { head: [-1, 2, -11.25], body: [0, 2], armF: [1, 1, -22.5], armB: [0, 1, -11.25], footF: [3, 0], footB: [-3, 0], tailDeg: 4 },
+  xBbX: { head: [2, -1, -11.25], body: [1, -1], armF: [2, -2, -135], armB: [1, -2, -146.25], footF: [3, 0], footB: [-3, -1, 22.5], tailDeg: -12 },
+  xBbR: { head: [1, 1, -11.25], body: [0, 1], armF: [2, 0, -56.25], armB: [0, 0, -33.75], footF: [3, 0], footB: [-3, 0], tailDeg: 4 },
+  // The mud slide: a dive, flat out on its belly (arms tucked, feet trailing), and up again.
+  xSlA: { head: [3, 3, 22.5], body: [2, 2], armF: [-1, 1, 67.5], armB: [-2, 0, 78.75], footF: [-1, 0], footB: [-3, -1, 33.75], tailDeg: 10 },
+  xSlX: { head: [9, 7], body: [-3, -4, 90], armF: [1, 4, 90], armB: [2, 4, 90], footF: [-7, -2, 180], footB: [-9, -3, 180], tail: [[1, 0], [-3, 3], [-7, 4], [-11, 4], [-15, 3], [-18, 3]] },
+  xSlR: { head: [2, 1, -11.25], body: [1, 0], armF: [2, -1, -135], armB: [0, -1, -123.75], footF: [3, 0], footB: [-2, 0], tailDeg: 12 },
+  // The feast: hunched over the downed rival, nibbling twice and tearing a mouthful off.
+  xFsA: { head: [2, 0, -11.25], body: [1, -1], armF: [2, -2, -146.25], armB: [0, -2, -135], footF: [3, 0], footB: [-2, 0], tailDeg: 14 },
+  xFsU: { head: [3, 2, -11.25], body: [2, 1], armF: [4, 2, -67.5], armB: [3, 1, -56.25], footF: [4, 0], footB: [-3, 0], tailDeg: 10 },
+  xFsD: { head: [6, 6, 22.5], body: [3, 3], armF: [5, 4, -33.75], armB: [4, 3, -22.5], footF: [4, 0], footB: [-3, 0], tailDeg: 22 },
+  xFsW: { head: [2, 0, -11.25], body: [1, 0], armF: [4, 1, -90], armB: [3, 0, -78.75], footF: [4, 0], footB: [-3, 0], tailDeg: 6 },
+  xFsT: { head: [1, 1, -22.5], body: [0, 1], armF: [3, 2, -56.25], armB: [2, 1, -45], footF: [3, 0], footB: [-4, 0, 22.5], tailDeg: -10 },
+  // The self-shed: the tail curled round in front and up to the jaws, the yank and the throw (the
+  // tail already gone), a wince, then the smile again.
+  xShA: { head: [1, 2, 22.5], body: [0, 1], armF: [1, 1, -22.5], armB: [0, 0, -11.25], footF: [3, 0], footB: [-3, 0], front: 'tail', tail: [[1, 0], [2, 1], [6, 1], [9, 0], [11, -2], [12, -4]] },
+  xShX: { head: [3, -1, -22.5], body: [2, -1], armF: [3, -2, -123.75], armB: [1, -1, -101.25], footF: [4, 0], footB: [-3, -1, 22.5] },
+  xShR: { head: [1, 2], body: [0, 1], armF: [2, 1, -45], armB: [0, 0, -33.75], footF: [3, 0], footB: [-3, 0] },
+  // The Bocarra: reared up with the smile torn open into the maw, the lunge, the jaws slammed shut.
+  xMwA: { head: [-2, -2], body: [-1, -1], armF: [2, -2, -135], armB: [-2, -2, 135], footF: [3, 0], footB: [-3, 0], tailDeg: -16 },
+  xMwX: { head: [5, 1], body: [3, 0], armF: [-1, 0, 67.5], armB: [-2, -1, 78.75], footF: [5, 0], footB: [-4, -1, 33.75], tailDeg: 16 },
+  xMwI: { head: [6, 2], body: [4, 1], armF: [4, 1, -56.25], armB: [3, 0, -67.5], footF: [5, 0], footB: [-4, 0, 22.5], tailDeg: 22 },
+  xMwR: { head: [2, 2, 11.25], body: [1, 1], armF: [2, 1, -45], armB: [0, 0, -33.75], footF: [3, 0], footB: [-3, 0], tailDeg: 8 },
+  // In the air: the gill lashes (down, then back up), the barrel roll with the tail straight out
+  // like a propeller, and the belly flop, spread-eagled (a quarter turn lays the body face down).
+  xAgA: { head: [-2, 0, -22.5], body: [-1, 0], armF: [-1, -2, 135], armB: [1, -1, -45], footF: [1, -2], footB: [-1, -2], tailDeg: -12 },
+  xAgI: { head: [3, 1, 11.25], body: [2, 0], armF: [3, 0, -67.5], armB: [-1, -1, 45], footF: [1, -2], footB: [-2, -2], tailDeg: 14 },
+  xAgA2: { head: [1, 2, 22.5], body: [0, 1], armB: [-1, -1, 135], armF: [2, 1, -22.5], footF: [1, -2], footB: [-1, -2], tailDeg: 10 },
+  xAgI2: { head: [3, -1, -11.25], body: [2, -1], armB: [3, -2, -146.25], armF: [-1, 0, 56.25], footF: [1, -2], footB: [-2, -2], front: 'armB', tailDeg: -14 },
+  xAgR: { head: [1, 0], body: [0, 0], armF: [1, -1, -101.25], armB: [0, -1, -78.75], footF: [1, -2], footB: [-1, -1] },
+  xSpinA: { head: [0, 2, 11.25], body: [0, 1], armF: [1, 1, 22.5], armB: [0, 1, 33.75], footF: [1, -2], footB: [-1, -2], tailDeg: 30 },
+  xSpin: { head: [1, 1], body: [0, 0], armF: [3, -1, -90], armB: [-2, -1, 90], footF: [1, -2], footB: [-1, -1], tail: [[1, 0], [-3, 0], [-7, 0], [-11, 0], [-15, 0], [-18, 0]] },
+  xAfA: { head: [0, -1, -22.5], body: [0, -1], armF: [0, -3, 180], armB: [-1, -3, 168.75], footF: [1, -2], footB: [-1, -2], tailDeg: 24 },
+  xFlop: { head: [9, 5], body: [-3, -5, 90], armF: [3, 3, -45], armB: [2, 2, -22.5], footF: [-6, -2, 135], footB: [-8, -3, 112.5], tail: [[1, 0], [-3, -1], [-7, -3], [-10, -6], [-12, -10], [-13, -14]] },
+  // Its dash strike: head first like a fish, the arms swept back, the tail streaming.
+  dashSwim: { head: [4, 3, 11.25], body: [2, 2], armF: [0, 1, 78.75], armB: [-1, 0, 90], footF: [-2, -1, 67.5], footB: [-4, -1, 78.75], tailDeg: -14 },
+  dashSwimI: { head: [5, 3, 11.25], body: [3, 2], armF: [4, 1, -67.5], armB: [3, 0, -78.75], footF: [-1, -1, 56.25], footB: [-3, -1, 67.5], tailDeg: 8 },
+  // The awakening (K): reared up on its tail, arms flung up, howling at the sky with the gills alight.
+  xRear1: { head: [0, -4, -22.5], body: [0, -2], armF: [3, -4, -146.25], armB: [-3, -4, 146.25], footF: [3, 0], footB: [-3, 0], tailDeg: -10 },
+  xRear2: { head: [0, -5, -33.75], body: [0, -3], armF: [3, -5, -157.5], armB: [-3, -5, 157.5], footF: [3, -1], footB: [-3, 0], tailDeg: -14 }
 };
 
 // Hitstun sequences: [until progress, frame, face].
@@ -523,7 +618,25 @@ const KEYS = {
   fSquash: [[0, 'fSqA', 'Angry'], [0.46, 'fSqI', 'Open'], [0.84, 'crouch', 'Angry']],
   fAirSlap: [[0, 'fAsA', 'Angry'], [0.24, 'fAsX', 'Open'], [0.46, 'fAsA', 'Angry'], [0.56, 'fAs2X', 'Open']],
   fAirLash: [[0, 'fAsA', 'Angry'], [0.22, 'fAlX', 'Wide'], [0.7, 'fall', 'Angry']],
-  fStomp: [[0, 'fStA', 'Angry'], [0.36, 'fStI', 'Open']]
+  fStomp: [[0, 'fStA', 'Angry'], [0.36, 'fStI', 'Open']],
+  // Xolo: the impact pose is up by the hit (the hitlag freeze holds it). The gulp pulls while the
+  // jaws gape and snaps them shut on the second hit; the bubble pumps the throat twice; the
+  // Bocarra tears the smile open before the lunge.
+  xGill: [[0, 'xGlA', 'Angry'], [0.26, 'xGlX', 'Trail'], [0.38, 'xGlI', 'Lash'], [0.72, 'xGlR', '']],
+  xGill2: [[0, 'xGl2A', 'Angry'], [0.28, 'xGl2X', 'Trail'], [0.4, 'xGl2I', 'Lash'], [0.74, 'xGlR', '']],
+  xTail: [[0, 'xTlA', 'Angry'], [0.34, 'xTlX', 'Angry'], [0.46, 'xTlI', 'Open'], [0.78, 'xTlR', '']],
+  xGulp: [[0, 'xGuA', 'Puff'], [0.18, 'xGuS', 'Wide'], [0.52, 'xGuX', 'Trail'], [0.62, 'xGuI', 'Angry'], [0.86, 'xGuR', '']],
+  xGeyser: [[0, 'xGyA', 'Angry'], [0.3, 'xGyX', 'Open'], [0.4, 'xGyI', 'Open'], [0.78, 'xGyR', 'Angry']],
+  xScoop: [[0, 'xScA', 'Angry'], [0.3, 'xScX', 'Open'], [0.42, 'xScI', 'Angry'], [0.8, 'xScR', '']],
+  xPororoca: [[0, 'xPrA1', 'Angry'], [0.18, 'xPrA2', 'Angry'], [0.36, 'xPrX', 'Open'], [0.44, 'xPrI', 'Open'], [0.82, 'xPrR', '']],
+  xBubble: [[0, 'xBbA', 'Puff'], [0.14, 'xBbA2', ''], [0.26, 'xBbA', 'Puff'], [0.4, 'xBbA2', 'Puff'], [0.54, 'xBbX', 'Wide'], [0.8, 'xBbR', '']],
+  xSlide: [[0, 'xSlA', 'Angry'], [0.15, 'xSlX', 'Trail'], [0.72, 'xSlR', 'Angry']],
+  xFeast: [[0, 'xFsA', 'Angry'], [0.14, 'xFsU', 'Open'], [0.26, 'xFsD', 'Angry'], [0.38, 'xFsU', 'Open'], [0.5, 'xFsD', 'Angry'], [0.62, 'xFsW', 'Wide'], [0.76, 'xFsD', 'Angry'], [0.86, 'xFsT', 'Angry'], [0.94, 'xGlR', '']],
+  xShed: [[0, 'xShA', 'Open'], [0.36, 'xShX', 'Hurt'], [0.66, 'xShR', '']],
+  xMaw: [[0, 'xMwA', 'Angry'], [0.12, 'xMwA', 'Maw'], [0.34, 'xMwX', 'Maw'], [0.44, 'xMwI', 'MawShut'], [0.74, 'xMwR', 'Angry']],
+  xAirGill: [[0, 'xAgA', 'Angry'], [0.22, 'xAgI', 'Lash'], [0.46, 'xAgA2', 'Angry'], [0.56, 'xAgI2', 'Lash'], [0.84, 'xAgR', '']],
+  xAirFlop: [[0, 'xAfA', 'Angry'], [0.34, 'xFlop', 'Open'], [0.8, 'fall', 'Angry']],
+  xDash: [[0, 'dashSwim', 'Trail'], [0.3, 'dashSwimI', 'Angry'], [0.72, 'xGlR', '']]
 };
 export const keyFor = (kind, p) => { const k = KEYS[kind]; if (!k) return null; let r = k[0]; for (const e of k) if (p >= e[0]) r = e; return r; };
 
@@ -607,11 +720,19 @@ const SHRINK = ['head', 'body', 'armF', 'armB', 'footF', 'footB'];
 function shrunk(f) {
   const frame = { ...f.frame };
   for (const k of SHRINK) if (frame[k]) frame[k] = [Math.round((frame[k][0] || 0) / 2), Math.round((frame[k][1] || 0) / 2), frame[k][2] || 0];
+  // A tail drawn by the pose (Xolo's tail strikes) shrinks with it.
+  if (Array.isArray(frame.tail)) frame.tail = frame.tail.map(([x, y]) => [Math.round(x / 2), Math.round(y / 2)]);
   return { ...f, frame };
 }
 // Returns { frame, expr, name } for an actor (live or snapshot).
 export function frameFor(a, time = 0) {
-  const f = fullFrameFor(a, time);
+  let f = fullFrameFor(a, time);
+  // Xolo without its tail (torn off, growing back): the pose never draws it; secondary.js grows the
+  // stub back out of the chain.
+  if (a.axo && (a.axo.tailCut || a.axo.tail)) {
+    const { front, ...frame } = f.frame;
+    f = { ...f, frame: { ...frame, ...(front && front !== 'tail' && { front }), tail: false } };
+  }
   return a.foot && a.foot < 17 ? shrunk(f) : f;
 }
 function fullFrameFor(a, time = 0) {
@@ -677,7 +798,10 @@ function fullFrameFor(a, time = 0) {
   if (act === 'leap') return pick((a.vy ?? 0) < -1.5 ? 'bLeapUp' : 'bLeapDn', 'Open');
   if (act === 'meteor') return pick(titan ? 'tAsA' : 'bLeapDn', 'Open');
   if (act === 'slamLand') return pick(titan ? 'tQkI' : 'bLand', 'Open');
-  if (act === 'stomp') return pick('stomp', 'Angry');
+  // The axolotl drops on its belly, spread-eagled.
+  if (act === 'stomp') return styleOf(a) === 6 ? pick('xFlop', 'Open') : pick('stomp', 'Angry');
+  // Xolo's awakening (K): reared up howling, the gills alight (two flame frames at 12 fps).
+  if (act === 'xolotl') return pick(t12 % 2 ? 'xRear2' : 'xRear1', t12 % 2 ? 'Cast2' : 'Cast');
   // The frog's inhale, gulp and spit.
   if (act === 'inhale') return pick(t12 % 2 ? 'fInh1' : 'fInh2', 'Wide');
   if (act === 'gulp') return (a.actT ?? 0) < 0.3 ? pick('fGulp1', 'Puff') : pick('fGulp2', (a.actT ?? 0) < 0.45 ? 'Puff' : 'Blink');
@@ -723,6 +847,18 @@ function fullFrameFor(a, time = 0) {
     if (p > 0.88) return pick('vortex', 'Angry');
     return { frame: { ...FRAMES.jSpin, spin: Math.floor((time + seed) * 20) * (a.face || 1) }, expr: 'Angry', name: 'jSpin' };
   }
+  // Xolo's undertow: a barrel roll with the paddle straight out, whirling through the rival.
+  if (a.attack > 0 && kind === 'xAirSpin') {
+    const p = 1 - a.attack / MOVES.xAirSpin.dur;
+    if (p < 0.12) return pick('xSpinA', 'Angry');
+    if (p > 0.88) return pick('xAgR', 'Angry');
+    return { frame: { ...FRAMES.xSpin, spin: Math.floor((time + seed) * 20) * (a.face || 1) }, expr: 'Open', name: 'xSpin' };
+  }
+  // Its dash strike swims in head first.
+  if (a.attack > 0 && kind === 'dashAtk' && styleOf(a) === 6) {
+    const [, name, expr] = keyFor('xDash', Math.max(0, Math.min(0.999, 1 - a.attack / MOVES.dashAtk.dur)));
+    return pick(name, expr);
+  }
   if (a.attack > 0 && KEYS[kind] && MOVES[kind] && (styleOf(a) === 4 || kind !== 'dashAtk')) {
     const [, name, expr] = keyFor(kind, Math.max(0, Math.min(0.999, 1 - a.attack / MOVES[kind].dur)));
     return pick(name, expr);
@@ -749,8 +885,9 @@ function fullFrameFor(a, time = 0) {
   else if (a.skid > 0) base = pick('skid');
   else if (Math.abs(a.vx || 0) > 0.6) {
     const rate = Math.min(1.4, 0.55 + Math.abs(a.vx) / 6);
-    // The titan lumbers along on her knuckles.
-    base = pick((a.form === 'titan' ? ['tRun1', 'tRunP', 'tRun2', 'tRunP'] : ['run1', 'runPass', 'run2', 'runPass2'])[Math.floor((time + seed) * (a.form === 'titan' ? 9 : 12) * rate) % 4]);
+    // The titan lumbers along on her knuckles; the axolotl waddles low.
+    const steps = a.form === 'titan' ? ['tRun1', 'tRunP', 'tRun2', 'tRunP'] : styleOf(a) === 6 ? ['xRun1', 'xRunP', 'xRun2', 'xRunP2'] : ['run1', 'runPass', 'run2', 'runPass2'];
+    base = pick(steps[Math.floor((time + seed) * (a.form === 'titan' ? 9 : 12) * rate) % 4]);
   } else {
     const breath = Math.floor((time + seed) * 1.6) % 2;
     // Nox never stands neutral: low, claws up, leaning toward the fight.
@@ -759,9 +896,12 @@ function fullFrameFor(a, time = 0) {
     base = st === 4 ? pick(breath ? 'nStance2' : 'nStance1', blink ? 'Blink' : 'Angry')
       : st === 5 ? pick(breath ? 'fStance2' : 'fStance1', blink ? 'Blink' : '')
       : st === 3 ? (a.form === 'titan' ? pick(breath ? 'tStance2' : 'tStance1', blink ? 'Blink' : 'Angry') : a.form === 'beast' ? pick(breath ? 'bStance2' : 'bStance1', blink ? 'Blink' : 'Angry') : pick(breath ? 'jStance2' : 'jStance1'))
+      : st === 6 ? pick(breath ? 'xStance2' : 'xStance1')
       : pick(breath ? 'idle2' : 'idle');
     base = { ...base, frame: { ...base.frame, tailDeg: Math.round(Math.sin((time + seed) * 1.7) * 2) * 3 } };
   }
   if (gun) base = { ...base, frame: { ...base.frame, armF: aimArm(a, (a.recoil || 0) > 0.3) }, name: base.name + '+aim' };
+  // Xolo with a clone held in its mouth: cheeks full.
+  if (a.axo?.carry != null && base.expr !== 'Hurt') base = { ...base, expr: 'Puff' };
   return base;
 }

@@ -5,6 +5,7 @@ import { MAP } from '../sim/map.js';
 import { drawText } from '../engine/font.js';
 import { bloodPal } from './blood-art.js';
 import { FIGHTERS } from '../sim/fighters.js';
+import { SKULL, BURN_PAL, VENUS } from './axo-bits.js';
 
 const mk = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
 const X = v => v * S;
@@ -19,6 +20,10 @@ const DUST = ['#6a6078', '#8a7f95', '#4f475e'];
 const SLIME = ['#c8f080', '#9be05a', '#6b9e3c', '#ffffff'];
 // The axolotl's goo (pink, wet) and the demon's (embers and dark blood).
 const GOO = ['#ffd0de', '#ff9cc0', '#f06e98', '#ffffff'], DEMON = ['#ffd040', '#ff5a1a', '#b02a44', '#2c0814'];
+// Water (the geyser, popped bubbles) and the embers of Xolotl.
+const WATER = ['#ffffff', '#d8f6ff', '#a8e4f8', '#6ac8ee'], HELL = ['#fff2a0', '#ffd040', '#ff5a1a', '#ff2a3a'];
+// Particle defaults for hand-built particles.
+const PART = { s: 1, g: 0, b: 0, drag: 1, em: false, ov: false, stick: false, grow: 0 };
 // The colours of a fighter the frog copied (his own green when there is none).
 const copyCols = c => (c >= 0 && FIGHTERS[c] ? [FIGHTERS[c].color, '#ffffff', '#ffe2a0'] : SLIME);
 const FIRE = [P.fire0, P.fire1, P.fire2, P.fire3, P.fire4];
@@ -35,6 +40,10 @@ export class FX {
     this.zaps = [];
     this.rings = [];
     this.hemo = [];
+    // Shapes drawn over the lighting at full colour (water, the wave, the bite), and the red dim of
+    // Xolotl's cast.
+    this.over = [];
+    this.dim = null;
     this.wallDecals = mk(VIEW_W, VIEW_H);
     this.floorDecals = mk(VIEW_W, VIEW_H);
     this.wg = this.wallDecals.getContext('2d');
@@ -47,6 +56,7 @@ export class FX {
 
   reset() {
     this.parts.length = 0; this.smears.length = 0; this.flashes.length = 0; this.zaps.length = 0; this.rings.length = 0; this.hemo.length = 0;
+    this.over.length = 0; this.dim = null;
     this.wg.clearRect(0, 0, VIEW_W, VIEW_H);
     this.fg.clearRect(0, 0, VIEW_W, VIEW_H);
     this.lastId = 0;
@@ -57,13 +67,14 @@ export class FX {
     p.max = p.life;
     this.parts.push(p);
   }
+  part(p) { this.add({ ...PART, ...p }); }
 
   burst(kind, x, y, n, opts = {}) {
     const rnd = opts.rnd || Math.random;
     for (let i = 0; i < n; i++) {
       const a = opts.a !== undefined ? opts.a + (rnd() - 0.5) * (opts.spread ?? 1.2) : rnd() * Math.PI * 2;
       const sp = (opts.s ?? 2) * (0.3 + rnd() * 0.9);
-      this.add({ k: kind, x, y, vx: Math.cos(a) * sp + (opts.dx || 0), vy: Math.sin(a) * sp + (opts.dy || 0), life: (opts.life ?? 0.8) * (0.5 + rnd()), c: opts.colors ? opts.colors[Math.floor(rnd() * opts.colors.length)] : opts.c, s: opts.size ?? 1, g: opts.g ?? 0.15, b: opts.b ?? 0, em: !!opts.em, drag: opts.drag ?? 1, stick: !!opts.stick, grow: opts.grow || 0 });
+      this.add({ k: kind, x, y, vx: Math.cos(a) * sp + (opts.dx || 0), vy: Math.sin(a) * sp + (opts.dy || 0), life: (opts.life ?? 0.8) * (0.5 + rnd()), c: opts.colors ? opts.colors[Math.floor(rnd() * opts.colors.length)] : opts.c, s: opts.size ?? 1, g: opts.g ?? 0.15, b: opts.b ?? 0, em: !!opts.em, ov: !!opts.ov, drag: opts.drag ?? 1, stick: !!opts.stick, grow: opts.grow || 0, seed: rnd() * 9 });
     }
   }
 
@@ -318,38 +329,143 @@ export class FX {
       // The beast's paws clapped together: a ring of force and a burst of light.
       // The frog. The gulp: a wet slurp of slime and a ring closing in on him. The copy: a burst of
       // stars in the colours of whoever he swallowed. The spit: a star where they shoot out.
-      // The axolotl. A part popping off: a wet burst of pink goo. A clone hatching: goo, a ring and
-      // a few hearts of light. A clone dying: it bursts into goo (a demon, into embers).
-      case 'goo':
-        this.burst('blood', x, y, e.n || 10, { spread: 6.3, s: 2.2, life: 0.6, colors: GOO, g: 0.18, stick: true, rnd });
-        this.burst('spark', x, y, 6, { spread: 6.3, s: 1.6, life: 0.3, colors: ['#ffffff', '#ffd0de'], g: 0, em: true, rnd });
+      // The axolotl. A part popping off: a wet burst of pink goo (a little red in it at full gore),
+      // fat globs that stick where they land and a ring of spray.
+      case 'goo': case 'plop': case 'shedRip': {
+        const n = e.n || 10, cols = this.gore === 2 ? [...GOO, '#e8546e'] : GOO;
+        this.burst('blood', x, y, n, { spread: 6.3, s: 2.2, life: 0.6, colors: cols, g: 0.18, stick: true, rnd, dy: -0.6 });
+        this.burst('blood', x, y, Math.ceil(n / 3), { a: -Math.PI / 2, spread: 2.4, s: 1.8, life: 0.7, colors: GOO, g: 0.2, stick: true, size: 2, rnd });
+        this.burst('drop', x, y, 6, { spread: 6.3, s: 1.6, life: 0.35, colors: ['#ffffff', '#fff4f6', '#ffd0de'], g: 0.1, ov: true, rnd });
+        this.rings.push({ x, y, life: 0.18, max: 0.18, r: 8 + Math.min(10, n * 0.5), color: '#ffd0de' });
+        if (e.fx !== 'goo') this.flashes.push({ x, y, life: 0.08, max: 0.08, kind: 'star', p: 1.4, a: Math.PI / 4, seed: e.id || 1, color: '#fff4f6' });
         break;
+      }
+      // A shed part landing and starting to swell: a soft pink pulse and a few drops of goo.
+      case 'bud':
+        this.rings.push({ x, y: y - 2, life: 0.3, max: 0.3, r: 9, color: '#ffd0de', flat: true });
+        this.burst('blood', x, y - 2, 5, { a: -Math.PI / 2, spread: 2.2, s: 1.4, life: 0.5, colors: GOO, g: 0.18, stick: true, rnd });
+        this.burst('spark', x, y - 3, 4, { a: -Math.PI / 2, spread: 2, s: 0.8, life: 0.45, colors: ['#ffffff', '#ffd0de'], g: -0.02, drag: 0.94, em: true, rnd });
+        break;
+      // A clone hatching: a pop of light, goo thrown up, two rings and sparkles drifting up.
       case 'cloneBirth':
+        this.flashes.push({ x, y: y - 3, life: 0.1, max: 0.1, kind: 'star', p: 1.8, a: Math.PI / 4, seed: e.id || 1, color: '#fff4f6' });
         this.rings.push({ x, y, life: 0.3, max: 0.3, r: 14, color: '#ffd0de' });
-        this.rings.push({ x, y, life: 0.45, max: 0.45, r: 22, color: '#ff9cc0' });
+        this.rings.push({ x, y, life: 0.45, max: 0.45, r: 22, color: '#ff9cc0', flat: true });
         this.burst('blood', x, y, 12, { a: -Math.PI / 2, spread: 2.6, s: 2.4, life: 0.6, colors: GOO, g: 0.2, stick: true, rnd });
+        this.burst('drop', x, y - 2, 6, { a: -Math.PI / 2, spread: 2.2, s: 2, life: 0.4, colors: ['#ffffff', '#fff4f6'], g: 0.14, ov: true, rnd });
         this.burst('spark', x, y - 4, 10, { a: -Math.PI / 2, spread: 2, s: 1.8, life: 0.5, colors: ['#ffffff', '#ffd0de', '#ff9cc0'], g: -0.02, drag: 0.94, em: true, rnd });
         break;
+      // A clone gone: a mini bursts into goo and bubbles and leaves a splat; a demon into embers,
+      // ash and a smear of dark blood. Melting away, it sinks into a ring of goo.
       case 'cloneDeath': {
         const demon = e.form === 'demon';
         this.burst('blood', x, y, 14, { spread: 6.3, s: 2.6, life: 0.6, colors: demon ? DEMON : GOO, g: 0.2, stick: true, rnd });
-        this.burst(demon ? 'spark' : 'steam', x, y, demon ? 12 : 6, { a: -Math.PI / 2, spread: 2.4, s: demon ? 2 : 0.8, life: 0.6, colors: demon ? DEMON : ['#ffe8f0', '#ffd0de'], g: -0.03, drag: 0.94, em: demon, size: demon ? 1 : 2, grow: demon ? 0 : 0.05, rnd });
-        if (e.how === 'melt') this.rings.push({ x, y: y + 4, life: 0.3, max: 0.3, r: 10, color: demon ? '#ff5a1a' : '#ffd0de' });
+        if (demon) {
+          this.burst('spark', x, y, 14, { a: -Math.PI / 2, spread: 2.6, s: 2, life: 0.7, colors: HELL, g: -0.03, drag: 0.94, em: true, rnd });
+          this.burst('smoke', x, y, 6, { a: -Math.PI / 2, spread: 1.6, s: 0.6, life: 0.9, colors: ['#3a2a2a', '#2a1a1c', '#4a3236'], g: -0.03, drag: 0.94, size: 2, grow: 0.04, rnd });
+        } else {
+          this.burst('steam', x, y, 5, { a: -Math.PI / 2, spread: 2.4, s: 0.8, life: 0.6, colors: ['#ffe8f0', '#ffd0de'], g: -0.03, drag: 0.94, em: true, size: 2, grow: 0.05, rnd });
+          for (let i = 0; i < 5; i++) this.part({ k: 'bubl', x: x + (rnd() - 0.5) * 10, y: y + (rnd() - 0.5) * 6, vx: (rnd() - 0.5) * 0.4, vy: -0.3 - rnd() * 0.5, life: 0.6 + rnd() * 0.5, c: '#ffd0de', s: 1 + Math.floor(rnd() * 3), g: -0.006, drag: 0.98, ov: true, seed: rnd() * 9 });
+        }
+        if (e.how !== 'melt' && e.how !== 'fall' && rnd() < 0.8) this.goo(this.wg, x + (rnd() - 0.5) * 6, y - 2, 3, rnd, demon);
+        if (e.how === 'melt') this.rings.push({ x, y: y + 4, life: 0.3, max: 0.3, r: 10, color: demon ? '#ff5a1a' : '#ffd0de', flat: true });
         break;
       }
       case 'cloneHit':
         this.burst('blood', x, y, 5, { spread: 6.3, s: 1.8, life: 0.4, colors: e.form === 'demon' ? DEMON : GOO, g: 0.2, stick: true, rnd });
+        this.burst('drop', x, y, 3, { spread: 6.3, s: 1.4, life: 0.25, colors: e.form === 'demon' ? ['#ffd040', '#ff5a1a'] : ['#ffffff', '#fff4f6'], g: 0.1, ov: e.form !== 'demon', em: e.form === 'demon', rnd });
         this.flashes.push({ x, y, life: 0.08, max: 0.08, kind: 'star', p: 1.2, a: 0, seed: e.id || 1, color: '#ffffff' });
         break;
       case 'cloneHop':
         this.burst('blood', x, y, 8, { a: -Math.PI / 2, spread: 1.6, s: 2.2, life: 0.5, colors: GOO, g: 0.2, stick: true, rnd });
-        this.rings.push({ x, y, life: 0.25, max: 0.25, r: 9, color: '#ff9cc0' });
+        this.rings.push({ x, y, life: 0.25, max: 0.25, r: 9, color: '#ff9cc0', flat: true });
         break;
-      // A part grown back: a swirl of pink light closing in on it.
+      // A part grown back: a swirl of pink light closing in on it, a ring and a twinkle.
       case 'regrow':
-        for (let i = 0; i < 10; i++) { const a = (i / 10) * Math.PI * 2; this.add({ k: 'spark', x: x + Math.cos(a) * 10, y: y + Math.sin(a) * 10, vx: -Math.cos(a) * 0.9, vy: -Math.sin(a) * 0.9, life: 0.4, c: i % 2 ? '#ffffff' : '#ff9cc0', s: 1, g: 0, b: 0, em: true, drag: 0.95, stick: false, grow: 0 }); }
+        for (let i = 0; i < 10; i++) { const a = (i / 10) * Math.PI * 2; this.part({ k: 'spark', x: x + Math.cos(a) * 10, y: y + Math.sin(a) * 10, vx: -Math.cos(a) * 0.9, vy: -Math.sin(a) * 0.9, life: 0.4, c: i % 2 ? '#ffffff' : '#ff9cc0', em: true, drag: 0.95 }); }
         this.flashes.push({ x, y, life: 0.12, max: 0.12, kind: 'star', p: 1.6, a: Math.PI / 4, seed: e.id || 1, color: '#ffd0de' });
+        this.rings.push({ x, y, life: 0.25, max: 0.25, r: 7, color: '#fff4f6' });
+        this.hemo.push({ k: 'twinkle', x: Math.round(x), y: Math.round(y), t: 0, life: 0.35, max: 0.35 });
         break;
+      // The tail flip's geyser: a pillar of water shooting up off the floor ahead of it.
+      case 'geyser': {
+        const top = this.floorAt(x, y, 30) ?? y;
+        this.over.push({ k: 'geyser', x: Math.round(x), y: Math.round(top), f: e.face || 1, t: 0, life: 0.62, max: 0.62, crown: false });
+        for (const d of [-1, 1]) this.burst('drop', x + d * 4, top - 1, 5, { a: d > 0 ? -0.5 : Math.PI + 0.5, spread: 0.7, s: 1.8, life: 0.4, colors: WATER, g: 0.18, ov: true, rnd });
+        this.rings.push({ x, y: top, life: 0.3, max: 0.3, r: 16, color: '#d8f6ff', flat: true });
+        break;
+      }
+      // The bubble bursting: its film flies apart in a ring of spray and a few small bubbles rise.
+      case 'bubblePop': {
+        const R = Math.max(4, X(e.r || 9));
+        this.over.push({ k: 'pop', x: Math.round(x), y: Math.round(y), r: R, t: 0, life: 0.18, max: 0.18 });
+        for (let i = 0; i < 12; i++) { const a = (i / 12) * Math.PI * 2 + rnd() * 0.3, sp = 1 + rnd() * 1.2; this.part({ k: 'drop', x: x + Math.cos(a) * R, y: y + Math.sin(a) * R, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 0.6, life: 0.3 + rnd() * 0.25, c: WATER[i % 3], g: 0.12, drag: 0.95, ov: true }); }
+        for (let i = 0; i < 4; i++) this.part({ k: 'bubl', x: x + (rnd() - 0.5) * R, y: y + (rnd() - 0.5) * R, vx: (rnd() - 0.5) * 0.3, vy: -0.4 - rnd() * 0.4, life: 0.6 + rnd() * 0.4, c: '#d8f6ff', s: 1 + Math.floor(rnd() * 2), g: -0.005, drag: 0.98, ov: true, seed: rnd() * 9 });
+        break;
+      }
+      // The tidal bore: a crest of pink water curling over as it rolls forward along the floor.
+      case 'pororoca': {
+        const f = e.face || 1, top = this.floorAt(x, y, 30) ?? y;
+        this.over.push({ k: 'wave', x: Math.round(x), y: Math.round(top), f, t: 0, life: 0.5, max: 0.5, run: 40 });
+        this.burst('drop', x, top - 3, 8, { a: f > 0 ? -0.6 : Math.PI + 0.6, spread: 0.8, s: 2.2, life: 0.45, colors: ['#ffffff', '#ffd0de', '#ff9cb8'], g: 0.14, ov: true, rnd });
+        break;
+      }
+      // The mud slide's trail: a glossy streak of slime left along the floor.
+      case 'slime': {
+        const f = e.face || 1, top = this.floorAt(x, y, 30);
+        if (top == null) break;
+        const g = this.fg;
+        for (let i = 0; i < 14; i++) {
+          g.globalAlpha = 0.9 - i * 0.045;
+          g.fillStyle = i % 6 === 2 ? '#fff4f6' : i % 2 ? '#f69bb7' : '#ffd0de';
+          g.fillRect(Math.round(x - f * i), top, 1, 1);
+          if (i % 5 === 3 && rnd() < 0.7) { g.fillStyle = '#d26f90'; g.fillRect(Math.round(x - f * i), top + 1, 1, 1 + Math.floor(rnd() * 2)); }
+        }
+        g.globalAlpha = 1;
+        break;
+      }
+      // Xolotl answers: the room goes dark and red, the evening star flares over the axolotl and
+      // lightning leaps from it into every clone it has.
+      case 'xolotlCast': {
+        const sy = y - 26;
+        this.dim = { life: 0.9, max: 0.9 };
+        this.hemo.push({ k: 'venus', x: Math.round(x), y: Math.round(sy), t: 0, life: 0.9, max: 0.9 });
+        (e.targets || []).forEach((tg, i) => this.hemo.push({ k: 'xzap', x, y: sy, x2: X(tg.x), y2: X(tg.y), t: 0, delay: 0.05 + i * 0.05, life: 0.45 + i * 0.05, max: 0.45 + i * 0.05, seed: (e.id || 1) * 11 + i }));
+        this.rings.push({ x, y: sy, life: 0.4, max: 0.4, r: 26, color: '#ff3a2a' });
+        this.rings.push({ x, y: sy, life: 0.6, max: 0.6, r: 48, color: '#ffd040' });
+        this.burst('spark', x, sy, 14, { spread: 6.3, s: 2.4, life: 0.5, colors: HELL, g: 0.02, drag: 0.94, em: true, rnd });
+        break;
+      }
+      // A clone turning demon: a burst of embers, a ring of fire and a puff of black smoke.
+      case 'demonMorph':
+        this.flashes.push({ x, y, life: 0.12, max: 0.12, kind: 'star', p: 2.4, a: Math.PI / 4, seed: e.id || 1, color: '#ffd040' });
+        this.rings.push({ x, y, life: 0.3, max: 0.3, r: 16, color: '#ff5a1a' });
+        this.burst('spark', x, y, 16, { spread: 6.3, s: 2.4, life: 0.55, colors: HELL, g: -0.02, drag: 0.93, em: true, rnd });
+        this.burst('smoke', x, y, 5, { a: -Math.PI / 2, spread: 1.8, s: 0.7, life: 0.8, colors: ['#3a2a2a', '#2a1a1c', '#4a3236'], g: -0.03, drag: 0.94, size: 2, grow: 0.04, rnd });
+        break;
+      case 'embers': this.burst('spark', x, y, e.n || 5, { a: -Math.PI / 2, spread: 1.4, s: 0.9, life: 0.8, colors: HELL, g: -0.025, drag: 0.96, em: true, rnd }); break;
+      // The Sacrifício: the demon goes up in fire and leaves Xolotl's dog skull scorched on the wall.
+      case 'sacrifice': {
+        const R = X(e.r || 34);
+        this.flashes.push({ x, y, life: 0.2, max: 0.2, kind: 'star', p: 4, a: Math.PI / 4, seed: e.id || 1, color: '#ffd040' });
+        this.rings.push({ x, y, life: 0.3, max: 0.3, r: R, color: '#fff2a0' });
+        this.rings.push({ x, y, life: 0.45, max: 0.45, r: R * 1.4, color: '#ff3a1a' });
+        this.burst('fire', x, y, 26, { spread: 6.3, s: 2.4, life: 0.6, colors: FIRE, g: -0.05, drag: 0.92, size: 2, em: true, grow: -0.02, rnd });
+        this.burst('spark', x, y, 18, { spread: 6.3, s: 3.4, life: 0.5, colors: HELL, g: 0.06, drag: 0.95, em: true, rnd });
+        this.burst('smoke', x, y, 10, { a: -Math.PI / 2, spread: 2, s: 1, life: 1.2, colors: [P.smoke, '#3a2a2a', '#2a1a1c'], g: -0.035, drag: 0.94, size: 3, grow: 0.05, rnd });
+        const top = this.floorAt(x, y, 40);
+        if (top != null) this.skull(Math.round(x), top);
+        break;
+      }
+      // Where the maw closes: two rows of teeth snapping shut, and their dents left behind.
+      case 'toothMarks': {
+        this.over.push({ k: 'teeth', x: Math.round(x), y: Math.round(y), t: 0, life: 0.3, max: 0.3 });
+        const g = this.wg, bx = Math.round(x), by = Math.round(y);
+        g.fillStyle = 'rgba(26,8,18,0.55)';
+        for (let i = -2; i <= 2; i++) { const dy = Math.abs(i) === 2 ? 1 : 0; g.fillRect(bx + i * 2, by - 3 + dy, 1, 1); g.fillRect(bx + i * 2, by + 3 - dy, 1, 1); }
+        if (this.gore) { g.fillStyle = 'rgba(180,36,58,0.7)'; g.fillRect(bx - 2, by - 3, 1, 1); g.fillRect(bx + 2, by + 3, 1, 1); }
+        break;
+      }
       case 'gulp':
         this.rings.push({ x, y, life: 0.25, max: 0.25, r: 22, color: '#c8f080' });
         this.burst('spark', x + (e.face || 1) * 8, y - 2, 12, { spread: 6.3, s: 2.2, life: 0.4, colors: SLIME, g: 0.12, drag: 0.94, rnd });
@@ -465,6 +581,52 @@ export class FX {
     g.globalAlpha = 1;
   }
 
+  // A splat of the axolotl's goo (or a demon's dark blood) on the wall.
+  goo(g, x, y, size, rnd, demon = false) {
+    const cols = demon ? ['#7a1a2a', '#4a0c18', '#b02a44'] : ['#f69bb7', '#ffd0de', '#d26f90'];
+    for (let i = 0; i < Math.round(size * 3); i++) {
+      const a = rnd() * Math.PI * 2, d = rnd() * size;
+      g.globalAlpha = 0.8;
+      g.fillStyle = cols[Math.floor(rnd() * 3)];
+      g.fillRect(Math.round(x + Math.cos(a) * d), Math.round(y + Math.sin(a) * d * 0.8), 1, 1);
+      if (rnd() < 0.12) g.fillRect(Math.round(x + Math.cos(a) * d), Math.round(y + Math.sin(a) * d * 0.8), 1, 2 + Math.floor(rnd() * 3));
+    }
+    g.globalAlpha = 1;
+  }
+
+  // The top of the floor or catwalk under (x, y), within reach pixels below it (or just above).
+  floorAt(x, y, reach = 24) {
+    let best = null;
+    for (const t of TOPS) if (x >= t.x0 && x <= t.x1 && t.y >= y - 4 && t.y - y <= reach && (best === null || t.y < best)) best = t.y;
+    return best;
+  }
+
+  // Xolotl's dog skull burnt into the wall right above the floor, in a ring of scorch, its
+  // sockets glowing with embers for a moment.
+  skull(x, top) {
+    this.decal({ k: 'scorch', s: 1.3 }, x, top - 6, Math.random);
+    const g = this.wg, w = SKULL[0].length, h = SKULL.length, x0 = x - (w >> 1), y0 = top - h;
+    const A = { a: 0.92, b: 0.6, d: 0.32 };
+    for (let yy = 0; yy < h; yy++) for (let xx = 0; xx < w; xx++) {
+      const c = SKULL[yy][xx];
+      if (!A[c]) continue;
+      g.globalAlpha = A[c];
+      g.fillStyle = BURN_PAL[c];
+      g.fillRect(x0 + xx, y0 + yy, 1, 1);
+    }
+    g.globalAlpha = 1;
+    const eyes = [];
+    for (let yy = 0; yy < h; yy++) for (let xx = 0; xx < w; xx++) if (SKULL[yy][xx] === 'v') eyes.push([x0 + xx, y0 + yy]);
+    this.hemo.push({ k: 'skullGlow', x, y: y0 + 4, eyes, t: 0, life: 1.8, max: 1.8 });
+  }
+
+  // How dark and red the screen is under Xolotl's cast (0..1).
+  dimK() {
+    const d = this.dim;
+    if (!d) return 0;
+    return Math.min(1, (d.max - d.life) / 0.08) * Math.min(1, d.life / 0.3);
+  }
+
   decal(e, x, y, rnd) {
     const g = e.layer === 'floor' ? this.fg : this.wg;
     if (e.k === 'hole') {
@@ -508,6 +670,20 @@ export class FX {
       if (p.x < -10 || p.x > VIEW_W + 10 || p.y > VIEW_H + 10) p.life = 0;
     }
     this.parts = this.parts.filter(p => p.life > 0);
+    for (const o of this.over) {
+      o.t += dt;
+      // The geyser throws a crown of spray as it tops out, and rains back down as it collapses.
+      if (o.k === 'geyser') {
+        if (!o.crown && o.t >= 0.22) { o.crown = true; this.burst('drop', o.x, o.y - 40, 12, { a: -Math.PI / 2, spread: 2.6, s: 1.8, life: 0.55, colors: WATER, g: 0.12, ov: true }); }
+        if (o.t > 0.36 && Math.random() < 0.7) this.burst('drop', o.x + (Math.random() - 0.5) * 6, o.y - 40 * (1 - (o.t - 0.36) / (o.max - 0.36)), 1, { a: Math.PI / 2, spread: 1.2, s: 1, life: 0.35, colors: WATER, g: 0.2, ov: true });
+      }
+      // Spray flies off the lip of the wave as it rolls.
+      if (o.k === 'wave' && o.t < 0.34 && Math.random() < 0.8) {
+        const run = o.run * ease(Math.min(1, o.t / 0.32));
+        this.burst('drop', o.x + o.f * (run + 2), o.y - 8, 1, { a: o.f > 0 ? -0.9 : Math.PI + 0.9, spread: 0.8, s: 1.6, life: 0.3, colors: ['#ffffff', '#ffd0de'], g: 0.14, ov: true });
+      }
+    }
+    if (this.dim && (this.dim.life -= dt) <= 0) this.dim = null;
     for (const h of this.hemo) {
       h.t += dt;
       // A spike bursting out throws blood off its tip and kicks up the floor.
@@ -519,12 +695,13 @@ export class FX {
         this.burst('dust', h.x, h.y - 1, 2, { a: -Math.PI / 2, spread: 2.4, s: 0.7, life: 0.4, colors: ['#6a6078', '#8a7f95'], g: -0.01, drag: 0.92, size: 2, rnd });
       }
     }
-    for (const list of [this.smears, this.flashes, this.zaps, this.rings, this.hemo]) for (const s of list) s.life -= dt;
+    for (const list of [this.smears, this.flashes, this.zaps, this.rings, this.hemo, this.over]) for (const s of list) s.life -= dt;
     this.smears = this.smears.filter(s => s.life > 0);
     this.flashes = this.flashes.filter(s => s.life > 0);
     this.zaps = this.zaps.filter(s => s.life > 0);
     this.rings = this.rings.filter(s => s.life > 0);
     this.hemo = this.hemo.filter(s => s.life > 0);
+    this.over = this.over.filter(s => s.life > 0);
   }
 
   pal() { return bloodPal(this.gore); }
@@ -544,6 +721,47 @@ export class FX {
     const P = this.pal();
     const dot = (c, x, y, w = 1, h = w) => { g.fillStyle = c; g.fillRect(Math.round(x + ox), Math.round(y + oy), w, h); };
     for (const h of this.hemo) {
+      if (h.k === 'venus') {
+        // The evening star flares up in three steps, burns white-hot at the heart, then blinks out.
+        const k = h.t / h.max, m = VENUS[h.t < 0.04 ? 0 : h.t < 0.08 || k > 0.82 ? 1 : 2];
+        if (k > 0.66 && Math.floor(h.t * 24) % 2) continue;
+        const hot = h.t < 0.25 && Math.floor(h.t * 30) % 2, x0 = h.x - (m[0].length >> 1), y0 = h.y - (m.length >> 1);
+        for (let y = 0; y < m.length; y++) for (let x = 0; x < m[0].length; x++) {
+          const c = m[y][x];
+          if (c !== '.') dot(c === 'y' && hot ? '#ffffff' : BURN_PAL[c], x0 + x, y0 + y);
+        }
+        continue;
+      }
+      if (h.k === 'xzap') {
+        // Red lightning from the star into a clone, jumping to a new path every other frame.
+        const lt = h.t - h.delay;
+        if (lt < 0 || (lt > 0.12 && Math.floor(lt * 30) % 3 === 0)) continue;
+        const r = seeded(h.seed * 97 + Math.floor(lt * 30)), n = 7;
+        let x = h.x, y = h.y;
+        for (let i = 1; i <= n; i++) {
+          const tx = h.x + (h.x2 - h.x) * (i / n) + (i < n ? (r() - 0.5) * 9 : 0), ty = h.y + (h.y2 - h.y) * (i / n) + (i < n ? (r() - 0.5) * 9 : 0);
+          const steps = Math.max(1, Math.round(Math.max(Math.abs(tx - x), Math.abs(ty - y))));
+          for (let s = 0; s <= steps; s++) {
+            const px = x + (tx - x) * (s / steps), py = y + (ty - y) * (s / steps);
+            dot('#ff2a3a', px + 1, py); dot(lt < 0.08 ? '#ffffff' : '#fff2a0', px, py);
+          }
+          x = tx; y = ty;
+        }
+        continue;
+      }
+      if (h.k === 'skullGlow') {
+        // Embers in the scorched skull's sockets, fading from gold to a dull red.
+        const k = h.t / h.max;
+        for (const [ex, ey] of h.eyes) if ((ex * 7 + ey * 3 + Math.floor(h.t * 12)) % 5 || k < 0.4) dot(k < 0.3 ? '#ffd040' : k < 0.65 ? '#ff5a1a' : '#9a1a10', ex, ey);
+        continue;
+      }
+      if (h.k === 'twinkle') {
+        // A four-point twinkle on the regrown part.
+        const k = h.t / h.max, r = Math.round(3 * Math.sin(k * Math.PI));
+        dot('#ffffff', h.x, h.y);
+        for (let i = 1; i <= r; i++) { const c = i === r ? '#ff9cc0' : '#ffffff'; dot(c, h.x + i, h.y); dot(c, h.x - i, h.y); dot(c, h.x, h.y + i); dot(c, h.x, h.y - i); }
+        continue;
+      }
       if (h.k === 'whoosh') {
         // The snap smear: a band bowed out from the body along the claw's path, hot at the claw.
         const mx = (h.x + h.x2) / 2, my = (h.y + h.y2) / 2, ox2 = mx - h.cx, oy2 = my - h.cy, ol = Math.hypot(ox2, oy2) || 1;
@@ -711,7 +929,7 @@ export class FX {
   // Lit particles: blood, debris, dust and smoke.
   drawLit(g, ox, oy) {
     for (const p of this.parts) {
-      if (p.em || p.k === 'glyph') continue;
+      if (p.em || p.ov || p.k === 'glyph') continue;
       g.globalAlpha = p.k === 'dust' || p.k === 'smoke' || p.k === 'spray' ? Math.min(1, (p.life / p.max) * 1.4) * (p.k === 'smoke' ? 0.75 : 0.7) : 1;
       g.fillStyle = p.c;
       const s = Math.max(1, Math.round(p.s));
@@ -720,9 +938,84 @@ export class FX {
     g.globalAlpha = 1;
   }
 
+  // Over the lighting, at full colour: water and goo that should read bright and clean (the geyser,
+  // the wave, spray, rising bubbles) and the bite's teeth.
+  drawOver(g, ox, oy, t) {
+    const dot = (c, x, y, w = 1, h = 1) => { g.fillStyle = c; g.fillRect(Math.round(x + ox), Math.round(y + oy), w, h); };
+    for (const o of this.over) {
+      if (o.k === 'geyser') {
+        // Rises in a quarter second, holds, then falls back in on itself and thins out.
+        const rise = Math.min(1, o.t / 0.25), fall = o.t > 0.36 ? (o.t - 0.36) / (o.max - 0.36) : 0;
+        const H = Math.round(40 * ease(rise) * (1 - fall)), w = Math.max(2, Math.round(8 * (1 - fall * 0.6)));
+        if (H < 1) continue;
+        const flow = Math.floor(o.t * 120);
+        for (let yy = 0; yy < H; yy++) {
+          const ww = w + (yy < 3 ? 4 - yy : 0), x0 = o.x - (ww >> 1), y = o.y - 1 - yy;
+          for (let i = 0; i < ww; i++) {
+            const edge = i === 0 || i === ww - 1, core = Math.abs(i - (ww - 1) / 2) < 1;
+            const streak = (i === 1 || i === ww - 3) && (yy + flow) % 7 < 2;
+            dot(edge ? '#5ab4e6' : streak || core ? '#ffffff' : (yy + flow + i) % 5 ? '#a8e4f8' : '#d8f6ff', x0 + i, y);
+          }
+        }
+        // The foam crown on top: a ragged white cap a little wider than the column.
+        const top = o.y - H - 1, cw = w + 2;
+        for (let i = 0; i < cw; i++) { const up = (i + flow) % 3 === 0 ? 1 : 0; dot(i === 0 || i === cw - 1 ? '#d8f6ff' : '#ffffff', o.x - (cw >> 1) + i, top - up, 1, 1 + up); }
+      } else if (o.k === 'wave') {
+        // Grows as it rolls out, curls over at the lip and breaks into foam at the end.
+        const k = o.t / o.max, run = o.run * ease(Math.min(1, o.t / 0.32)), front = o.x + o.f * run;
+        const H = Math.round(10 * Math.sin(Math.min(1, k * 2.2) * Math.PI / 2) * (1 - Math.max(0, (k - 0.72) / 0.28)));
+        if (H < 1) continue;
+        const L = 18;
+        for (let i = 0; i <= L; i++) {
+          const h = Math.max(0, Math.round(H * Math.pow(1 - i / L, 1.4))), xx = front - o.f * i, top = o.y - 1 - h;
+          g.globalAlpha = 0.4;
+          if (h > 2) dot((i + Math.floor(o.t * 40)) % 4 ? '#ff9cb8' : '#ffd0de', xx, top + 2, 1, h - 1);
+          g.globalAlpha = 1;
+          dot('#ffffff', xx, top);
+          if (h > 0) dot(i < 3 ? '#ffd0de' : '#ff8fa8', xx, top + 1);
+        }
+        // The lip: two pixels hanging over the front, then a fleck of foam falling off it.
+        dot('#ffffff', front + o.f, o.y - H);
+        dot('#ffd0de', front + o.f * 2, o.y - H + 1);
+        if (Math.floor(o.t * 30) % 2) dot('#ffffff', front + o.f * 3, o.y - H + 3);
+      } else if (o.k === 'pop') {
+        // The film tears outward: eight short dashes flying off the rim.
+        const k = o.t / o.max, r0 = o.r + k * 5;
+        g.globalAlpha = 1 - k * 0.7;
+        for (let i = 0; i < 8; i++) {
+          const a = (i / 8) * Math.PI * 2 + 0.2, c = Math.cos(a), s = Math.sin(a);
+          for (let d = 0; d < 3 - k * 2; d++) dot(i % 2 ? '#d8f6ff' : '#ffffff', o.x + c * (r0 + d), o.y + s * (r0 + d));
+        }
+        g.globalAlpha = 1;
+      } else if (o.k === 'teeth') {
+        // Upper and lower rows of needle teeth slam shut, hold a beat and fade.
+        const k = o.t / o.max, shut = Math.min(1, o.t / 0.06), gap = Math.round(5 - 4 * shut);
+        if (k > 0.6 && Math.floor(o.t * 30) % 2) continue;
+        for (const s of [-1, 1]) {
+          const y = o.y + s * gap;
+          dot('#ff4a6a', o.x - 5, y + s, 11, 1);
+          for (let i = -2; i <= 2; i++) { const sag = Math.abs(i) === 2 ? -s : 0; dot('#fff2dc', o.x + i * 2, y + sag, 1, 1); dot('#fff2dc', o.x + i * 2, y + sag - s, 1, 1); }
+        }
+      }
+    }
+    for (const p of this.parts) {
+      if (!p.ov) continue;
+      const k = p.life / p.max;
+      if (p.k === 'bubl') {
+        // Rising bubbles wobble side to side and grow a shine.
+        const x = Math.round(p.x + Math.sin(t * 9 + p.seed) * 0.8 + ox), y = Math.round(p.y + oy), s = Math.round(p.s);
+        g.globalAlpha = Math.min(1, k * 2.5);
+        if (s <= 1) { g.fillStyle = p.c; g.fillRect(x, y, 1, 1); }
+        else if (s === 2) { g.fillStyle = p.c; g.fillRect(x, y - 1, 1, 1); g.fillRect(x - 1, y, 1, 1); g.fillStyle = '#7ab8d8'; g.fillRect(x + 1, y, 1, 1); g.fillRect(x, y + 1, 1, 1); }
+        else { g.fillStyle = p.c; g.fillRect(x, y - 1, 2, 1); g.fillRect(x - 1, y, 1, 2); g.fillStyle = '#7ab8d8'; g.fillRect(x + 2, y, 1, 2); g.fillRect(x, y + 2, 2, 1); g.fillStyle = '#ffffff'; g.fillRect(x, y, 1, 1); }
+        g.globalAlpha = 1;
+      } else { g.fillStyle = p.c; const s = Math.max(1, Math.round(p.s)); g.fillRect(Math.round(p.x + ox), Math.round(p.y + oy), s, s); }
+    }
+  }
+
   drawEmissive(g, ox, oy, t) {
     for (const p of this.parts) {
-      if (!p.em) continue;
+      if (!p.em || p.ov) continue;
       const k = p.life / p.max;
       if (p.k === 'fire') {
         g.fillStyle = FIRE[Math.min(4, Math.floor((1 - k) * 5))];
@@ -804,7 +1097,7 @@ export class FX {
       for (let i = 0; i < steps; i++) {
         const a = (i / steps) * Math.PI * 2;
         if (r.arc && Math.abs(Math.atan2(Math.sin(a - r.dir), Math.cos(a - r.dir))) > r.arc) continue;
-        g.fillRect(Math.round(r.x + Math.cos(a) * rad + ox), Math.round(r.y + Math.sin(a) * rad * 0.9 + oy), 1, 1);
+        g.fillRect(Math.round(r.x + Math.cos(a) * rad + ox), Math.round(r.y + Math.sin(a) * rad * (r.flat ? 0.28 : 0.9) + oy), 1, 1);
       }
       g.globalAlpha = 1;
     }
@@ -821,6 +1114,16 @@ export class FX {
     if (sm.kind === 'dash') {
       g.fillStyle = sm.color;
       for (let i = 0; i < 4; i++) { const yy = Math.round(sm.y + oy - 8 + i * 5), len = Math.round(sm.size * (1 - k) * (0.6 + (i % 2) * 0.4)); g.fillRect(Math.round(sm.x + ox - sm.face * (len + 6)), yy, len, 1); }
+      return;
+    }
+    // The axolotl's gill lash: three thin feathery arcs, the outer one palest, staggered.
+    if (sm.kind === 'gill') {
+      const cols = ['#ffd0de', '#ff8fa8', '#ff6e8c'];
+      for (let l = 0; l < 3; l++) {
+        const rr = r - l * 2, off = l * 0.14;
+        g.fillStyle = frame === 2 ? '#ff8fa8' : cols[l];
+        for (let a = a0 + off; a <= a1 - off * 0.5; a += 0.05) g.fillRect(Math.round(cx + Math.cos(a) * rr * sm.face), Math.round(cy + Math.sin(a) * rr * 0.75), 1, 1);
+      }
       return;
     }
     const lines = sm.kind === 'claw' || sm.kind === 'lunge' || sm.kind === 'blood' ? 3 : 1;
@@ -857,6 +1160,10 @@ export class FX {
       else if (h.k === 'spike' && h.t >= h.delay) add({ x: h.x, y: h.y - h.h, r: 26, color: red, i: k * 0.7 });
       else if (h.k === 'bubble') add({ x: h.x, y: h.y, r: 50, color: red, i: h.flash ? 2 : 0.7 });
       else if (h.k === 'cut' && (h.t < 0.15 || h.flash)) add({ x: (h.x + h.x2) / 2, y: (h.y + h.y2) / 2, r: 40, color: h.flash ? '#ffffff' : red, i: 1 });
+      else if (h.k === 'venus') add({ x: h.x, y: h.y, r: 96, color: '#ff3a2a', i: k * 1.6 });
+      else if (h.k === 'xzap' && h.t >= h.delay) add({ x: h.x2, y: h.y2, r: 36, color: '#ff4a2a', i: k * 1.2 });
+      else if (h.k === 'skullGlow') add({ x: h.x, y: h.y, r: 28, color: '#ff6a2a', i: k * 0.9 });
     }
+    for (const o of this.over) if (o.k === 'geyser') add({ x: o.x, y: o.y - 20, r: 44, color: '#9ae8ff', i: 0.5 * (1 - o.t / o.max) });
   }
 }

@@ -1,6 +1,6 @@
 // Secondary motion for tails and scarf ends: short verlet chains in character space (pixels,
 // facing right) that keep their drawn shape, wag, and lag behind the body's motion.
-import { CAST, ANCHOR, TAILS, SCARF, BEAST, TITAN, AXO_MINI, AXO_DEMON, castFor } from './pixel-data.js';
+import { CAST, ANCHOR, TAILS, SCARF, BEAST, TITAN, AXO_MINI, AXO_DEMON, castFor, tailPoints } from './pixel-data.js';
 import { lookOf } from '../sim/fighters.js';
 import { S } from '../engine/const.js';
 
@@ -11,8 +11,11 @@ const SPECS = {
   ocelot: [{ root: ANCHOR.tail, shape: TAILS.ocelot.shape, tube: TAILS.ocelot, stiff: 0.2, tip: 0.3, grav: 0.05, drag: 0.32, inertia: 0.7, wag: [1.5, 7] }],
   ocelotBeast: [{ root: BEAST.anchor.tail, shape: TAILS.ocelotBeast.shape, tube: TAILS.ocelotBeast, stiff: 0.28, tip: 0.3, grav: 0.06, drag: 0.3, inertia: 0.8, wag: [1.1, 9] }],
   ocelotTitan: [{ root: TITAN.anchor.tail, shape: TAILS.ocelotTitan.shape, tube: TAILS.ocelotTitan, stiff: 0.32, tip: 0.3, grav: 0.07, drag: 0.3, inertia: 0.85, wag: [0.9, 8] }],
-  // The axolotl's tail is long and flat: it sways slowly and drags behind like a fin in water.
-  axolotl: [{ root: CAST[6].anchor.tail, shape: CAST[6].tail.shape, tube: CAST[6].tail, stiff: 0.16, tip: 0.25, grav: 0.03, drag: 0.4, inertia: 0.8, wag: [1.3, 11] }],
+  // The axolotl's tail is a long flat paddle: it drags behind like a fin in water and sculls in a
+  // wave that travels down to the tip (wave: px at the root and at the tip, seconds per stroke at
+  // rest and when it is running or striking). snap: a pose that draws the tail (the tail strikes)
+  // takes it over, and the chain swings on from that shape afterwards.
+  axolotl: [{ root: CAST[6].anchor.tail, shape: CAST[6].tail.shape, tube: CAST[6].tail, stiff: 0.16, tip: 0.25, grav: 0.03, drag: 0.4, inertia: 0.8, wag: [1.3, 6], wave: { root: 1, tip: 3, slow: 0.8, fast: 0.35 }, snap: true }],
   axoMini: [{ root: AXO_MINI.anchor.tail, shape: AXO_MINI.tail.shape, tube: AXO_MINI.tail, stiff: 0.2, tip: 0.3, grav: 0.03, drag: 0.4, inertia: 0.8, wag: [2.6, 14] }],
   axoDemon: [{ root: AXO_DEMON.anchor.tail, shape: AXO_DEMON.tail.shape, tube: AXO_DEMON.tail, stiff: 0.24, tip: 0.3, grav: 0.02, drag: 0.35, inertia: 0.9, wag: [4, 16] }],
   rat: [{ root: ANCHOR.tail, shape: TAILS.rat.shape, tube: TAILS.rat, stiff: 0.12, tip: 0.3, grav: 0.08, drag: 0.32, inertia: 0.9, wag: [1.4, 14] }],
@@ -64,6 +67,26 @@ class Chain {
   }
 }
 
+// n points spaced evenly along a polyline (a drawn tail handed over to a chain of n links).
+function resample(line, n) {
+  const seg = line.slice(1).map((p, i) => Math.hypot(p[0] - line[i][0], p[1] - line[i][1]));
+  const total = seg.reduce((s, d) => s + d, 0) || 1, out = [];
+  for (let k = 0, i = 0, run = 0; k < n; k++) {
+    const want = (total * k) / (n - 1);
+    while (i < seg.length - 1 && run + seg[i] < want) run += seg[i++];
+    const t = seg[i] ? Math.min(1, (want - run) / seg[i]) : 0;
+    out.push([line[i][0] + (line[i + 1][0] - line[i][0]) * t, line[i][1] + (line[i + 1][1] - line[i][1]) * t]);
+  }
+  return out;
+}
+// How far a lost part has grown back (0..1), from the live game (start and length of the regrowth)
+// or a snapshot (the fraction); null while nothing is growing.
+function regrown(ax, part, time) {
+  const r = ax?.regrow?.[part];
+  if (r == null) return null;
+  return typeof r === 'number' ? r : Math.max(0, Math.min(1, (time - r.t0) / (r.dur || 1)));
+}
+
 // The frog's borrowed tail or scarf moves like its owner's, hung from his own back.
 const copied = new Map();
 function specsOf(ch) {
@@ -97,18 +120,46 @@ export class Secondary {
     const vx = (a.vx || 0) * S * st.face, vy = (a.vy || 0) * S;
     const ax = k > 0 ? (vx - st.vx) / k : 0, ay = k > 0 ? (vy - st.vy) / k : 0;
     st.vx = vx; st.vy = vy;
+    // The pose draws the tail itself (a strike with it): the chain takes that shape and lets the
+    // body sprite draw it, so it swings on from there when the pose lets go.
+    if (specs[0].snap && Array.isArray(frame.tail)) {
+      const chain = st.chains[0];
+      chain.pts = resample(tailPoints(ch, frame), chain.pts.length).map(([x, y]) => ({ x, y, px: x, py: y }));
+      return null;
+    }
+    // A tail the axolotl lost grows back from the stump: only the part grown so far is drawn.
+    const ax6 = specs[0].snap ? a.axo : null, cut = !!(ax6 && (ax6.tailCut || ax6.tail));
+    const grown = cut ? regrown(ax6, 'tail', time) ?? 0 : 1;
     const out = [];
     specs.forEach((spec, i) => {
       const chain = st.chains[i];
-      if (k <= 0) { out.push({ pts: chain.pts.map(p => [p.x, p.y]), spec: spec.tube }); return; }
+      if (k <= 0) { out.push({ pts: this.trim(chain.pts.map(p => [p.x, p.y]), grown, spec, st, a, 0), spec: spec.tube }); return; }
       const wag = (Math.sin(time * spec.wag[0] + st.seed + i) * spec.wag[1] + (frame.tailDeg || 0)) * Math.PI / 180;
       const force = {
         ax: -Math.max(-3, Math.min(3, ax)) * spec.inertia, ay: -Math.max(-3, Math.min(3, ay)) * spec.inertia,
         wx: -Math.max(-6, Math.min(6, vx)) * spec.drag * 0.12, wy: -Math.max(-6, Math.min(6, vy)) * spec.drag * 0.12, vx, vy
       };
       const shape = Array.isArray(frame.tail) && spec.tube !== SCARF ? frame.tail : null;
-      out.push({ pts: chain.step(rootOf(spec), shape, wag, force, k, time, st.seed), spec: spec.tube });
+      out.push({ pts: this.trim(chain.step(rootOf(spec), shape, wag, force, k, time, st.seed), grown, spec, st, a, dt), spec: spec.tube });
     });
     return out;
+  }
+
+  // The axolotl's sculling wave laid over the chain (it is drawn, not simulated: the chain keeps its
+  // physics), and a regrowing tail cut down to what has grown.
+  trim(pts, grown, spec, st, a, dt) {
+    const w = spec.wave;
+    if (w) {
+      const busy = Math.abs(a.vx || 0) > 0.6 || a.attack > 0;
+      st.phase = ((st.phase || 0) + (dt / (busy ? w.fast : w.slow)) * Math.PI * 2) % (Math.PI * 2);
+      const n = pts.length;
+      pts = pts.map(([x, y], j) => {
+        if (!j) return [x, y];
+        const [px, py] = pts[j - 1], d = Math.hypot(x - px, y - py) || 1, t = j / (n - 1);
+        const off = Math.sin(st.phase - t * Math.PI * 1.5) * (w.root + (w.tip - w.root) * t);
+        return [x - ((y - py) / d) * off, y + ((x - px) / d) * off];
+      });
+    }
+    return grown < 1 ? pts.slice(0, Math.ceil(grown * pts.length)) : pts;
   }
 }
