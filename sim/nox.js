@@ -8,6 +8,7 @@ import { weightOf } from './fighters.js';
 import { damage, markBlood, bleedFor, fillBlood, perfectDodge, cutCorpse } from './combat.js';
 import { knockdown } from './ragdoll.js';
 import { damageProp } from './props.js';
+import { strikeCourts } from './court.js';
 import { HALF_H } from '../render/rig.js';
 import { clamp, rnd } from '../engine/const.js';
 
@@ -181,6 +182,8 @@ function famHit(g, a, s, cx, cy, dir, ring, combo) {
     f.last = b.id;
     if (combo) { a.lastPrey = b.id; a.lastPreyT = g.time; a.comboTimer = Math.max(a.comboTimer || 0, 0.4); }
   }
+  // The Cat King's court in reach is cut too.
+  strikeCourts(g, a, (x, y) => (ring ? Math.abs(x - a.x) < ring.rx && Math.abs(y - a.y) < ring.ry : Math.hypot(x - cx, y - cy) < r + 4), amount, () => dir);
   // Ragdolls are thrown about; the dead are cut up.
   const gore = g.settings.gore ?? 2;
   for (const l of [...g.limbs]) {

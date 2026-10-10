@@ -7,7 +7,7 @@ import { extendedAttack, dropWeapon, damageProp } from './props.js';
 import { hazardBulletHit } from './hazards.js';
 import { MOVES, HEAVY, AIR, NOX_AIR, DARK_AIR, JUMA_AIR, BEAST_AIR, LOLA_AIR, NATURAL, SET, BURST, DARK, POOL, comboOf, noxAir } from './moves.js';
 import { spill } from './nox.js';
-import { kingOrder, shieldBlocks } from './court.js';
+import { kingOrder, shieldBlocks, strikeCourts, courtInPath, hurtFamiliar } from './court.js';
 import { MAP } from './map.js';
 import { startSpecial, startStomp, throwCarried, startChase, endAct, startPlunge, startSwarm, startBite, startCharge } from './specials.js';
 import { isMelee, WEAPON_INFO, weaponSlot } from './weapons.js';
@@ -373,6 +373,8 @@ export function strike(g, a, mv, i) {
     if (vamp && !mv.feast && !b.dead) markBlood(g, b);
     if (vamp && !b.dead) bleedFor(g, a, b, mv.dark ? DARK.bleed * 2 : DARK.bleed);
   }
+  // The Cat King's court in the way takes the blow too (sim/court.js).
+  strikeCourts(g, a, (x, y) => reaches(a, mv, x, y, 4, low), amount, f => Math.sign(f.x - a.x) || face);
   if (mv.spikes) g.fx('bloodSpikes', { x: a.x, y: a.y + 16, face, at: mv.spikes });
   if (mv.sweep && a.ground) g.fx('scytheSweep', { x: a.x + face * 8, y: a.y + 16, x2: a.x + face * mv.sweep, face });
   // The guillotine's blade bites into the floor ahead.
@@ -637,6 +639,11 @@ export function stepBullets(g, dt) {
       if (t < bestT) { bestT = t; best = body; }
     }
     hazardBulletHit(g, b, nx, ny);
+    // A familiar of the Cat King's on the way, before anything else it would hit.
+    const fam = b.damage > 0 ? courtInPath(g, b, nx, ny) : null;
+    if (fam) {
+      if (fam.u <= bestT) { hurtFamiliar(g, fam.k, fam.f, b.damage * (b.kind === 'pellet' ? 1 : 0.8), b.owner, Math.sign(b.vx) || 1); removeBullet(g, b); continue; }
+    }
     b.px = b.x; b.py = b.y;
     if (best) {
       const t = Math.max(0, Math.min(1, bestT));
@@ -813,7 +820,7 @@ export function damage(g, a, amount, point, ownerId, kind = 'punch', opts = {}) 
   }
   if (owner && ownerId !== a.id && owner.team === a.team) return 0;
   // The Cat King's shield-bearer takes the blow for him (sim/court.js).
-  if (a.type === 0 && !DOT.has(cat) && !opts.environment && !['explosion', 'grind'].includes(cat) && kind !== 'fall' && kind !== 'crush' && shieldBlocks(g, a, owner)) return 0;
+  if (a.type === 0 && !DOT.has(cat) && !opts.environment && !['explosion', 'grind'].includes(cat) && kind !== 'fall' && kind !== 'crush' && shieldBlocks(g, a, owner, amount)) return 0;
   if (a.act === 'ball') amount *= 0.5;
   // Juma's beast takes blows on a thick hide, and does not flinch while she swings, charges or
   // transforms (super armor); she is still thrown by explosions and crushed by the press.
@@ -872,13 +879,14 @@ export function damage(g, a, amount, point, ownerId, kind = 'punch', opts = {}) 
     else if (mag > 0.1) {
       const v = a.body.velocity;
       // Hits in the air keep the target afloat so combos can continue there (juggles).
-      const juggle = !a.ground && !DOT.has(cat) && owner && owner !== a;
+      // (noLift: the Cat King's court striking on its own does not juggle anyone up)
+      const juggle = !a.ground && !DOT.has(cat) && owner && owner !== a && !opts.noLift;
       const lift = owner && !owner.ground ? -1.4 : -3.2;
       Body.setVelocity(a.body, { x: juggle ? kx * 0.5 : v.x + kx, y: juggle ? Math.min(ky, lift) : Math.min(v.y, ky < 0 ? ky : v.y + ky) });
       if (juggle) a.float = 0.35;
       a.stun = Math.max(a.stun, 0.08 + mag * 0.022);
     }
-    if (!knock && !a.knocked && !tough && !DOT.has(cat) && kind !== 'fall') stagger(g, a, amount, Math.sign(kx) || (owner && owner !== a ? Math.sign(a.x - owner.x) : 0));
+    if (!knock && !a.knocked && !tough && !DOT.has(cat) && kind !== 'fall' && !opts.light) stagger(g, a, amount, Math.sign(kx) || (owner && owner !== a ? Math.sign(a.x - owner.x) : 0));
   }
   if (!DOT.has(cat)) {
     const heavy = knock || amount >= 14;

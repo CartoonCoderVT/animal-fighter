@@ -1,6 +1,7 @@
 import { Bodies, Body, Composite, MASK, CAT, surfaceY } from './physics.js';
 import { rnd, dist, clamp } from '../engine/const.js';
 import { damage, armUsable, woundLimb } from './combat.js';
+import { strikeCourts } from './court.js';
 import { pushActor, breakJoint, pinLimb } from './ragdoll.js';
 import { pose } from '../render/rig.js';
 import { hazardInteract } from './hazards.js';
@@ -112,6 +113,8 @@ export function explode(g, x, y, owner, power = 1) {
     const amount = k * 68 * power;
     damage(g, a, amount, { x: a.x - dx * 6, y: a.y - dy * 6 }, owner, 'explosion', { kb: { x: dx * 13 * k, y: dy * 9 * k - 7 * k }, knock: true, overkill: amount > a.hp + 30, environment: true });
   }
+  // The Cat King's court is blown about too (all of them but its own King's).
+  strikeCourts(g, g.actor(owner) || null, (fx, fy) => Math.hypot(fx - x, fy - y) < R * 0.8, 40 * power, f => Math.sign(f.x - x) || 1);
   for (const p of [...g.props]) {
     if (p.held || p.fixed) continue;
     const d = dist(p, { x, y });
