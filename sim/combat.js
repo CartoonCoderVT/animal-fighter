@@ -712,7 +712,7 @@ function bulletHit(g, b, body, point) {
       // The court's arrows: no freeze on the King far away, and they keep the rival reeling.
       const dealt = damage(g, a, b.damage, point, b.owner, b.kind, { kb: { x: b.vx * 0.12, y: Math.min(0, b.vy * 0.05) - 0.8 }, dir: angle, solo: true });
       if (dealt && !a.dead && !a.knocked && b.hold) { a.hitstun = Math.max(a.hitstun || 0, b.hold); a.hitstunMax = Math.max(a.hitstunMax || 0, a.hitstun); }
-      if (dealt) { const k = g.actor(b.owner); if (k) { k.lastPrey = a.id; k.lastPreyT = g.time; } }
+      if (dealt && !b.auto) { const k = g.actor(b.owner); if (k) { k.lastPrey = a.id; k.lastPreyT = g.time; } }
     }
     else damage(g, a, b.damage, point, b.owner, b.kind, { kb: { x: b.vx * 0.16, y: b.vy * 0.1 - 1 }, dir: angle });
   } else if (l) {
@@ -820,7 +820,7 @@ export function damage(g, a, amount, point, ownerId, kind = 'punch', opts = {}) 
   }
   if (owner && ownerId !== a.id && owner.team === a.team) return 0;
   // The Cat King's shield-bearer takes the blow for him (sim/court.js).
-  if (a.type === 0 && !DOT.has(cat) && !opts.environment && !['explosion', 'grind'].includes(cat) && kind !== 'fall' && kind !== 'crush' && shieldBlocks(g, a, owner, amount)) return 0;
+  if (a.type === 0 && !DOT.has(cat) && !opts.environment && !['explosion', 'grind'].includes(cat) && kind !== 'fall' && kind !== 'crush' && shieldBlocks(g, a, owner, amount, point)) return 0;
   if (a.act === 'ball') amount *= 0.5;
   // Juma's beast takes blows on a thick hide, and does not flinch while she swings, charges or
   // transforms (super armor); she is still thrown by explosions and crushed by the press.
@@ -847,6 +847,8 @@ export function damage(g, a, amount, point, ownerId, kind = 'punch', opts = {}) 
   a.hp -= amount;
   a.hurt = 0.16;
   if (!DOT.has(cat) || ownerId !== a.id) { a.lastHit = ownerId; a.lastHitTime = g.time; }
+  // Real blows only (not bleeding or burning): who just struck this fighter (the Cat King's court watches).
+  if (!DOT.has(cat) && owner && owner !== a) { a.blowBy = ownerId; a.blowT = g.time; }
   a.lastHitKind = kind;
   if (owner && ownerId !== a.id) owner.stats.damage += amount;
   // The rival a fighter's string is on: blows only, not a thrown knife that strays into a bystander.

@@ -3,7 +3,7 @@ import { MAP, pathTo } from './map.js';
 import { inPit } from './physics.js';
 import { rnd, dist, clamp } from '../engine/const.js';
 import { FOOT } from '../render/rig.js';
-import { MOVES, DARK, POOL, comboOf } from './moves.js';
+import { MOVES, DARK, POOL, ROYAL, comboOf } from './moves.js';
 import { courtStrikeSoon } from './court.js';
 import { MELEE, isMelee } from './weapons.js';
 
@@ -11,8 +11,8 @@ const RANGED = a => a.weapon === 'pistol' || a.weapon === 'shotgun';
 
 // When each special is worth firing, given the gap to the target.
 const SPECIAL_RANGE = [
-  // The Cat King: his court's ATAQUE REAL when rivals are around him.
-  (dx, dy) => Math.abs(dx) < 220 && Math.abs(dy) < 90,
+  // The Cat King: his court's ATAQUE REAL when rivals are around him (inside the decree's own reach).
+  (dx, dy) => Math.abs(dx) < ROYAL.reach - 10 && Math.abs(dy) < Math.min(90, ROYAL.band),
   (dx, dy) => Math.abs(dx) < 220 && Math.abs(dy) < 24,
   // Lola stops time whenever a rival is in reach of her knives (it charges slowly anyway).
   (dx, dy) => Math.abs(dx) < 280 && Math.abs(dy) < 150,

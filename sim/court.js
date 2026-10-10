@@ -123,7 +123,8 @@ function courtHit(g, a, f, spec, cx, cy, dir, only = null) {
     const dealt = damage(g, b, spec.dmg, { x: b.x - side * 4, y: b.y }, a.id, kind, { kb: { x: side * kb[0], y: kb[1] }, knock: !!spec.knock, launch: !!(spec.launch || spec.spike), dir: rnd(-0.8, 0.8), solo: true, light, noLift: !!f.auto, familiar: () => { f.hit = spec.hits.length; } });
     if (!dealt) continue;
     struck++;
-    a.lastPrey = b.id; a.lastPreyT = g.time;
+    // (the court's own blows never pick the rival the King's orders go to)
+    if (!f.auto) { a.lastPrey = b.id; a.lastPreyT = g.time; }
     if (b.dead) continue;
     if (spec.bleed) b.bleed = Math.min(6, (b.bleed || 0) + spec.bleed);
     if (spec.shock) b.shock = Math.max(b.shock || 0, spec.shock);
@@ -162,10 +163,10 @@ function courtHit(g, a, f, spec, cx, cy, dir, only = null) {
 }
 
 // An arrow from the archer at (x, y) toward T, aimed over the drop of its fall.
-function loose(g, a, x, y, T, spec, { speed = ARROW.speed, vy = null } = {}) {
+function loose(g, a, x, y, T, spec, { speed = ARROW.speed, vy = null, auto = false } = {}) {
   const dx = T.x - x, dy = T.y - 2 - y, steps = Math.max(4, Math.abs(dx) / speed);
   const vx = clamp(dx / steps, -speed, speed), v = vy ?? clamp((dy - 0.5 * ARROW.grav * steps * steps) / steps, -speed, speed);
-  g.bullets.push({ id: g.nextId++, owner: a.id, team: a.team, x, y, px: x, py: y, vx, vy: v, damage: spec.dmg, life: 1.4, color: '#e8d8a8', kind: 'arrow', bounces: 1, grav: ARROW.grav, court: 1, hold: spec.hold || 0 });
+  g.bullets.push({ id: g.nextId++, owner: a.id, team: a.team, x, y, px: x, py: y, vx, vy: v, damage: spec.dmg, life: 1.4, color: '#e8d8a8', kind: 'arrow', bounces: 1, grav: ARROW.grav, court: 1, hold: spec.hold || 0, auto });
   g.sound('whoosh', x);
 }
 
@@ -243,7 +244,7 @@ function stepAct(g, a, f, dt) {
     case 'archer.shot': case 'archer.volley': case 'archer.airshot': {
       if (f.act === 'airshot') glide(f, home.x, home.y - 26, 0.3, 8); else glide(f, home.x, home.y, 0.2, 6);
       f.f = Math.sign(T.x - f.x) || f.f;
-      if (due()) { const h = hand(); loose(g, a, h.x, h.y, { x: T.x + (T.b ? T.b.body.velocity.x * 4 : 0), y: T.y }, spec); f.hit++; }
+      if (due()) { const h = hand(); loose(g, a, h.x, h.y, { x: T.x + (T.b ? T.b.body.velocity.x * 4 : 0), y: T.y }, spec, { auto: !!f.auto }); f.hit++; }
       break;
     }
     // Into the sky, and a moment later the arrows come down all over them.
@@ -287,12 +288,14 @@ function stepAct(g, a, f, dt) {
     case 'assassin.dance': {
       const list = (f.targets || []).map(id => g.actor(id)).filter(b => b && !b.dead);
       const b = list[Math.min(list.length - 1, Math.floor(p * list.length))] || T.b;
+      // Held on its leash: a rival who got away beyond it is cut in the air at the leash.
+      const far = b && Math.abs(b.x - a.x) > AUTO.leash + 20, cx = far ? clamp(a.x + Math.sign(b.x - a.x) * AUTO.leash, 12, 948) : b?.x;
       if (b && f.on !== b.id) {
-        const s = Math.sign(f.x - b.x) || 1, x = clamp(b.x - s * 14, 12, 948), y = b.y + HALF_H;
+        const s = Math.sign(f.x - b.x) || 1, x = far ? cx : clamp(b.x - s * 14, 12, 948), y = b.y + HALF_H;
         g.fx('blink', { x: Math.round(f.x), y: Math.round(f.y), x2: Math.round(x), y2: Math.round(y) });
         f.x = x; f.y = y; f.on = b.id; f.f = Math.sign(b.x - x) || 1;
       }
-      if (due() && b) { courtHit(g, a, f, spec, b.x, b.y, f.f, [b.id]); f.hit++; }
+      if (due() && b) { courtHit(g, a, f, spec, cx, b.y, f.f, [b.id]); f.hit++; }
       break;
     }
     // The mage stays floating in rank; the sky does the rest.
@@ -414,7 +417,7 @@ function shieldGuard(g, a) {
 
 // Who threatens the King most: rivals close to him, above all the one swinging at him or who just hit him.
 function threatOf(g, a) {
-  const hitMe = a.lastHit != null && g.time - (a.lastHitTime ?? -9) < 1.5 ? a.lastHit : null;
+  const hitMe = a.blowBy != null && g.time - (a.blowT ?? -9) < 1.5 ? a.blowBy : null;
   let best = null, score = -1;
   for (const b of g.enemies(a)) {
     if (b.dead || b.knocked || b.invincible > 0 || ['swarm', 'world', 'requiem'].includes(b.act)) continue;
@@ -437,7 +440,7 @@ function courtBrain(g, a, dt) {
   a.guardDir = T ? Math.sign(T.x - a.x) || a.face : a.face;
   if (!T || a.courtBeat > 0 || a.act === 'decree') return;
   const d = Math.abs(T.x - a.x);
-  const danger = a.hitstun > 0 || a.knocked || (a.lastHit === T.id && g.time - (a.lastHitTime ?? -9) < 0.8);
+  const danger = a.hitstun > 0 || a.knocked || (a.blowBy === T.id && g.time - (a.blowT ?? -9) < 0.8);
   // While the King runs a string of his own they leave his rival to it (unless he is in danger).
   if (!danger && a.comboTimer > 0 && MOVES[a.attackKind]?.order) return;
   const order = danger ? ['assassin', 'soldier', 'mage', 'shield', 'archer']
@@ -446,6 +449,8 @@ function courtBrain(g, a, dt) {
   for (const who of order) {
     const f = a.court.find(f => f.k === who), act = AUTO.acts[who];
     if (!f || f.autoCd > 0 || (f.st !== 'follow' && f.st !== 'back') || d > COURT_ACTS[who][act].reach) continue;
+    // The shield-bearer stays on guard while it can still take a blow for him.
+    if (who === 'shield' && (a.shieldAt ?? -9) <= g.time) continue;
     command(g, a, who, act, [T.id], true);
     f.rescue = danger;
     f.autoCd = AUTO.cd[who] * rnd(0.8, 1.2);
@@ -456,18 +461,20 @@ function courtBrain(g, a, dt) {
 }
 
 // The shield-bearer on guard between the King and a rival takes the rival's blow for him (now and then).
-export function shieldBlocks(g, a, o, amount = 0) {
+export function shieldBlocks(g, a, o, amount = 0, point = null) {
   if (a.type !== 0 || !a.court || a.dead || a.knocked || !o || o === a || o.team === a.team || (a.shieldAt ?? -9) > g.time) return false;
   const f = a.court.find(f => f.k === 'shield');
   if (!f || (f.st !== 'follow' && !(f.st === 'act' && f.act === 'guard'))) return false;
   const side = Math.sign(f.x - a.x);
-  if (!side || side !== Math.sign(o.x - a.x) || Math.abs(f.x - a.x) > 34 || Math.abs(o.x - a.x) > 140) return false;
+  // Only a blow that lands on the shield's side of him (whoever struck it, from wherever).
+  const from = point ? Math.sign(point.x - a.x) || Math.sign(o.x - a.x) : Math.sign(o.x - a.x);
+  if (!side || side !== from || Math.abs(f.x - a.x) > 34 || Math.abs(o.x - a.x) > 140) return false;
   a.shieldAt = g.time + AUTO.block;
   Object.assign(f, { st: 'act', act: 'guard', t: 0, hit: 0, sx: f.x, sy: f.y, tgt: null, dir: side, f: side, auto: false });
   g.fx('clang', { x: Math.round(f.x + side * 4), y: Math.round(f.y - 10), big: 1 });
   g.text(a.x, a.y - 34, 'PROTEGIDO!', '#9fd8ff');
   g.sound('clang', f.x);
-  if (!o.knocked) o.stun = Math.max(o.stun || 0, 0.2);
+  if (!o.knocked && Math.sign(o.x - a.x) === side && Math.abs(o.x - a.x) < 60) o.stun = Math.max(o.stun || 0, 0.2);
   // The shield-bearer pays for it.
   hurtFamiliar(g, a, f, amount * 0.6, o.id, side);
   return true;
