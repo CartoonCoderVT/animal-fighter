@@ -33,7 +33,7 @@ const FIG_W = 72, FIG_H = 64, FIG_X = 36, FIG_Y = 50;
 const WEAPON_SCALE = 0.7;
 // Nox's eye in head cells from the head pivot; the hand at the tip of the near arm.
 const EYE = [2, -6], HAND = [0, 3];
-const DEMO_ACT = ['decree', 'ball', 'world', 'morph', 'beam'];
+const DEMO_ACT = ['plant', 'ball', 'world', 'morph', 'beam'];
 // The instant of Juma's transformation: the figure burns white just before and after the pop.
 function morphFlash(a) {
   const t = a.actT ?? 0;
@@ -145,6 +145,9 @@ export class Renderer {
     import('./court-art.js').then(m => { this.courtMod = m; this.court = new m.CourtFX(this); }).catch(e => console.warn('court art', e));
     import('./king-art.js').then(m => { this.kingArt = m; }).catch(e => console.warn('king art', e));
     import('./king-hero.js').then(m => { this.KingHero = m.KingHero; }).catch(e => console.warn('king hero', e));
+    // His kingdom: the banner, the house and the castle it grows into, its aura, fish and units.
+    this.kingdom = null; this.kingdomMod = null;
+    import('./kingdom-art.js').then(m => { this.kingdomMod = m; this.kingdom = new m.KingdomFX(this); }).catch(e => console.warn('kingdom art', e));
     this.resize();
   }
 
@@ -168,6 +171,7 @@ export class Renderer {
     this.lola.reset();
     this.darkNox?.reset?.();
     this.court?.reset?.();
+    this.kingdom?.reset?.();
     this.figCache.clear();
     this.secondary.clear();
     this.trails.clear();
@@ -316,7 +320,7 @@ export class Renderer {
   hype(e, settings) {
     const c = this.cam, p = e.p || 1, x = X(e.x ?? 0), y = X(e.y ?? 0);
     // Nox's big moments shake and punch in too: the burst, the requiem, the bounce, the beam.
-    const PUNCH = { supernova: 0.05, requiemBurst: 0.07, groundBounce: 0.025, bloodBeam: 0.03, morphPop: 0.07, wallSplat: 0.05, quake: p >= 6 ? 0.03 : 0, worldEnd: 0.08 };
+    const PUNCH = { kgLevel: 0.04, kgFall: 0.06, supernova: 0.05, requiemBurst: 0.07, groundBounce: 0.025, bloodBeam: 0.03, morphPop: 0.07, wallSplat: 0.05, quake: p >= 6 ? 0.03 : 0, worldEnd: 0.08 };
     if (PUNCH[e.fx] && this.visible(x, y, 20)) {
       c.punch = Math.max(c.punch, PUNCH[e.fx]);
       if ((e.fx === 'requiemBurst' || e.fx === 'morphPop' || e.fx === 'worldEnd') && settings.shake !== false) {
@@ -325,7 +329,7 @@ export class Renderer {
         this.impact = { x, y, frames: e.fx === 'morphPop' ? 3 : 4, n: 0, seed: e.id || 1, clash: e.fx === 'requiemBurst' };
       }
     }
-    const TRAUMA = { worldStart: 0.35, worldEnd: 0.6, timeSkip: 0.04, knifeHit: 0.02, quake: 0.03 * p, morphPop: 0.45, wallSplat: 0.32, roar: 0.12, armor: 0.03, supernova: 0.35, requiemBurst: 0.5, groundBounce: 0.16, bloodBeam: 0.2, bloodSpikes: 0.07, requiemCut: 0.03, shadowX: 0.05, hit: 0.035 + 0.035 * p, impact: e.ko ? 0.4 : 0.12 + 0.06 * p, explosion: 0.5, clang: e.big ? 0.12 : 0.05, clash: 0.18, land: p >= 0.9 ? 0.08 : 0, parry: 0.12 };
+    const TRAUMA = { kgPlant: 0.15, kgLevel: 0.3, kgFall: 0.45, kgHit: 0.03, worldStart: 0.35, worldEnd: 0.6, timeSkip: 0.04, knifeHit: 0.02, quake: 0.03 * p, morphPop: 0.45, wallSplat: 0.32, roar: 0.12, armor: 0.03, supernova: 0.35, requiemBurst: 0.5, groundBounce: 0.16, bloodBeam: 0.2, bloodSpikes: 0.07, requiemCut: 0.03, shadowX: 0.05, hit: 0.035 + 0.035 * p, impact: e.ko ? 0.4 : 0.12 + 0.06 * p, explosion: 0.5, clang: e.big ? 0.12 : 0.05, clash: 0.18, land: p >= 0.9 ? 0.08 : 0, parry: 0.12 };
     const t = TRAUMA[e.fx];
     if (!t) return;
     const seen = e.fx === 'worldStart' || e.fx === 'worldEnd' || this.visible(x, y, e.fx === 'explosion' ? 60 : 4);
@@ -495,7 +499,7 @@ export class Renderer {
     this.fx.gore = settings.gore ?? 2;
     this.fx.limit = settings.particles === false ? 300 : 900;
     const events = state.fxQueue ? state.fxQueue.splice(0) : (state.events || []).filter(e => e.type === 'fx' && e.id > this.fx.lastId);
-    for (const e of events) { this.fx.event(e); this.lola.event(e); this.darkNox?.event(e); this.court?.event(e); this.hype(e, settings); if (!state.fxQueue) this.fx.lastId = Math.max(this.fx.lastId, e.id); }
+    for (const e of events) { this.fx.event(e); this.lola.event(e); this.darkNox?.event(e); this.court?.event(e); this.kingdom?.event(e); this.hype(e, settings); if (!state.fxQueue) this.fx.lastId = Math.max(this.fx.lastId, e.id); }
     this.updateCamera(state, dt, settings, localId);
     const hz = state.hazards || null;
     // Effects run on game time: they slow down with the dramatic slow motion and the LAB's, and
@@ -508,6 +512,7 @@ export class Renderer {
     this.lola.watch(state);
     this.darkNox?.update(dt * (state.drama ? 0.35 : 1));
     if (!state.timeStop) this.court?.update(dt * (state.drama ? 0.35 : 1));
+    if (this.kingdom) { this.kingdom.localId = localId; if (!state.timeStop) this.kingdom.update(dt * (state.drama ? 0.35 : 1), state); }
 
     const [ox, oy] = this.shakeOffset(dt, settings);
     const rich = settings.particles !== false && !this.autoLow;
@@ -555,6 +560,8 @@ export class Renderer {
     if (this.depot) this.drawCargoChain(lg, state, ox, oy);
     lg.drawImage(this.world.solids, ox, oy);
     lg.drawImage(this.fx.floorDecals, ox, oy);
+    // The Cat King's banners, houses and castles (the platforms' lips stay in front of them).
+    this.kingdom?.drawStructures(lg, state, ox, oy);
     lg.drawImage(this.world.fronts, ox, oy);
     if (hz) { if (hz.map === 'castle') drawCastleHazards(lg, hz, ox, oy, state.time ?? t, this.castleArt); else this.drawHazards(lg, hz, ox, oy, t); }
     // The pools of blood on the floors (Nox drinks them).
@@ -562,12 +569,14 @@ export class Renderer {
     if (state.pools?.length && this.darkNox?.drawPools) this.darkNox.drawPools(lg, state.pools.map(p => (Array.isArray(p) ? p : [p.x, p.y, p.amt, p.by])), state.actors, ox, oy, state.time ?? t);
     this.drawContactShadows(lg, state, ox, oy);
     for (const p of state.props) this.drawProp(lg, p, ox, oy, t);
+    this.kingdom?.drawFish(lg, state, ox, oy);
     this.drawLimbs(lg, state, ox, oy, t);
     this.lola.drawLit(lg, state, ox, oy);
     this.drawTrails(lg, figures, ox, oy);
     if (this.darkNox) for (const f of figures) if (f.a.type === 4 && (f.a.form === 'dark' || f.a.act === 'darkRise' || f.a.act === 'darkFade')) this.darkNox.drawBack(lg, f, ox, oy, state.time ?? t);
     // The Cat King's court behind him, and his cape.
     const kings = state.actors.filter(a => a.court);
+    this.kingdom?.drawUnits(lg, state, ox, oy, false);
     if (this.court) for (const a of kings) this.court.drawCourt(lg, a, ox, oy, state.time ?? t, false);
     const blink = f => (f.a.invincible > 0.1 && Math.floor(t * 12) % 2 ? 0.55 : 1);
     if (this.kingArt) for (const f of figures) if (f.a.type === 0 && !f.a.dead) { lg.globalAlpha = blink(f); this.kingArt.drawRegalia(lg, f, ox, oy, state.time ?? t, 'back'); lg.globalAlpha = 1; }
@@ -581,8 +590,10 @@ export class Renderer {
     if (this.kingArt) for (const f of figures) if (f.a.type === 0 && !f.a.dead) { lg.globalAlpha = blink(f); this.kingArt.drawRegalia(lg, f, ox, oy, state.time ?? t, 'front'); lg.globalAlpha = 1; }
     if (this.court) {
       for (const a of kings) this.court.drawCourt(lg, a, ox, oy, state.time ?? t, true);
-      for (const b of state.bullets || []) if (b.kind === 'arrow' || b.kind === 'magic') this.court.drawBullet(lg, b, ox, oy, state.time ?? t);
     }
+    // The kingdom's units striking, hopping and on the towers, and the dust and rubble of its moments.
+    this.kingdom?.drawUnits(lg, state, ox, oy, true);
+    if (this.court) for (const b of state.bullets || []) if (b.kind === 'arrow' || b.kind === 'magic') this.court.drawBullet(lg, b, ox, oy, state.time ?? t);
     // DARK NOX's scythe flying on its own, over the fighters.
     if (this.darkNox?.drawFamiliar) for (const a of state.actors) if (a.fam) this.darkNox.drawFamiliar(lg, a, ox, oy, state.time ?? t, false);
     this.fx.drawLit(lg, ox, oy);
@@ -599,7 +610,8 @@ export class Renderer {
 
     // ---- fighters keep part of their own color so they read against the set
     lg.globalAlpha = 0.45;
-    // (the Cat King's court and regalia too, in the lit pass's order so nothing shows through)
+    // (the Cat King's kingdom, court and regalia too, in the lit pass's order so nothing shows through)
+    this.kingdom?.drawKeep(lg, state, ox, oy, figures);
     if (this.court) for (const a of state.actors) if (a.court) this.court.drawCourtKeep?.(lg, a, ox, oy, state.time ?? t, figures);
     if (this.kingArt) for (const f of figures) if (f.a.type === 0 && !f.a.dead) this.kingArt.drawRegalia(lg, f, ox, oy, state.time ?? t, 'back');
     for (const f of figures) lg.drawImage(f.fc.body.c, f.x, f.y);
@@ -1026,6 +1038,7 @@ export class Renderer {
     if (this.darkNoxMod) for (const f of figures) if (f.a.type === 4 && (f.a.form === 'dark' || f.a.act === 'darkRise')) for (const l of this.darkNoxMod.darkLights(f, t) || []) add(l);
     if (this.darkNoxMod?.familiarLights) for (const a of state.actors) if (a.fam) for (const l of this.darkNoxMod.familiarLights(a, t, this.fx.gore) || []) add(l);
     if (this.courtMod?.courtLights) for (const l of this.courtMod.courtLights(state, t) || []) add(l);
+    if (this.kingdomMod?.kingdomLights && (state.kingdoms?.length || this.kingdom?.fx.length)) for (const l of this.kingdomMod.kingdomLights(state, state.time ?? t, this.kingdom) || []) add(l);
     if (this.kingArt?.regaliaLights) for (const f of figures) if (f.a.type === 0 && !f.a.dead) for (const l of this.kingArt.regaliaLights(f, t) || []) add(l);
     for (const f of figures) if (f.a.type === 4 && f.info?.eye) {
       add({ x: f.info.eye.x, y: f.info.eye.y, r: 10, color: '#ff4f6e', i: 0.7, noRim: true });
@@ -1082,6 +1095,7 @@ export class Renderer {
       if (this.darkNox.drawFamiliar) for (const a of state.actors) if (a.fam) this.darkNox.drawFamiliar(eg, a, ox, oy, st, true);
       if (state.pools?.length && this.darkNox.drawPoolsGlow) this.darkNox.drawPoolsGlow(eg, state.pools.map(p => (Array.isArray(p) ? p : [p.x, p.y, p.amt, p.by])), state.actors, ox, oy, st);
     }
+    if (this.kingdom) { this.kingdom.drawGlow(eg, state, ox, oy); this.kingdom.drawEffects(eg, ox, oy); }
     if (this.court) {
       for (const a of state.actors) if (a.court) this.court.drawCourtGlow(eg, a, ox, oy, st);
       if (this.kingArt) for (const f of figures) if (f.a.type === 0 && !f.a.dead) this.kingArt.drawRegalia(eg, f, ox, oy, st, 'glow');

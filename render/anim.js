@@ -2,7 +2,7 @@
 // (clockwise) relative to the rest pose, plus tail and whole-figure spin. The frame is picked
 // from observable actor state only, so the host simulation (hit location, ragdoll start pose)
 // and every remote renderer agree without sending poses over the network.
-import { MOVES, WORLD, DARK } from '../sim/moves.js';
+import { MOVES, WORLD, DARK, SPECIALS } from '../sim/moves.js';
 
 const crouch = { head: [0, 3], body: [0, 1], armF: [0, 2], armB: [0, 2], footF: [1, 0], footB: [-1, 0] };
 
@@ -280,12 +280,20 @@ export const FRAMES = {
   kgAPt: { head: [1, 0, -11.25], body: [1, 0], armF: [3, -1, -90], armB: [-4, -1, 56.25], footF: [1, -2], footB: [-2, -1] },
   kgAShot: { head: [1, 1, 11.25], body: [1, 0], armF: [3, 0, -56.25], armB: [-3, -1, 56.25], footF: [1, -2], footB: [-2, -1] },
   kgADrop: { head: [0, 1, 22.5], body: [0, 0], armF: [1, 1, -11.25], armB: [-3, 0, 33.75], footF: [1, -2], footB: [-1, -2] },
-  // POR ORDEM DO REI! A squash, then the scepter thrust high and held there, the other paw on his hip,
-  // chest out, chin up, breathing; lowered at the end.
+  // The scepter thrust high and held there, the other paw on his hip, chest out, chin up (two
+  // breaths), lowered: VOLTA AO REINO and the end of BANDEIRA REAL.
   kgDecA: { head: [0, 2], body: [0, 1], armF: [1, 0, -146.25], armB: [-3, 1, 33.75], footF: [2, 0], footB: [-2, 0] },
   kgDec1: { head: [0, -1, -22.5], body: [1, -1], armF: [3, -6, -180], armB: [-5, 1, 90], footF: [2, 0], footB: [-2, 0] },
   kgDec2: { head: [0, 0, -22.5], body: [1, 0], armF: [3, -5, -180], armB: [-5, 2, 90], footF: [2, 0], footB: [-2, 0] },
   kgDecL: { head: [0, 0, -11.25], body: [0, 0], armF: [2, -1, -123.75], armB: [-3, 0, 45], footF: [2, 0], footB: [-2, 0] },
+  // BANDEIRA REAL: the royal banner in his free paw (king-art.js draws it there): a squash with it
+  // gathered low at his side, then raised high over his head on his toes, then driven down into the
+  // floor before him with all his weight (it stands on its own from there), and the proud hold.
+  kgPlA: { head: [0, 2, 11.25], body: [0, 1], armF: [1, 1, -45], armB: [-1, 1, 22.5], footF: [2, 0], footB: [-2, 0] },
+  kgPlR: { head: [0, -1, -22.5], body: [0, -1], armF: [2, -1, -67.5], armB: [0, -4, -191.25], footF: [1, -1], footB: [-1, 0] },
+  kgPlD: { head: [1, 2, 22.5], body: [1, 1], armF: [2, 0, -33.75], armB: [3, 1, -56.25], footF: [3, 0], footB: [-3, 0] },
+  // VOLTA AO REINO's arrival: landed, knees bent, the scepter still up.
+  kgRcL: { head: [0, 2], body: [0, 2], armF: [2, 0, -157.5], armB: [-3, 1, 56.25], footF: [3, 0], footB: [-3, 0] },
   // Mingau
   scratchA0: { armF: [-1, -1, 150], body: [-1, 0], head: [-1, 0] },
   scratchA1: { armF: [2, 0, -70], body: [1, 0], head: [1, 0], footF: [1, 0] },
@@ -793,19 +801,25 @@ function kingOrder(a, kind, pick) {
   if (a.ground && air) return { ...r, frame: { ...r.frame, footF: [2, 0], footB: [-2, 0] } };
   return r;
 }
-// ATAQUE REAL (a.act 'decree', SPECIALS[0].dur): a squash, the scepter thrust high with the shout and
-// held there while the court strikes (chest out, the other paw on his hip, a breath every so often,
-// shouting again with the soldier's finale), lowered at the very end. Feet tucked if in the air.
-function kingDecree(a, pick) {
-  const t = a.actT ?? 0;
-  let r;
-  if (t < 0.08) r = pick('kgDecA', 'Angry');
-  else if (t > 2.42) r = pick('kgDecL', 'Proud');
-  else {
-    const breath = t > 0.6 && Math.floor((t - 0.6) / 0.45) % 2 === 1;
-    r = pick(breath ? 'kgDec2' : 'kgDec1', t < 0.7 || (t > 1.75 && t < 2.1) ? 'Open' : 'Proud');
-  }
-  return a.ground === false ? { ...r, frame: { ...r.frame, footF: [1, -2], footB: [-1, -1] } } : r;
+// BANDEIRA REAL (a.act 'plant', SPECIALS[0].dur, the banner leaving his paw at SPECIALS[0].pop): the
+// squash, the banner raised high, driven down into the floor, the proud hold with the scepter up.
+const PLANT = SPECIALS[0] || { dur: 0.8, pop: 0.45, recall: 0.8, warp: 0.55 };
+function kingPlant(a, pick) {
+  const t = a.actT ?? 0, pop = PLANT.pop ?? 0.45;
+  if (t < 0.15) return pick('kgPlA', 'Angry');
+  if (t < pop - 0.05) return pick('kgPlR', 'Open');
+  if (t < pop + 0.1) return pick('kgPlD', 'Angry');
+  return pick(t > (PLANT.dur ?? 0.8) - 0.1 ? 'kgDec2' : 'kgDec1', 'Proud');
+}
+// VOLTA AO REINO (a.act 'recall', SPECIALS[0].recall, home at SPECIALS[0].warp): the scepter raised
+// while the gold rises round him (king-art.js), a breath held; then the arrival, landing on his
+// kingdom's doorstep with the scepter still high, standing proud.
+function kingRecall(a, pick) {
+  const t = a.actT ?? 0, warp = PLANT.warp ?? 0.55;
+  if (t < 0.06) return pick('kgDecA', 'Angry');
+  if (t < warp) return pick(Math.floor(t / 0.12) % 2 ? 'kgDec2' : 'kgDec1', t < 0.3 ? 'Open' : 'Blink');
+  if (t < warp + 0.1) return pick('kgRcL', 'Open');
+  return pick('kgDec1', 'Proud');
 }
 
 // Returns { frame, expr, name } for an actor (live or snapshot).
@@ -827,7 +841,8 @@ function baseFrame(a, time) {
   // Lola between two places: the skip pose (the renderer hides her).
   if (act === 'blink') return pick('lSkA', 'Angry');
   if (act === 'world') return worldFrame(a, pick);
-  if (act === 'decree' && a.type === 0 && !(a.hitstun > 0)) return kingDecree(a, pick);
+  if (act === 'plant' && a.type === 0 && !(a.hitstun > 0)) return kingPlant(a, pick);
+  if (act === 'recall' && a.type === 0 && !(a.hitstun > 0)) return kingRecall(a, pick);
   if (act === 'bite') return pick('bite', 'Open');
   if (act === 'shake') return pick(Math.floor(time * 10) % 2 ? 'shake1' : 'shake2', 'Open');
   if (act === 'toss') return pick('toss', 'Angry');
