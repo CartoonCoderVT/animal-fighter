@@ -160,8 +160,10 @@ export const NATURAL = ['claw', 'whip', 'knife', 'claw', 'blood'];
 
 // Specials (K). Durations are upper bounds; most end on contact or landing.
 export const SPECIALS = [
-  // ATAQUE REAL: the Cat King raises his scepter and the court strikes as one (ROYAL, sim/court.js).
-  { id: 'royal', cd: 14, dur: 2.6 },
+  // BANDEIRA REAL: the Cat King drives his banner into the floor (act 'plant', the banner stands at `pop`);
+  // while his kingdom stands K is VOLTA AO REINO instead (act 'recall', `recall` s, home at `warp`).
+  // KINGDOM, sim/kingdom.js.
+  { id: 'banner', cd: 15, dur: 0.8, pop: 0.45, recall: 0.8, warp: 0.55 },
   { id: 'ball', cd: 8, dur: 2.6 },
   // ZA WARUDO: Lola stops time (sim/timestop.js). Slow to charge; her blows that land speed it up.
   { id: 'world', cd: 20 },
@@ -275,6 +277,53 @@ export const AUTO = {
   guard: 170, band: 90, beat: 0.18, dmg: 0.22, hold: 0.2, stagger: 0.9, block: 2.2, leash: 150, leashY: 110, fidget: 10,
   acts: { soldier: 'slash', archer: 'shot', assassin: 'stab', mage: 'zap', shield: 'bash' },
   cd: { soldier: 0.8, archer: 1, assassin: 1.5, mage: 1.6, shield: 1.2 }
+};
+// The Cat King's kingdom (sim/kingdom.js), by level: 1 BANDEIRA, 2 CASA, 3 CASTELO.
+//  - The structure: a box `w` x `h` standing on its base (x, y), `hp` health (damage done carries over a
+//    level-up), `need` fish to grow to the next level, each fish delivered heals it `heal`. It is no wall:
+//    everyone walks through it, but rivals' shots stop on it. Explosions hurt it `vs.blast`x, shotgun
+//    pellets `vs.pellet`x, a thrown thing `vs.thrown`.
+//  - The aura: a dome `aura` x `auraY` on the base; at level 3 the whole arena. His court inside it is
+//    buffed by tier (`buff`): blows `dmg`x, waits `cd`x, takes `taken`x, heals `regen` a second, back from
+//    the dead in `respawn` s. His kingdom's own units always fight at their kingdom's level.
+//  - Planting: within `snap` of where he stands, never within `apart` of another kingdom on the same
+//    floor, at most `max` kingdoms; `plantCd` s after it, `failCd` s after a plant or a recall that did not
+//    happen, `replant` s after his kingdom falls (and whoever razed it eats `loot` hp). The recall only from
+//    `recallMin` away, then `recallCd` s. `up`: s a level takes to build; `fall`: s the ruin takes to go.
+//  - Fish (`fish`): at most `cap` on the map's spots at once, a spot back `back` s after it was taken
+//    (`first` + `stagger` per spot at the start); spots within `near` of a kingdom stay empty (the workers
+//    have to go out); a rival walking over one eats it (`eat` hp); a worker takes `gather` s to pick one up
+//    and `drop` s to put it in.
+//  - Workers: `n` by level, one more every `every` s (the first `first` s after the banner), back `respawn`
+//    s after one dies; `speed` a step (`carry`x with a fish); they swing at a rival in their way (`see` ahead,
+//    `seeY` up and down) every `cd` s and walk on after `tries` swings or `give` s, ignoring them `ignore` s.
+//  - Knights: `n` by level, guarding the base `guard` x `guardY` around it, never more than `leash` from it,
+//    standing `post` past its walls; they cut whoever is within `reach` every `cd` s; back in `respawn` s.
+//  - Archers: `n` by level on the castle's towers (`dx`), shooting a rival within `range` x `rangeY` every
+//    `every` s (`first` s after they appear), leading them by `lead`; back in `respawn` s.
+//  - unitY: how high a unit's body is over its feet; unitR: how close a shot must pass to hit it.
+// No blow of the kingdom ever launches, knocks down or spikes, and only one of its blows (or the court's)
+// every AUTO.stagger s makes a rival reel.
+export const KINGDOM = {
+  w: [0, 20, 56, 84], h: [0, 60, 60, 96], hp: [0, 60, 140, 240],
+  need: [0, 5, 10, 0], heal: [0, 6, 10, 16],
+  aura: [0, 130, 180, Infinity], auraY: [0, 110, 140, Infinity],
+  buff: { dmg: [1, 1.2, 1.35, 1.5], cd: [1, 0.85, 0.75, 0.65], taken: [1, 0.9, 0.8, 0.7], regen: [0, 0.5, 1, 1.5], respawn: [COURT_RESPAWN, 9, 7, 5.5] },
+  vs: { blast: 1.5, pellet: 0.6, thrown: 10 },
+  snap: 60, apart: 140, max: 4, recallMin: 160, recallCd: 12, plantCd: 8, failCd: 2, replant: 15, loot: 15,
+  up: 1.2, fall: 1.0, msg: 1.2, hitFx: 0.15,
+  ring: { r: 40, ry: 30, dmg: 4, kb: [3, -4] },
+  fish: { cap: 5, back: 6, first: 0.5, stagger: 0.4, near: 140, eat: 4, gather: 0.5, drop: 0.3 },
+  worker: {
+    n: [0, 2, 3, 3], first: 1.5, every: 3, respawn: 6, hp: 10, speed: 1.5, carry: 0.85, see: 24, seeY: 30, cd: 1.0, tries: 3, give: 2, ignore: 3,
+    swing: { dur: 0.35, at: 0.5, dmg: 3, kb: [1.2, -1], hold: 0.15, r: 16, kind: 'bash' }
+  },
+  knight: {
+    n: [0, 0, 2, 2], hp: 30, speed: 1.8, guard: 140, guardY: 60, leash: 120, post: 14, reach: 24, cd: 1.3, respawn: 10,
+    swing: { dur: 0.4, at: 0.55, dmg: 4, kb: [2, -1.5], hold: 0.3, r: 22, kind: 'blade' }
+  },
+  archer: { n: [0, 0, 0, 2], hp: 14, dx: [-30, 30], range: 300, rangeY: 220, every: 2.0, first: 0.6, draw: 0.15, pose: 0.3, dmg: 3, hold: 0.25, lead: 0.5, respawn: 14 },
+  unitY: { worker: 9, knight: 12, archer: 9 }, unitR: { worker: 8, knight: 10, archer: 8 }
 };
 // Arrows: speed a step and gravity; the shield blocks shots that pass within `guard` of it.
 export const ARROW = { speed: 12, grav: 0.18, guard: 13 };
