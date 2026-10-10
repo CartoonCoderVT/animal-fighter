@@ -3,8 +3,8 @@ import { DARK } from './moves.js';
 export const FIGHTERS = [
   {
     id: 'cat', name: 'Mingau', species: 'O REI GATO', role: 'COMANDO / CORTE', word: 'AJOELHEM.', color: '#f68268',
-    desc: 'Rei de coroa e cetro. Não suja as patas: cinco gatinhos da corte lutam por ele.',
-    ability: 'ATAQUE REAL', icon: '♛', stats: [3, 4, 5], hp: 110, speed: 5, weight: 0.9, cooldown: 14,
+    desc: 'Rei de coroa e cetro. Cinco gatinhos da corte o protegem a todo custo e atacam sozinhos.',
+    ability: 'ATAQUE REAL', icon: '♛', stats: [3, 4, 5], hp: 90, speed: 5, weight: 0.9, cooldown: 14,
     detail: 'J: soldado, assassino, arqueiro, mago e escudeiro atacam um por vez. S+J chuva de flechas; lado+J carga. K: a corte inteira ataca junto.'
   },
   {

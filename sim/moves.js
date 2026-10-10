@@ -259,7 +259,17 @@ export const COURT_PLAN = {
 };
 // ATAQUE REAL: on up to `max` rivals within `reach` x `band` of the King, the court strikes in turn at
 // these moments (s): the shield's slam, the arrows, the lightning, the assassin's dance, the soldier's finale.
-export const ROYAL = { max: 3, reach: 260, band: 120, at: [['shield', 'slam', 0.2], ['archer', 'barrage', 0.62], ['mage', 'storm', 0.95], ['assassin', 'dance', 1.3], ['soldier', 'finale', 1.8]] };
+export const ROYAL = { max: 3, reach: 170, band: 110, at: [['shield', 'slam', 0.2], ['archer', 'barrage', 0.62], ['mage', 'storm', 0.95], ['assassin', 'dance', 1.3], ['soldier', 'finale', 1.8]] };
+// The court on its own (sim/court.js): they live to guard the King. Rivals within `guard` x `band` of him
+// are threats (more so the one swinging at him or who just hit him). Every `beat` s one of them strikes on
+// its own (`acts`), each then waiting its own `cd`; those blows are `dmg`x as hard, hold at most `hold` s
+// and never launch. The shield takes a blow aimed at the King from its side every `block` s. None of them
+// ever strays more than `leash` from him (`leashY` up and down).
+export const AUTO = {
+  guard: 160, band: 90, beat: 0.9, dmg: 0.4, hold: 0.25, block: 2.6, leash: 150, leashY: 110,
+  acts: { soldier: 'slash', archer: 'shot', assassin: 'stab', mage: 'zap', shield: 'bash' },
+  cd: { soldier: 1.8, archer: 2, assassin: 3, mage: 3.2, shield: 2.5 }
+};
 // Arrows: speed a step and gravity; the shield blocks shots that pass within `guard` of it.
 export const ARROW = { speed: 12, grav: 0.18, guard: 13 };
 

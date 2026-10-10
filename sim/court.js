@@ -1,8 +1,10 @@
 // Mingau, the Cat King, and his court: five little cats (a soldier, an archer, an assassin, a mage and a
 // shield-bearer) who follow him everywhere in formation and do all his fighting. The King never strikes:
-// each of his moves is an order, and the one it is meant for runs, shoots, blinks or casts.
+// each of his moves is an order, and the one it is meant for runs, shoots, blinks or casts. Left to
+// themselves they guard him: they turn to whoever threatens him and strike on their own, taking turns,
+// the shield-bearer takes blows for him, and none of them ever strays far from him.
 import { Body } from './physics.js';
-import { COURT, RANKS, COURT_ACTS, COURT_PLAN, ROYAL, ARROW, MOVES, KING_AIR, comboOf, SPECIALS } from './moves.js';
+import { COURT, RANKS, COURT_ACTS, COURT_PLAN, ROYAL, ARROW, AUTO, MOVES, KING_AIR, comboOf, SPECIALS } from './moves.js';
 import { weightOf } from './fighters.js';
 import { damage, perfectDodge, cutCorpse, drama, startMove, removeBullet } from './combat.js';
 import { startChase, setAct, endAct } from './specials.js';
@@ -49,12 +51,12 @@ function targetFor(g, a, spec) {
   return (near.find(b => (b.x - a.x) * a.face > -8) || near[0])?.id ?? null;
 }
 
-// One of the court is sent: whatever it was doing, it does this now.
-function command(g, a, who, act, targets = null) {
+// One of the court is sent: whatever it was doing, it does this now (auto: on its own, not on an order).
+function command(g, a, who, act, targets = null, auto = false) {
   const f = a.court?.find(f => f.k === who);
   if (!f || f.st === 'gone') return;
   const spec = COURT_ACTS[who][act];
-  Object.assign(f, { st: 'act', act, t: 0, hit: 0, sx: f.x, sy: f.y, targets, tgt: targets ? targets[0] ?? null : targetFor(g, a, spec), dir: a.face || 1 });
+  Object.assign(f, { st: 'act', act, t: 0, hit: 0, sx: f.x, sy: f.y, targets, tgt: targets ? targets[0] ?? null : targetFor(g, a, spec), dir: a.face || 1, auto });
   const T = aim(g, a, f, spec);
   f.dir = Math.sign(T.x - a.x) || a.face || 1;
   f.f = f.dir;
@@ -77,9 +79,9 @@ export function makeCourt(g, a, appear = false) {
   });
 }
 
-// A familiar's place by the King (its feet, world units).
+// A familiar's place by the King (its feet, world units), the ranks turned toward whoever threatens him.
 function rankSpot(a, k) {
-  const [dx, up] = RANKS[k], face = a.face || 1;
+  const [dx, up] = RANKS[k], face = a.guardDir || a.face || 1;
   return { x: clamp(a.x + face * dx, 10, 950), y: a.y + HALF_H - up };
 }
 
@@ -161,10 +163,21 @@ function loose(g, a, x, y, T, spec, { speed = ARROW.speed, vy = null } = {}) {
   g.sound('whoosh', x);
 }
 
+// A blow struck on its own: lighter, a short hold at most, and never a launcher.
+const TONED = new Map();
+function toned(spec) {
+  let s = TONED.get(spec);
+  if (!s) TONED.set(spec, s = { ...spec, dmg: spec.dmg * AUTO.dmg, hold: Math.min(spec.hold || 0, AUTO.hold), launch: false, spike: false, knock: false, kb: spec.launch || spec.spike ? [3.5, -2.5] : spec.kb });
+  return s;
+}
+
 // One step of a familiar carrying out its action.
 function stepAct(g, a, f, dt) {
-  const spec = COURT_ACTS[f.k][f.act], p = f.t / spec.dur;
-  const T = aim(g, a, f, spec), dir = f.dir;
+  const spec0 = COURT_ACTS[f.k][f.act], spec = f.auto ? toned(spec0) : spec0, p = f.t / spec.dur;
+  const aimed = aim(g, a, f, spec), dir = f.dir;
+  // Held on its leash, a familiar may not get all the way to its rival: then it strikes the air in front.
+  const T = Math.abs(aimed.x - a.x) > AUTO.leash + 20 && ['soldier', 'assassin', 'shield'].includes(f.k) && !['charge', 'slam'].includes(f.act)
+    ? { x: a.x + Math.sign(aimed.x - a.x) * AUTO.leash, y: aimed.y, b: null } : aimed;
   const due = () => f.hit < spec.hits.length && p >= spec.hits[f.hit];
   const hand = () => ({ x: f.x + f.f * 5, y: f.y - 9 });
   const home = rankSpot(a, f.k);
@@ -329,6 +342,7 @@ function tickCourt(g, a, dt) {
     a.courtSeq = a.attackSeq;
     for (const [who, act] of COURT_PLAN[a.attackKind]) command(g, a, who, act);
   }
+  if (!a.dead) courtBrain(g, a, dt);
   for (const f of a.court) {
     // The King is down: they vanish in a puff, and come back with him.
     if (a.dead) {
@@ -353,9 +367,12 @@ function tickCourt(g, a, dt) {
       // In rank, or running back to it.
       const s = rankSpot(a, f.k), back = f.st === 'back';
       glide(f, s.x, s.y, back ? 0.22 : 0.16 + f.i * 0.012, back ? 9 : 8);
-      if (Math.abs(f.vx) > 0.8) f.f = Math.sign(f.vx); else if (!back) f.f = a.face || 1;
+      if (Math.abs(f.vx) > 0.8) f.f = Math.sign(f.vx); else if (!back) f.f = a.guardDir || a.face || 1;
       if (back && Math.hypot(s.x - f.x, s.y - f.y) < 4) { f.st = 'follow'; f.t = 0; }
     }
+    // The one rule: never far from the King.
+    f.x = clamp(f.x, a.x - AUTO.leash, a.x + AUTO.leash);
+    f.y = clamp(f.y, a.y - AUTO.leashY, a.y + HALF_H + 40);
     f.air = f.y < a.y + HALF_H - RANKS[f.k][1] - 3 || (!a.ground && f.st === 'follow');
   }
   shieldGuard(g, a);
@@ -374,6 +391,62 @@ function shieldGuard(g, a) {
     g.sound('ricochet', cx);
     Object.assign(f, { st: 'act', act: 'guard', t: 0, hit: 0, sx: f.x, sy: f.y, tgt: null, dir: f.f });
   }
+}
+
+// Who threatens the King most: rivals close to him, above all the one swinging at him or who just hit him.
+function threatOf(g, a) {
+  const hitMe = a.lastHit != null && g.time - (a.lastHitTime ?? -9) < 1.5 ? a.lastHit : null;
+  let best = null, score = -1;
+  for (const b of g.enemies(a)) {
+    if (b.dead || b.knocked || b.invincible > 0 || ['swarm', 'world', 'requiem'].includes(b.act)) continue;
+    const dx = Math.abs(b.x - a.x);
+    if (dx > AUTO.guard || Math.abs(b.y - a.y) > AUTO.band) continue;
+    let s = 1 - dx / AUTO.guard;
+    if (b.id === hitMe) s += 1;
+    if (b.attack > 0 && (a.x - b.x) * (b.face || 1) > 0 && dx < 70) s += 0.8;
+    if (s > score) { score = s; best = b; }
+  }
+  return best;
+}
+
+// The court left to itself: the ranks turn to the threat, and one at a time they strike it. When the King
+// is being hit, the assassin goes first, to cut the attacker off him.
+function courtBrain(g, a, dt) {
+  a.courtBeat = Math.max(0, (a.courtBeat || 0) - dt);
+  for (const f of a.court) f.autoCd = Math.max(0, (f.autoCd || 0) - dt);
+  const T = threatOf(g, a);
+  a.guardDir = T ? Math.sign(T.x - a.x) || a.face : a.face;
+  if (!T || a.courtBeat > 0 || a.act === 'decree') return;
+  const d = Math.abs(T.x - a.x);
+  const danger = a.hitstun > 0 || a.knocked || (a.lastHit === T.id && g.time - (a.lastHitTime ?? -9) < 0.8);
+  const order = danger ? ['assassin', 'soldier', 'mage', 'shield', 'archer']
+    : d < 45 && T.attack > 0 ? ['shield', 'soldier', 'assassin', 'mage', 'archer']
+    : d < 110 ? ['soldier', 'archer', 'mage', 'assassin', 'shield'] : ['archer', 'mage'];
+  for (const who of order) {
+    const f = a.court.find(f => f.k === who), act = AUTO.acts[who];
+    if (!f || f.autoCd > 0 || (f.st !== 'follow' && f.st !== 'back') || d > COURT_ACTS[who][act].reach) continue;
+    command(g, a, who, act, [T.id], true);
+    f.autoCd = AUTO.cd[who];
+    a.courtBeat = AUTO.beat;
+    if (danger && g.time - (a.rescueT ?? -9) > 5) { a.rescueT = g.time; g.text(a.x, a.y - 42, 'PROTEJAM O REI!', '#ffd76a'); }
+    return;
+  }
+}
+
+// The shield-bearer on guard between the King and a rival takes the rival's blow for him (now and then).
+export function shieldBlocks(g, a, o) {
+  if (a.type !== 0 || !a.court || a.dead || a.knocked || !o || o === a || o.team === a.team || (a.shieldAt ?? -9) > g.time) return false;
+  const f = a.court.find(f => f.k === 'shield');
+  if (!f || (f.st !== 'follow' && !(f.st === 'act' && f.act === 'guard'))) return false;
+  const side = Math.sign(f.x - a.x);
+  if (!side || side !== Math.sign(o.x - a.x) || Math.abs(f.x - a.x) > 34 || Math.abs(o.x - a.x) > 140) return false;
+  a.shieldAt = g.time + AUTO.block;
+  Object.assign(f, { st: 'act', act: 'guard', t: 0, hit: 0, sx: f.x, sy: f.y, tgt: null, dir: side, f: side, auto: false });
+  g.fx('clang', { x: Math.round(f.x + side * 4), y: Math.round(f.y - 10), big: 1 });
+  g.text(a.x, a.y - 34, 'PROTEGIDO!', '#9fd8ff');
+  g.sound('clang', f.x);
+  if (!o.knocked) o.stun = Math.max(o.stun || 0, 0.2);
+  return true;
 }
 
 // Every step: each King's court.

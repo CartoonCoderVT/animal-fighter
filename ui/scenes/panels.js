@@ -73,7 +73,7 @@ export class HelpScene extends Overlay {
         'Golpes fortes, explosões e quedas derrubam: o lutador vira ragdoll e levanta depois. Aperte pulo para levantar mais rápido.',
         'Ossos quebram, cortes sangram até matar, lâminas cravam corpos na parede. Extintor congela (um golpe forte estilhaça); rolar apaga o fogo.',
         'No DEPÓSITO: a prensa desce a cada 9 s, o fosso tritura, o cabo eletrifica a poça. Atire na corrente da carga; botijão atingido vira foguete.',
-        'Mingau, o Rei Gato, não ataca: cada J manda um da corte (soldado, assassino, arqueiro, mago, escudeiro). S+J chuva de flechas, lado+J carga. K: ATAQUE REAL.',
+        'Mingau, o Rei Gato, não ataca: a corte o protege sozinha, e cada J manda um deles (soldado, assassino, arqueiro, mago, escudeiro). K: ATAQUE REAL.',
         'Lola salta no tempo e deixa facas paradas no ar. No combo: S+J chuva de facas, lado+J muralha (no ar, anel). K: ZA WARUDO.',
         'Nox bebe sangue, até das poças no chão. Barra cheia + K: DARK NOX por 30 s (nem a morte tira); a foice voa sozinha e comba junto.',
         'No CASTELO (M na escolha do lutador): velas soltam itens, o lustre cai se a corrente for cortada, pêndulos cortam e a pedra sobre as estacas desaba. Dizem que o castelo guarda segredos...'

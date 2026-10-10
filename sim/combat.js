@@ -7,7 +7,7 @@ import { extendedAttack, dropWeapon, damageProp } from './props.js';
 import { hazardBulletHit } from './hazards.js';
 import { MOVES, HEAVY, AIR, NOX_AIR, DARK_AIR, JUMA_AIR, BEAST_AIR, LOLA_AIR, NATURAL, SET, BURST, DARK, POOL, comboOf, noxAir } from './moves.js';
 import { spill } from './nox.js';
-import { kingOrder } from './court.js';
+import { kingOrder, shieldBlocks } from './court.js';
 import { MAP } from './map.js';
 import { startSpecial, startStomp, throwCarried, startChase, endAct, startPlunge, startSwarm, startBite, startCharge } from './specials.js';
 import { isMelee, WEAPON_INFO, weaponSlot } from './weapons.js';
@@ -812,6 +812,8 @@ export function damage(g, a, amount, point, ownerId, kind = 'punch', opts = {}) 
     return 0;
   }
   if (owner && ownerId !== a.id && owner.team === a.team) return 0;
+  // The Cat King's shield-bearer takes the blow for him (sim/court.js).
+  if (a.type === 0 && !DOT.has(cat) && !opts.environment && !['explosion', 'grind'].includes(cat) && kind !== 'fall' && kind !== 'crush' && shieldBlocks(g, a, owner)) return 0;
   if (a.act === 'ball') amount *= 0.5;
   // Juma's beast takes blows on a thick hide, and does not flinch while she swings, charges or
   // transforms (super armor); she is still thrown by explosions and crushed by the press.
