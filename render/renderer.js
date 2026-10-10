@@ -569,7 +569,8 @@ export class Renderer {
     // The Cat King's court behind him, and his cape.
     const kings = state.actors.filter(a => a.court);
     if (this.court) for (const a of kings) this.court.drawCourt(lg, a, ox, oy, state.time ?? t, false);
-    if (this.kingArt) for (const f of figures) if (f.a.type === 0 && !f.a.dead) this.kingArt.drawRegalia(lg, f, ox, oy, state.time ?? t, 'back');
+    const blink = f => (f.a.invincible > 0.1 && Math.floor(t * 12) % 2 ? 0.55 : 1);
+    if (this.kingArt) for (const f of figures) if (f.a.type === 0 && !f.a.dead) { lg.globalAlpha = blink(f); this.kingArt.drawRegalia(lg, f, ox, oy, state.time ?? t, 'back'); lg.globalAlpha = 1; }
     for (const f of figures) {
       if (f.a.invincible > 0.1 && Math.floor(t * 12) % 2) lg.globalAlpha = 0.55;
       lg.drawImage(f.fc.body.c, f.x, f.y);
@@ -577,7 +578,7 @@ export class Renderer {
     }
     // His crown and scepter, then the court in front of him (the shield on guard, whoever is striking),
     // and their arrows.
-    if (this.kingArt) for (const f of figures) if (f.a.type === 0 && !f.a.dead) this.kingArt.drawRegalia(lg, f, ox, oy, state.time ?? t, 'front');
+    if (this.kingArt) for (const f of figures) if (f.a.type === 0 && !f.a.dead) { lg.globalAlpha = blink(f); this.kingArt.drawRegalia(lg, f, ox, oy, state.time ?? t, 'front'); lg.globalAlpha = 1; }
     if (this.court) {
       for (const a of kings) this.court.drawCourt(lg, a, ox, oy, state.time ?? t, true);
       for (const b of state.bullets || []) if (b.kind === 'arrow' || b.kind === 'magic') this.court.drawBullet(lg, b, ox, oy, state.time ?? t);
@@ -598,10 +599,11 @@ export class Renderer {
 
     // ---- fighters keep part of their own color so they read against the set
     lg.globalAlpha = 0.45;
-    for (const f of figures) lg.drawImage(f.fc.body.c, f.x, f.y);
-    // (the Cat King's crown, cape and scepter, and his court, too)
-    if (this.kingArt) for (const f of figures) if (f.a.type === 0 && !f.a.dead) this.kingArt.drawRegalia(lg, f, ox, oy, state.time ?? t, 'keep');
+    // (the Cat King's court and regalia too, in the lit pass's order so nothing shows through)
     if (this.court) for (const a of state.actors) if (a.court) this.court.drawCourtKeep?.(lg, a, ox, oy, state.time ?? t, figures);
+    if (this.kingArt) for (const f of figures) if (f.a.type === 0 && !f.a.dead) this.kingArt.drawRegalia(lg, f, ox, oy, state.time ?? t, 'back');
+    for (const f of figures) lg.drawImage(f.fc.body.c, f.x, f.y);
+    if (this.kingArt) for (const f of figures) if (f.a.type === 0 && !f.a.dead) this.kingArt.drawRegalia(lg, f, ox, oy, state.time ?? t, 'front');
     lg.globalAlpha = 1;
     for (const f of figures) if (f.info.smear) this.drawSmear(lg, f.a, f.info.smear.frame, f.info.smear.sm, f.hx + ox, f.hy + oy, f.a.face || 1, 1);
     if (state.limbs?.length) this.drawLimbs(lg, state, ox, oy, t, 0.38);

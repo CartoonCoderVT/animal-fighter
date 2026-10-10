@@ -189,7 +189,7 @@ export class Shell {
         const f = a.fam, h = b.fam;
         if (f && h && Math.hypot(f.x - h.x, f.y - h.y) < 120) out.fam = { ...f, x: h.x + (f.x - h.x) * t, y: h.y + (f.y - h.y) * t, ang: h.ang + (f.ang - h.ang) * t };
         // The Cat King's court: each familiar slides between snapshots (a blink is a jump, not a slide).
-        if (a.court && b.court) out.court = a.court.map((c, i) => { const d = b.court[i]; return d && d.st === c.st && Math.hypot(c.x - d.x, c.y - d.y) < 60 ? { ...c, x: d.x + (c.x - d.x) * t, y: d.y + (c.y - d.y) * t } : c; });
+        if (a.court && b.court) out.court = a.court.map((c, i) => { const d = b.court[i]; return d && c.st !== 'appear' && d.st !== 'gone' && Math.hypot(c.x - d.x, c.y - d.y) < 40 ? { ...c, x: d.x + (c.x - d.x) * t, y: d.y + (c.y - d.y) * t } : c; });
         return out;
       });
     }

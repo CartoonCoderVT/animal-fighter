@@ -288,7 +288,7 @@ export function interact(g, a) {
     const e = a.embedded.pop();
     damage(g, a, 4, { x: a.x, y: a.y }, a.id, 'bleed', { force: true, part: e.part, kb: { x: 0, y: 0 } });
     a.bleed = Math.min(6, a.bleed + 1.5);
-    if (e.kind === 'blade' && !a.weapon) { a.weapon = 'blade'; a.ammo = 999; }
+    if (e.kind === 'blade' && !a.weapon && !(a.type === 0 || (a.type === 4 && a.form === 'dark'))) { a.weapon = 'blade'; a.ammo = 999; }
     g.text(a.x, a.y - 28, 'ARRANCOU!', '#e99598');
     g.fx('blood', { x: a.x, y: a.y, dx: a.face * 2, dy: -2, n: 10, s: 3 });
     g.sound('squish', a.x);

@@ -27,7 +27,8 @@ export function kingOrder(g, a) {
     id = a.input.down ? 'kDrop' : KING_AIR[chaining && prev >= 0 ? (prev + 1) % KING_AIR.length : 0];
   } else if (a.input.down) id = chaining ? 'kRise' : downedNear(g, a) ? 'kMercy' : 'kRain';
   else if (side && !chaining) { a.face = a.input.right ? 1 : -1; id = 'kCharge'; }
-  else if (side && chaining && tapped && a.attackKind !== 'kShadow') { a.face = a.input.right ? 1 : -1; id = 'kShadow'; }
+  // (only before the volley: from there the string has to run on to the shield's launcher)
+  else if (side && chaining && tapped && !['kShadow', 'kVolley', 'kZap'].includes(a.attackKind)) { a.face = a.input.right ? 1 : -1; id = 'kShadow'; }
   else {
     // The charge and the shadow dash pick the string up at the volley.
     a.combo = chaining ? (a.attackKind === 'kShadow' || a.attackKind === 'kCharge' ? 2 : (a.combo + 1) % list.length) : 0;
@@ -53,7 +54,7 @@ function command(g, a, who, act, targets = null) {
   const f = a.court?.find(f => f.k === who);
   if (!f || f.st === 'gone') return;
   const spec = COURT_ACTS[who][act];
-  Object.assign(f, { st: 'act', act, t: 0, hit: 0, sx: f.x, sy: f.y, targets, tgt: targets ? targets[0] ?? null : targetFor(g, a, spec), dir: a.face || 1, rain: null });
+  Object.assign(f, { st: 'act', act, t: 0, hit: 0, sx: f.x, sy: f.y, targets, tgt: targets ? targets[0] ?? null : targetFor(g, a, spec), dir: a.face || 1 });
   const T = aim(g, a, f, spec);
   f.dir = Math.sign(T.x - a.x) || a.face || 1;
   f.f = f.dir;
@@ -235,7 +236,7 @@ function stepAct(g, a, f, dt) {
         g.sound('whoosh', h.x);
         // Spread over where they stand (and where they are running to), falling from a little above them.
         const lead = T.b ? clamp(T.b.body.velocity.x * 8, -30, 30) : 0;
-        f.rain = Array.from({ length: spec.arrows }, (_, i) => ({ at: spec.delay + i * 0.05, x: T.x + lead + (i / (spec.arrows - 1) - 0.5) * spec.spread * 2 + rnd(-4, 4), y: Math.max(4, T.y - spec.height) }));
+        f.rain = Array.from({ length: spec.arrows }, (_, i) => ({ at: spec.delay - f.t + i * 0.05, x: T.x + lead + (i / (spec.arrows - 1) - 0.5) * spec.spread * 2 + rnd(-4, 4), y: Math.max(4, T.y - spec.height) }));
         f.hit++;
       }
       break;
@@ -338,7 +339,7 @@ function tickCourt(g, a, dt) {
     f.t += dt;
     // A rain of arrows still on its way down.
     if (f.rain) {
-      for (const r of f.rain) if (!r.done && f.t >= r.at) {
+      for (const r of f.rain) if (!r.done && (r.at -= dt) <= 0) {
         r.done = true;
         g.bullets.push({ id: g.nextId++, owner: a.id, team: a.team, x: r.x, y: r.y, px: r.x, py: r.y - 6, vx: 0, vy: 13, damage: COURT_ACTS.archer.rain.dmg, life: 1.6, color: '#e8d8a8', kind: 'arrow', bounces: 1, court: 1, hold: COURT_ACTS.archer.rain.hold, rainY: 1 });
       }
@@ -412,6 +413,15 @@ export function stepDecree(g, a) {
   if (a.actT > a.actMax) { endAct(g, a); a.decree = null; return null; }
   const v = a.body.velocity;
   return { lock: true, vx: v.x * 0.6, vy: a.ground ? v.y : Math.min(v.y, 0.5) };
+}
+
+// One of King k's court about to strike b within `within` s (for the bots' combo breaker).
+export function courtStrikeSoon(k, b, within) {
+  return !!k.court?.some(f => {
+    if (f.st !== 'act' || (f.tgt !== b.id && !f.targets?.includes(b.id))) return false;
+    const spec = COURT_ACTS[f.k][f.act], h = spec.hits[f.hit];
+    return h != null && h * spec.dur - f.t > 0 && h * spec.dur - f.t < within;
+  });
 }
 
 // Held in the decree: no breaking out of it with Shift.

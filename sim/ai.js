@@ -4,6 +4,7 @@ import { inPit } from './physics.js';
 import { rnd, dist, clamp } from '../engine/const.js';
 import { FOOT } from '../render/rig.js';
 import { MOVES, DARK, POOL, comboOf } from './moves.js';
+import { courtStrikeSoon } from './court.js';
 import { MELEE, isMelee } from './weapons.js';
 
 const RANGED = a => a.weapon === 'pistol' || a.weapon === 'shotgun';
@@ -99,7 +100,13 @@ export function think(g, a, dt) {
         } else if (e.type === 'drop') {
           const tx = clamp(a.x, e.x0, e.x1);
           moveTo = tx;
-          if (Math.abs(a.x - tx) < 14 && a.ground) { input.down = true; input.jump = !a.lastInput.jump; ai.airborne = true; ai.dropX = tx; }
+          const prop = a.ground && a.groundInfo?.kind === 'prop' ? a.groundInfo.body?.bounds : null;
+          if (prop && mine) {
+            // Down+jump drops through the platform, not through a prop lying on it (one the bot cannot
+            // pick up): step off it first, to the side with room on this platform.
+            const l = prop.min.x - 12, r = prop.max.x + 12;
+            moveTo = r > mine.x1 || (l >= mine.x0 && a.x - l <= r - a.x) ? l : r;
+          } else if (Math.abs(a.x - tx) < 14 && a.ground) { input.down = true; input.jump = !a.lastInput.jump; ai.airborne = true; ai.dropX = tx; }
         } else if (e.type === 'fall') {
           moveTo = e.edge + e.dir * 30;
         } else if (e.type === 'leap') {
@@ -261,7 +268,8 @@ export function think(g, a, dt) {
     } else if (target.knocked && dist(a, target) < 30 && ai.grabCd <= 0) { input.grab = true; ai.grabCd = 2; }
     if (a.holding && Math.abs(dy) < 80 && Math.abs(dx) < 320 && ai.grabCd <= 0) { input.grab = true; ai.grabCd = 1; }
     if (!a.weapon && !a.holding && !a.act && ai.grabCd <= 0) {
-      const item = g.props.find(p => !p.held && ['gun', 'crate', 'extinguisher', ...MELEE].includes(p.kind) && dist(a, p) < 34 && Math.abs(p.y - a.y) < 30);
+      const noArms = a.type === 0 || (a.type === 4 && a.form === 'dark');
+      const item = g.props.find(p => !p.held && (noArms ? ['crate'] : ['gun', 'crate', 'extinguisher', ...MELEE]).includes(p.kind) && dist(a, p) < 34 && Math.abs(p.y - a.y) < 30);
       if (item) { input.grab = true; ai.grabCd = 3; }
     }
     // Shoot the barrel next to the target.
@@ -273,7 +281,7 @@ export function think(g, a, dt) {
 
   // Caught in a string: now and then a bot times Shift to the next blow and breaks out of it.
   if (a.hitstun > 0 && !(a.burstCd > 0) && !a.lastInput.dodge && Math.random() < 0.015
-    && g.enemies(a).some(b => b.hits?.length && b.attack > 0 && Math.abs(b.x - a.x) < 90 && Math.abs(b.y - a.y) < 50 && b.attack - b.hits[0].at < 0.1)) {
+    && g.enemies(a).some(b => (b.hits?.length && b.attack > 0 && Math.abs(b.x - a.x) < 90 && Math.abs(b.y - a.y) < 50 && b.attack - b.hits[0].at < 0.1) || courtStrikeSoon(b, a, 0.1))) {
     input.dodge = true; input.left = false; input.right = false;
   }
   // Parry or dodge a blow that is about to land.

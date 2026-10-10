@@ -528,10 +528,15 @@ function ricochet(g, a, b) {
 // A blow caught in the parry window: no damage, the attacker reels and the defender counters.
 // familiar: the blow came from a familiar (DARK NOX's scythe, one of the King's court): it is batted
 // away (the callback sends it off) and its master, somewhere else, is left alone.
+// Parried while reeling: the combo is broken, and they are free (and untouchable for an instant).
+function breakFree(a) {
+  if (!(a.hitstun > 0)) return false;
+  a.hitstun = 0; a.hitstunMax = 0; a.hitHeavy = false; a.stun = 0; a.iframes = Math.max(a.iframes || 0, BURST.safe); a.stunN = 0;
+  return true;
+}
+
 function parried(g, a, o, point, familiar = null) {
-  // Parried while reeling: the combo is broken, and they are free (and untouchable for an instant).
-  const burst = a.hitstun > 0;
-  if (burst) { a.hitstun = 0; a.hitstunMax = 0; a.hitHeavy = false; a.stun = 0; a.iframes = Math.max(a.iframes || 0, BURST.safe); a.stunN = 0; }
+  const burst = breakFree(a);
   a.parry = 0; a.parryLag = 0; a.counter = 0.9;
   if (familiar) {
     familiar();
@@ -687,8 +692,10 @@ function bulletHit(g, b, body, point) {
       if (swingDeflect) g.fx('clang', { x: point.x, y: point.y });
       b.vx = -b.vx; b.vy = -b.vy; b.owner = a.id; b.team = a.team; b.life = 0.9;
       b.x = point.x + b.vx * 0.5; b.y = point.y + b.vy * 0.5;
+      // A shot parried while reeling breaks the combo as well.
+      const burst = a.parry > 0 && breakFree(a);
       a.parry = 0; a.parryLag = 0;
-      g.text(a.x, a.y - 34, 'REBATEU!', '#7ce8ff');
+      g.text(a.x, a.y - 34, burst ? 'QUEBROU O COMBO!' : 'REBATEU!', burst ? '#ffe070' : '#7ce8ff');
       g.fx('parry', { x: point.x, y: point.y });
       g.sound('ricochet', a.x);
       return true;
