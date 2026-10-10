@@ -4,7 +4,7 @@ import { Body, Composite } from './physics.js';
 import { SPECIALS, LOLA_AIR, DARK, noxAir, airOf } from './moves.js';
 import { freeScythe } from './nox.js';
 import { kingSpecial, stepPlant, stepRecall } from './kingdom.js';
-import { strikeCourts } from './court.js';
+import { strikeCourts, seizeCourt, returnCourt } from './court.js';
 import { FIGHTERS, formOf, weightOf, styleOf, RAGE_MAX, NEXT_FORM, BELLY } from './fighters.js';
 import { damage, startMove, landPlunge, markOf, drama } from './combat.js';
 import { MOVES } from './moves.js';
@@ -39,8 +39,9 @@ export function endAct(g, a) {
 
 export function startSpecial(g, a) {
   const style = styleOf(a);
-  // The Cat King's BANDEIRA REAL, or with his kingdom standing, VOLTA AO REINO (sim/kingdom.js).
-  if (a.type === 0) { kingSpecial(g, a); return; }
+  // The Cat King's BANDEIRA REAL, or with his kingdom standing, VOLTA AO REINO (sim/kingdom.js); the
+  // frog's too, with the King (and so his court) in his belly.
+  if (a.type === 0 || (style === 0 && a.court)) { kingSpecial(g, a); return; }
   if (style === 3) { jumaSpecial(g, a); return; }
   if (style === 4) { noxSpecial(g, a); return; }
   // Lola's ZA WARUDO (sim/timestop.js); nothing happens while time is already stopped.
@@ -1095,8 +1096,9 @@ export function frogPower(g, a) {
     if (a.input.down && a.copy != null) {
       // S+K spends the press either way, so letting go of down a moment later never spits.
       a.bufP = 0;
-      // The Cat King's banner needs a court and a kingdom: the frog has neither.
-      if (a.copy === 0) { if (!(a.thirstT > g.time)) { a.thirstT = g.time + 1.2; g.text(a.x, a.y - 30, 'SEM CORTE!', '#f68268'); } return; }
+      // The Cat King's banner needs his court: the frog holds it while the King is inside (if it lost it
+      // some other way, there is none).
+      if (a.copy === 0 && !a.court) { if (!(a.thirstT > g.time)) { a.thirstT = g.time + 1.2; g.text(a.x, a.y - 30, 'SEM CORTE!', '#f68268'); } return; }
       if (!(a.abilityCd > 0)) startSpecial(g, a);
       return;
     }
@@ -1168,6 +1170,8 @@ function gulp(g, a, b) {
   a.chase = null;
   setAct(a, 'gulp', INHALE.gulp);
   a.abilityCd = 0.6;
+  // The King goes down with his crown: his court and his kingdom are the frog's now.
+  if (b.type === 0) seizeCourt(g, a, b);
   g.fx('gulp', { x: a.x, y: a.y, face: a.face, copy: a.copy ?? -1 });
   g.text(a.x, a.y - 30, 'GLUP!', '#9be05a');
   g.sound('gulp', a.x);
@@ -1180,7 +1184,7 @@ function stepGulp(g, a, v) {
     a.copied = true;
     const victim = g.actor(a.belly);
     // A frog swallowed by a frog: nothing to copy, just a very full frog.
-    if (victim) g.text(a.x, a.y - 40, victim.type === 5 ? 'SAPO NA PANÇA!' : 'COPIOU ' + FIGHTERS[victim.type].name.toUpperCase() + '!', FIGHTERS[victim.type].color);
+    if (victim) g.text(a.x, a.y - 40, victim.type === 5 ? 'SAPO NA PANÇA!' : a.court ? 'A CORTE É DO SAPO!' : 'COPIOU ' + FIGHTERS[victim.type].name.toUpperCase() + '!', a.court ? '#ffd76a' : FIGHTERS[victim.type].color);
     g.fx('copyStar', { x: a.x, y: a.y, copy: a.copy ?? -1 });
     g.sound('pop', a.x);
   }
@@ -1198,6 +1202,8 @@ function stepSpit(g, a, v) {
 // free when he is knocked down or killed. Either way he loses the style he borrowed.
 export function releaseVictim(g, a, how) {
   const b = g.actor(a.belly);
+  // Out goes the King, and back to him go his court and his kingdom.
+  if (a.court) returnCourt(g, a, b && b.swallowedBy === a.id ? b : null);
   a.belly = null; a.copy = null; a.bellyT = 0; a.copied = false; a.wobble = 0; a.combo = 0; a.comboTimer = 0;
   if (!b || b.swallowedBy !== a.id) return;
   b.swallowedBy = null;
@@ -1256,7 +1262,7 @@ export function tickBelly(g, a, dt) {
   if (a.belly == null || a.dead) return;
   // Whoever was inside is gone some other way (crushed with him, left the match): he is empty.
   const b = g.actor(a.belly);
-  if (!b || b.dead || b.swallowedBy !== a.id) { a.belly = null; a.copy = null; a.bellyT = 0; a.copied = false; a.wobble = 0; return; }
+  if (!b || b.dead || b.swallowedBy !== a.id) { if (a.court) returnCourt(g, a, b); a.belly = null; a.copy = null; a.bellyT = 0; a.copied = false; a.wobble = 0; return; }
   if (a.act === 'gulp' || a.act === 'spit') return;
   a.bellyT -= dt;
   if (a.bellyT <= 0 && !a.knocked) releaseVictim(g, a, 'escape');

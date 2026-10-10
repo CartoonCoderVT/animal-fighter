@@ -226,15 +226,15 @@ export const BEAST_COMBO = ['bSlam', 'bHammer', 'bClap', 'bUpper'];
 export const BEAST_AIR = ['bAirClaw', 'bAirSmash'];
 export const TITAN_COMBO = ['tHook', 'tSmash', 'tUpper'];
 export const TITAN_AIR = ['tAirClaw', 'tAirSmash'];
-// The Cat King strikes with orders to his court; the frog that swallows him has no court, so he
-// borrows the old royal claws instead.
+// The Cat King strikes with orders to his court, and so does the frog that swallows him (the court is
+// his while the King is inside); should he hold the King without it, he borrows the old royal claws.
 export const ROYAL_CLAWS = ['scratchA', 'scratchB', 'upper'];
-const royalClaws = (a, s) => s === 0 && a.type !== 0;
+const royalClaws = (a, s) => s === 0 && a.type !== 0 && !a.court;
 // The ground and air strings a fighter is on right now (Juma's and Nox's depend on their form), and
 // the S+J heavy blow.
 export const noxAir = a => (a.form === 'dark' ? DARK_AIR : NOX_AIR);
 export const comboOf = a => { const s = styleOf(a); return s === 3 && a.form ? (a.form === 'titan' ? TITAN_COMBO : BEAST_COMBO) : s === 4 && a.form === 'dark' ? DARK_COMBO : royalClaws(a, s) ? ROYAL_CLAWS : COMBOS[s]; };
-export const airOf = a => { const s = styleOf(a); return s === 4 ? noxAir(a) : s === 5 ? FROG_AIR : s === 6 ? AXO_AIR : s === 2 ? LOLA_AIR : s === 0 && a.type === 0 ? KING_AIR : s === 3 ? (a.form === 'titan' ? TITAN_AIR : a.form === 'beast' ? BEAST_AIR : JUMA_AIR) : AIR; };
+export const airOf = a => { const s = styleOf(a); return s === 4 ? noxAir(a) : s === 5 ? FROG_AIR : s === 6 ? AXO_AIR : s === 2 ? LOLA_AIR : s === 0 && (a.type === 0 || a.court) ? KING_AIR : s === 3 ? (a.form === 'titan' ? TITAN_AIR : a.form === 'beast' ? BEAST_AIR : JUMA_AIR) : AIR; };
 export const heavyOf = a => { const s = styleOf(a); return royalClaws(a, s) ? 'lowclaw' : HEAVY[s]; };
 // Air moves and the dash strike hit with each fighter's natural weapon.
 export const NATURAL = ['claw', 'whip', 'knife', 'claw', 'blood', 'slap', 'fin'];

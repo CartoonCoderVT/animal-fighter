@@ -409,7 +409,7 @@ function courtBrain(g, a, dt) {
 
 // The shield-bearer on guard between the King and a rival takes the rival's blow for him (now and then).
 export function shieldBlocks(g, a, o, amount = 0, point = null) {
-  if (a.type !== 0 || !a.court || a.dead || a.knocked || !o || o === a || o.team === a.team || (a.shieldAt ?? -9) > g.time) return false;
+  if (!a.court || a.dead || a.knocked || !o || o === a || o.team === a.team || (a.shieldAt ?? -9) > g.time) return false;
   const f = a.court.find(f => f.k === 'shield');
   if (!f || (f.st !== 'follow' && !(f.st === 'act' && f.act === 'guard'))) return false;
   const side = Math.sign(f.x - a.x);
@@ -459,7 +459,7 @@ export function strikeCourts(g, atk, test, amount, dirOf = null, kind = 'hit') {
   if (!(amount > 0)) return 0;
   let n = 0;
   for (const k of g.actors) {
-    if (k.type !== 0 || !k.court || k.dead || k === atk || (atk && k.team === atk.team)) continue;
+    if (!k.court || k.dead || k === atk || (atk && k.team === atk.team)) continue;
     for (const f of k.court) if (alive(f) && test(f.x, f.y - 9) && hurtFamiliar(g, k, f, amount, atk?.id ?? null, dirOf ? dirOf(f) : 0)) n++;
   }
   return n + strikeKingdoms(g, atk, test, amount, dirOf, kind);
@@ -471,7 +471,7 @@ export function courtInPath(g, b, x1, y1) {
   let best = null;
   const dx = x1 - b.x, dy = y1 - b.y, len2 = dx * dx + dy * dy || 1;
   for (const k of g.actors) {
-    if (k.type !== 0 || !k.court || k.dead || k.team === b.team || k.id === b.owner) continue;
+    if (!k.court || k.dead || k.team === b.team || k.id === b.owner) continue;
     for (const f of k.court) {
       if (!alive(f)) continue;
       const cx = f.x, cy = f.y - 9, u = Math.max(0, Math.min(1, ((cx - b.x) * dx + (cy - b.y) * dy) / len2));
@@ -482,9 +482,46 @@ export function courtInPath(g, b, x1, y1) {
   return kg && (!best || kg.u < best.u) ? kg : best;
 }
 
-// Every step: each King's court.
+// Every step: each King's court (and the one a frog holds while the King is in his belly).
 export function tickKings(g, dt) {
-  for (const a of g.actors) if (a.type === 0) tickCourt(g, a, dt);
+  for (const a of g.actors) if (a.type === 0 ? a.swallowedBy == null : a.court) tickCourt(g, a, dt);
+}
+
+// ---- the court changes hands ----------------------------------------------------------------------
+// Swallowed by the frog, the King takes his crown in with him: his court (and his kingdom, sim/kingdom.js)
+// serve whoever holds their King. The frog gives his orders (sim/court.js kingOrder) and plants or goes
+// home to the banner; it all goes back to the King the moment he is out (or to nobody, if he is gone).
+
+// Whatever a familiar was doing, it drops it and runs back to its rank by its new lord.
+function stand(f) {
+  if (f.st !== 'act') return;
+  Object.assign(f, { st: 'back', t: 0, act: 'idle', rain: null, targets: null, tgt: null, auto: false, rescue: false, blinked: false });
+}
+
+export function seizeCourt(g, frog, king) {
+  if (!king || king.type !== 0 || frog.court) return;
+  if (!king.court) makeCourt(g, king);
+  frog.court = king.court; king.court = null;
+  frog.courtSeq = frog.attackSeq; frog.courtBeat = 0.4; frog.guardDir = frog.face;
+  for (const f of frog.court) stand(f);
+  for (const kg of g.kingdoms || []) if (kg.by === king.id && kg.st !== 'fall') { kg.by = frog.id; kg.crown = king.id; kg.team = frog.team; }
+  // A puff of gold round each of them as they turn to him.
+  for (const f of frog.court) if (alive(f)) g.fx('courtAppear', { x: Math.round(f.x), y: Math.round(f.y), k: f.k });
+}
+
+export function returnCourt(g, frog, king) {
+  if (frog.court) {
+    if (king && king.type === 0 && !king.dead) {
+      king.court = frog.court;
+      // (a moment to regroup round him before the shield-bearer can take a blow for him again)
+      king.courtSeq = king.attackSeq; king.courtBeat = 0.4; king.shieldAt = g.time + 1;
+      for (const f of king.court) stand(f);
+    }
+    frog.court = null;
+  }
+  frog.courtSeq = null; frog.guardDir = 0; frog.shieldAt = null;
+  // A banner the frog planted with the King inside is the King's too.
+  for (const kg of g.kingdoms || []) if (kg.by === frog.id && kg.crown != null) { kg.by = kg.crown; kg.crown = null; const k = g.actor(kg.by); if (k) kg.team = k.team; }
 }
 
 // VOLTA AO REINO: the King is home in a flash, and his court (those alive) pops in around him.

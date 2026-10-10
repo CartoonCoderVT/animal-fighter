@@ -181,7 +181,9 @@ function createKingdom(g, a, x, node) {
   const kg = {
     id: g.nextId++, by: a.id, team: a.team, lv: 1, st: 'up', t: 0, x, y: node.y, ox: Math.round(a.x), hp: K.hp[1], mx: K.hp[1], hurt: 0,
     res: 0, need: K.need[1], u: [],
-    node: node.id, lo: Math.max(lo, x - K.knight.leash), hi: Math.min(hi, x + K.knight.leash), wT: K.worker.first, kT: [0, 0], aT: [0, 0], hitBy: null, hitT: -9, hitFxT: -9
+    node: node.id, lo: Math.max(lo, x - K.knight.leash), hi: Math.min(hi, x + K.knight.leash), wT: K.worker.first, kT: [0, 0], aT: [0, 0], hitBy: null, hitT: -9, hitFxT: -9,
+    // Planted by the frog with the King in his belly: in the King's name (sim/court.js returnCourt).
+    crown: a.type === 0 ? null : a.belly ?? null
   };
   g.kingdoms.push(kg);
   if (!g.fishSpots) seedFish(g);
@@ -649,9 +651,10 @@ function tickFish(g, dt) {
 // ---- every step ---------------------------------------------------------------------------------------
 
 export function tickKingdoms(g, dt) {
-  // Where a human King's banner would go if he pressed K now (the ghost the renderer shows).
-  for (const a of g.actors) if (a.type === 0 && !a.bot) {
-    const c = !a.dead && !a.act && a.abilityCd <= 0 && !ownKingdom(g, a) ? canPlant(g, a) : null;
+  // Where a human King's banner would go if he pressed K now (the ghost the renderer shows; the frog's too,
+  // with the King in his belly).
+  for (const a of g.actors) if (!a.bot) {
+    const c = !a.dead && a.court && !a.act && a.abilityCd <= 0 && !ownKingdom(g, a) ? canPlant(g, a) : null;
     a.pk = c?.ok ? c.x : null;
   }
   if (!g.kingdoms.length) { if (g.fishSpots) { g.fish = []; g.fishSpots = null; } return; }

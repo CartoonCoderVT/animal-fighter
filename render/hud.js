@@ -188,7 +188,8 @@ export class HUD {
       if (a.dead) { g.fillStyle = 'rgba(10,6,16,0.6)'; g.fillRect(cx + 3, 8, 22, 22); drawText(g, Math.max(1, Math.ceil(a.respawn)) + '', cx + 14, 14, { color: '#f0d2b0', align: 'center', outline: '#0b0812' }); }
       drawText(g, a.name, cx + 29, 9, { color: local ? '#fff1c8' : '#d8cde8' });
       const cd = clamp(1 - a.abilityCd / f.cooldown, 0, 1);
-      const king = a.type === 0 && a.court?.length;
+      // (the frog holding the King in his belly holds his court too)
+      const king = a.court?.length;
       if (a.type === 3) {
         // Juma's card carries her fury bar under her life, and the K cooldown under that.
         bar(g, cx + 29, 19, 58, 3, a.hp / a.maxHp, a.hp < a.maxHp * 0.3 ? '#ee6b6b' : '#8fd694');
@@ -225,7 +226,7 @@ export class HUD {
         // The frog's belly: who he has inside and how long they have left in there.
         if (a.type === 5 && a.belly != null) {
           const v = state.actors.find(b => b.id === a.belly);
-          bar(g, cx + 29, 29, 58, 1, clamp((a.bellyT || 0) / BELLY.hold, 0, 1), v ? FIGHTERS[v.type].color : '#9be05a');
+          bar(g, cx + 29, 29, king ? 26 : 58, 1, clamp((a.bellyT || 0) / BELLY.hold, 0, 1), v ? FIGHTERS[v.type].color : '#9be05a');
         }
       }
       if (mode !== 'sandbox' && mode !== 'attract') {
@@ -234,7 +235,7 @@ export class HUD {
           g.fillRect(cx + 92 + (k % 5) * 5, 10 + Math.floor(k / 5) * 5, 4, 4);
         }
       }
-      const glyph = a.type === 0 && state.kingdoms?.some(k => k.by === a.id && k.st !== 'fall');
+      const glyph = king && state.kingdoms?.some(k => k.by === a.id && k.st !== 'fall');
       if (a.weapon) drawText(g, WEAPON_INFO[a.weapon] ? WEAPON_INFO[a.weapon].name.slice(0, 4) : a.weapon === 'extinguisher' ? 'EXT' : a.ammo + '', glyph ? cx + 97 : cx + cw - 4, 20, { color: '#e8c590', align: 'right' });
       cx += cw + gap;
     }

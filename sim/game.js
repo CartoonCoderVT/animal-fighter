@@ -13,7 +13,7 @@ import { MELEE, isMelee } from './weapons.js';
 import { SPECIALS } from './moves.js';
 import { stepTimeStop } from './timestop.js';
 import { tickNox, spill, freeScythe, famSnapshot } from './nox.js';
-import { tickKings, courtSnapshot } from './court.js';
+import { tickKings, courtSnapshot, returnCourt } from './court.js';
 import { tickKingdoms, kingdomSnapshot, fishSnapshot } from './kingdom.js';
 import { stepMinions, syncMinions, minionSnapshot } from './minions.js';
 import { axoInit, axoSnapshot } from './axolotl.js';
@@ -189,6 +189,8 @@ export class Game {
     // (and the Cat King his wait to plant again, or to go home)
     const abilityCd = a.type === 2 || a.type === 0 ? Math.max(1, a.abilityCd) : 1;
     const dark = a.form === 'dark', blood = a.blood || 0, formT = dark ? a.formT : 0;
+    // (a frog never comes back with a King's court: it went back to the King when he got out)
+    if (a.court && a.type !== 0) returnCourt(this, a, null);
     Object.assign(a, {
       x: spot[0], y: spot[1], hp: FIGHTERS[a.type].hp, maxHp: FIGHTERS[a.type].hp, dead: false, invincible: 1.7, wounds: {}, partDmg: {}, severed: [], broken: {}, stumps: [], embedded: [],
       bleed: 0, char: 0, freeze: 0, frozen: 0, shock: 0, stun: 0, burning: 0, weapon: null, buff: 0, team: a.originalTeam,

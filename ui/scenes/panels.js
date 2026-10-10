@@ -78,7 +78,7 @@ export class HelpScene extends Overlay {
         'Nox bebe sangue, até das poças no chão. Barra cheia + K: DARK NOX por 30 s (nem a morte tira); a foice voa sozinha e comba junto.',
         'No CASTELO (M na escolha do lutador): velas soltam itens, o lustre cai se a corrente for cortada, pêndulos cortam e a pedra sobre as estacas desaba. Dizem que o castelo guarda segredos...',
         'Juma não tem botão de transformação: cada pancada que leva enche a barra de FÚRIA. Cheia, ela vira a FERA; cheia de novo, a TITÃ, enorme e com muita vida.',
-        'Don Sapone engole: segure K para sugar. Com alguém na pança ele vira um híbrido e luta como o engolido; K cospe, S+K usa o especial dele. Quem está dentro aperta tudo para sair.',
+        'Don Sapone engole: segure K para sugar. Com alguém na pança ele vira um híbrido e luta como o engolido; K cospe, S+K usa o especial dele. Engolindo o Rei, a corte e o reino passam a servir o sapo. Quem está dentro aperta tudo para sair.',
         'Xolo regenera: cada parte que perde cresce de novo e vira um broto (até 3) que copia seus golpes. S+K solta a cauda; E pega e J joga um broto. K: os brotos viram demônios de Xolotl.'
       ];
       let yy = y;

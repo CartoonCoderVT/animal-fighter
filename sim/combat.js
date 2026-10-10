@@ -64,8 +64,9 @@ const EDGED = ['claw', 'katana', 'axe', 'blade', 'knife'];
 export function attack(g, a) {
   if (a.dead || a.attackCd > 0 || a.invincible > 0.8 || a.knocked || a.frozen > 0 || a.parryLag > 0 || a.hitstun > 0) return;
   if (a.act) { if (a.act === 'carry') throwCarried(g, a); return; }
-  // The Cat King never strikes himself: J is an order to his court (sim/court.js).
-  if (a.type === 0) { kingOrder(g, a); return; }
+  // The Cat King never strikes himself: J is an order to his court (sim/court.js). Nor does the frog with
+  // the King in his belly: the court is his while he keeps him there.
+  if (a.type === 0 || a.court) { kingOrder(g, a); return; }
   // The axolotl with a clone in its mouth: J fires it at whoever is ahead (Estilingue).
   if (a.axo?.carry != null) { throwClone(g, a); return; }
   if (!a.ground && !a.climbing && a.input.down && !a.weapon && !a.holding) { startStomp(g, a); return; }
@@ -976,8 +977,8 @@ export function damage(g, a, amount, point, ownerId, kind = 'punch', opts = {}) 
     return 0;
   }
   if (owner && ownerId !== a.id && owner.team === a.team) return 0;
-  // The Cat King's shield-bearer takes the blow for him (sim/court.js).
-  if (a.type === 0 && !DOT.has(cat) && !opts.environment && !['explosion', 'grind'].includes(cat) && kind !== 'fall' && kind !== 'crush' && shieldBlocks(g, a, owner, amount, point)) return 0;
+  // The Cat King's shield-bearer takes the blow for him (or for the frog holding him; sim/court.js).
+  if (a.court && !DOT.has(cat) && !opts.environment && !['explosion', 'grind'].includes(cat) && kind !== 'fall' && kind !== 'crush' && shieldBlocks(g, a, owner, amount, point)) return 0;
   if (a.act === 'ball') amount *= 0.5;
   // Juma's beast and titan take blows on a thick hide. The beast does not flinch while she swings
   // or charges (super armor); the titan does not flinch at all. Explosions still throw them and

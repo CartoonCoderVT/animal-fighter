@@ -89,6 +89,8 @@ export function think(g, a, dt) {
     if (Math.random() < 0.28) input[k] = !a.lastInput[k];
     return input;
   }
+  // The Cat King, or the frog with him (and so his court) in his belly: they fight the King's way.
+  const reign = a.type === 0 || !!a.court;
 
   if (a.burning > 0) {
     if (Math.random() < 0.02) ai.panicDir *= -1;
@@ -167,7 +169,7 @@ export function think(g, a, dt) {
       ai.path = null;
       ai.edge = null;
       // The Cat King keeps a few steps back and lets his court go in; a kingdom is struck at its wall.
-      const desired = target.kg ? (a.type === 0 ? target.hw + 46 : ranged ? 210 : target.hw + 6) : ranged ? 210 : a.type === 0 ? 46 : 16;
+      const desired = target.kg ? (reign ? target.hw + 46 : ranged ? 210 : target.hw + 6) : ranged ? 210 : reign ? 46 : 16;
       if (Math.abs(dx) > desired) moveTo = target.x;
       else if (ranged && Math.abs(dx) < 110) moveTo = a.x - Math.sign(dx || 1) * 90;
       if (mine && moveTo !== null) moveTo = clamp(moveTo, mine.x0, mine.x1);
@@ -175,7 +177,7 @@ export function think(g, a, dt) {
   }
 
   // Unarmed with a blade on the floor nearby and nobody in its face: go and grab it.
-  if (a.type !== 0 && !(a.type === 4 && a.form === 'dark') && !a.weapon && !a.holding && !a.act && a.ground && Math.abs(dx) > 60) {
+  if (!reign && !(a.type === 4 && a.form === 'dark') && !a.weapon && !a.holding && !a.act && a.ground && Math.abs(dx) > 60) {
     const loot = g.props.filter(p => !p.held && MELEE.includes(p.kind) && Math.abs(p.y - a.y) < 34 && Math.abs(p.x - a.x) < 240).sort((p, q) => Math.abs(p.x - a.x) - Math.abs(q.x - a.x))[0];
     if (loot && (!mine || (loot.x > mine.x0 - 6 && loot.x < mine.x1 + 6))) {
       moveTo = loot.x;
@@ -193,13 +195,13 @@ export function think(g, a, dt) {
 
   // The Cat King without a kingdom, his banner ready: to the nearest place it may go. With one below the
   // castle: home, so his court stands in its aura (unless a rival is near).
-  if (a.type === 0 && a.ground && !a.act && !target.kg && dist(a, target) > 200) {
+  if (reign && a.ground && !a.act && !target.kg && dist(a, target) > 200) {
     const kg = ownKingdom(g, a);
     if (!kg && a.abilityCd <= 1) { const c = canPlant(g, a); if (!c.ok && c.near != null) moveTo = c.near; }
     else if (kg && kg.lv < 3 && mine?.id === kg.node && Math.abs(a.x - kg.x) > 100) moveTo = kg.x;
   }
   // Hurt and with nobody close: a fish on this floor.
-  if (a.ground && !a.act && a.hp < a.maxHp * 0.7 && g.fish?.length && !(a.type === 0 && ownKingdom(g, a)) && (!target || target.kg || dist(a, target) > 140)) {
+  if (a.ground && !a.act && a.hp < a.maxHp * 0.7 && g.fish?.length && !(reign && ownKingdom(g, a)) && (!target || target.kg || dist(a, target) > 140)) {
     const f = g.fish.filter(f => Math.abs(f.x - a.x) < 120 && Math.abs(f.y - (a.y + HALF_H)) < 6).sort((p, q) => Math.abs(p.x - a.x) - Math.abs(q.x - a.x))[0];
     if (f) moveTo = f.x;
   }
@@ -261,11 +263,11 @@ export function think(g, a, dt) {
     const facing = dx * a.face >= -4;
     const reachX = target.kg ? target.hw + meleeRange - 4 : meleeRange;
     input.attack = ranged ? Math.abs(dy) < 230 && Math.abs(dx) < 650 : Math.abs(dy) < 24 && Math.abs(dx) < reachX && facing && !target.knocked;
-    if (target.kg && a.type === 0) input.attack = Math.abs(dx) < target.hw + 100 && Math.abs(dy) < 40 && facing;
+    if (target.kg && reign) input.attack = Math.abs(dx) < target.hw + 100 && Math.abs(dy) < 40 && facing;
     input.power = target.kg ? false : armed ? Math.abs(dy) < 26 && Math.abs(dx) < meleeRange + 10 && facing && Math.random() < 0.06 : a.abilityCd <= 0 && !a.act && !target.knocked && facing && SPECIAL_RANGE[styleOf(a)](dx, dy, a, target, g);
     // The Cat King: the banner when nobody is on top of him and it may go here; with his kingdom standing,
     // home when it is under attack and he is far from it.
-    if (a.type === 0) {
+    if (reign) {
       const kg = ownKingdom(g, a), near = (r, ry) => g.enemies(a).some(b => !b.dead && Math.abs(b.x - a.x) < r && Math.abs(b.y - a.y) < ry);
       if (!kg) input.power = a.abilityCd <= 0 && !a.act && a.ground && !near(120, 80) && canPlant(g, a).ok;
       else input.power = !target.kg && a.abilityCd <= 0 && !a.act && a.ground && g.time - kg.hitT < 1.5 && Math.hypot(a.x - kg.x, a.y + HALF_H - kg.y) > 260 && !near(140, 90);
@@ -282,7 +284,12 @@ export function think(g, a, dt) {
     if (a.type === 5 && !armed) {
       const inLine = facing && Math.abs(dy) < 22 && Math.abs(dx) < 240;
       if (a.act === 'inhale') input.power = facing && Math.abs(dx) < 130 && Math.abs(dy) < 40;
-      else if (a.belly != null && !a.act) {
+      // With the King inside he keeps him (and the court) for as long as he can: the banner or the way
+      // home on S+K when they fit, and the King spat out only just before he breaks free.
+      else if (a.belly != null && !a.act && a.court) {
+        if (input.power) { aimed = true; input.down = true; }
+        else input.power = inLine && !target.knocked && a.bellyT < 1.2;
+      } else if (a.belly != null && !a.act) {
         const own = a.copy != null && a.abilityCd <= 0 && SPECIAL_RANGE[a.copy](dx, dy, a, target, g);
         if (own && Math.random() < 0.08) { aimed = true; input.power = true; input.down = true; }
         else input.power = inLine && !target.knocked && (a.bellyT < 2.5 || Math.random() < 0.006);
@@ -293,7 +300,7 @@ export function think(g, a, dt) {
     // Nox opens with the shadow cut from a few steps away.
     if (styleOf(a) === 4 && a.ground && !a.act && !a.weapon && Math.abs(dx) > 28 && Math.abs(dx) < (a.form === 'dark' ? 96 : 64) && Math.abs(dy) < 16 && Math.random() < 0.05) { aimed = true; input.attack = !a.lastInput.attack; input.right = dx > 0; input.left = dx < 0; }
     // The Cat King: from a distance, the rain of arrows now and then; a few steps off, the charge.
-    if (a.type === 0 && a.ground && !a.act && Math.abs(dy) < 40 && !target.knocked) {
+    if (reign && a.ground && !a.act && Math.abs(dy) < 40 && !target.knocked) {
       if (Math.abs(dx) > 100 && Math.abs(dx) < 210 && Math.random() < 0.015) { aimed = true; input.attack = !a.lastInput.attack; input.down = true; }
       else if (Math.abs(dx) > 60 && Math.abs(dx) < 120 && Math.random() < 0.02) { aimed = true; input.attack = !a.lastInput.attack; input.right = dx > 0; input.left = dx < 0; }
     }
@@ -372,7 +379,7 @@ export function think(g, a, dt) {
     } else if (target.knocked && dist(a, target) < 30 && ai.grabCd <= 0) { input.grab = true; ai.grabCd = 2; }
     if (a.holding && Math.abs(dy) < 80 && Math.abs(dx) < 320 && ai.grabCd <= 0) { input.grab = true; ai.grabCd = 1; }
     if (!a.weapon && !a.holding && !a.act && ai.grabCd <= 0) {
-      const noArms = a.type === 0 || (a.type === 4 && a.form === 'dark');
+      const noArms = reign || (a.type === 4 && a.form === 'dark');
       const item = g.props.find(p => !p.held && (noArms ? ['crate'] : ['gun', 'crate', 'extinguisher', ...MELEE]).includes(p.kind) && dist(a, p) < 34 && Math.abs(p.y - a.y) < 30);
       if (item) { input.grab = true; ai.grabCd = 3; }
     }
