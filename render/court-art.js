@@ -656,9 +656,11 @@ const BUILD = {
     else if (e === 'angry') { G.set(X + 2, Y, K.eyeR, 4); G.set(X + 1, Y, K.eyeR, 2); }
     G.pt('eye', X + 2, Y); G.pt('head', hx, hy);
     scarfOf(G, o.scarf, c.bx + 0.5, c.by - 2, 5, o.flut || 0);
+    // On guard the sword arm is behind the shield (the blade up over its rim); otherwise in front.
+    const Ka = { ...K, sleeve: K.mail };
+    if (o.behind) { if (!o.bare) sword(G, K, o.hand, o.wpn, 5); arm(G, Ka, c, o.hand); }
     if (!o.bare && !o.noShield) shieldOf(G, K, o.sh, o.shRot || 0, 2.6, 7.4);
-    if (!o.bare) sword(G, K, o.hand, o.wpn, 5);
-    arm(G, { ...K, sleeve: K.mail }, c, o.hand);
+    if (!o.behind) { if (!o.bare) sword(G, K, o.hand, o.wpn, 5); arm(G, Ka, c, o.hand); }
   },
   // The shield-bearer: a stocky brown cat in a steel helm and breastplate behind a big kite shield
   // with the royal crest (a gold crown on red).
@@ -1842,7 +1844,7 @@ export class CourtFX {
 
 // The gold rim of a buffed familiar (b: its tier 1..3): its ink outline drawn in gold, pulsing; at
 // tier 3 brighter, with a little star twinkling at one point of it after another.
-const RIM = [null, { a: 0.3, p: 0.08, c: '#ffd860' }, { a: 0.55, p: 0.12, c: '#ffd860' }, { a: 0.78, p: 0.16, c: '#ffe68a' }];
+const RIM = [null, { a: 0.2, p: 0.06, c: '#ffd860' }, { a: 0.36, p: 0.1, c: '#ffd860' }, { a: 0.58, p: 0.14, c: '#ffe68a' }];
 function rimOf(g, r, b, ox, oy, t, i) {
   const R = RIM[Math.min(3, b)], x = r.x + ox, y = r.y + oy;
   g.globalAlpha = R.a + R.p * Math.sin(t * 5 + i * 1.3) * (r.q.cue.fade ? 1 - r.q.cue.fade : 1);
@@ -2067,7 +2069,7 @@ function unitPose(u, time, opts) {
       // On guard: shield up to the chin, the sword over it, breathing; now and then a glance back.
       o.legs = 'lunge';
       o.dy = Math.sin(ph * 2.2) > 0.5 ? 1 : 0;
-      const b = by(); o.hand = [3, b]; o.wpn = -48 * DEG; o.sh = [5, b - 1 - (o.dy ? 0 : 1)];
+      const b = by(); o.hand = [4, b + 1]; o.wpn = 22 * DEG; o.behind = 1; o.sh = [5, b - 1];
       o.plume = Math.sin(ph * 4.5) > 0.4 ? 1 : 0;
       if (o.eye !== 'blink') o.eye = 'angry';
     }
@@ -2135,7 +2137,7 @@ function unitDeath(u, time, opts, X, Y) {
   // What flies off it: the hard hat, the sword.
   if (k === 'worker' || k === 'knight') {
     const wu = unitClamp(T / 0.4), dir = s * (k === 'worker' ? -0.5 : 0.8);
-    const ws = k === 'worker' ? hatSprite(Math.floor(T / 0.05) % 4) : weaponSprite('soldier', wu < 1 ? (((Math.floor(T / 0.04) * s) % 8) + 8) % 8 : 0);
+    const ws = k === 'worker' ? hatSprite(wu < 1 ? Math.floor(T / 0.05) % 4 : 0) : weaponSprite('soldier', wu < 1 ? (((Math.floor(T / 0.04) * s) % 8) + 8) % 8 : 0);
     const wy0 = Y - (k === 'worker' ? 11 : 10), wFloor = Y - (ws.y0 + ws.h);
     let wx = X + dir * 18 * wu, wy = lerp(wy0, wFloor, wu) - (k === 'worker' ? 16 : 12) * 4 * wu * (1 - wu);
     rec.bits.push({ s: ws, x: Math.round(wx), y: Math.round(Math.min(wy, wFloor)) });
@@ -2210,19 +2212,20 @@ export function drawUnitGlow(g, u, ox, oy, time = 0, opts = {}) {
   if (u.st === 'dead') {
     const r = unitFigure(u, ox, oy, time, opts);
     if (r && T < 0.06) { g.globalAlpha = ga * 0.85; blitRot(g, tintOf(r.spr, '#ffffff'), r.x, r.y, r.f, r.rot, r.py); g.globalAlpha = ga; }
-    // The puff: a ring of smoke blooming where it lay, sparkles in its owner's colour.
+    // The puff: a white cloud blooming where it lay, then thinning out, sparkles in its owner's colour.
     if (T >= UDIE.flicker - 0.02 && r) {
-      const v = unitClamp((T - UDIE.flicker + 0.02) / (0.5 - UDIE.flicker + 0.02)), cx = r.x, cy = r.y - 1, rnd = seeded((u.id || 1) * 7919);
-      const cols = ['#efe8f8', '#d8d0e8', '#b8acd0', '#ffffff'];
+      const v = unitClamp((T - UDIE.flicker + 0.02) / (0.5 - UDIE.flicker + 0.02)), cx = r.x, cy = r.y - 2, rnd = seeded((u.id || 1) * 7919);
+      const cols = ['#ffffff', '#f4eefc', '#e0d8f0', '#c8bce0'], al = v < 0.45 ? 1 : (1 - v) / 0.55;
+      if (v < 0.3) { g.globalAlpha = ga; dot('#ffffff', cx - 1, cy - 1, 3); }
       for (let i = 0; i < 8; i++) {
-        const an = (i / 8) * Math.PI * 2 + rnd() * 0.6, R = 2 + ease(v) * (5 + rnd() * 3), sz = v < 0.5 ? 2 : 3;
-        g.globalAlpha = ga * (1 - v) * 0.9;
-        dot(cols[i % 4], cx + Math.cos(an) * R - sz / 2, cy + Math.sin(an) * R * 0.8 - sz / 2 - v * 3, sz);
+        const an = (i / 8) * Math.PI * 2 + rnd() * 0.6, R = 1.5 + ease(v) * (4 + rnd() * 3), sz = v < 0.35 ? 3 : v < 0.7 ? 2 : 1;
+        g.globalAlpha = ga * al * (i % 2 ? 0.85 : 1);
+        dot(cols[(i + (v > 0.5 ? 2 : 0)) % 4], cx + Math.cos(an) * R - sz / 2, cy + Math.sin(an) * R * 0.75 - sz / 2 - v * 4, sz);
       }
       g.globalAlpha = ga * (1 - v);
       const P = { core: '#ffffff', hot: R(opts.color || '#ffd76a')[4], mid: opts.color || '#ffd76a' };
-      for (let i = 0; i < 4; i++) { const an = i * 1.7 + (u.id || 0); dot(i % 2 ? P.hot : P.mid, cx + Math.cos(an) * (3 + v * 9), cy + Math.sin(an) * (2 + v * 5) - v * 6); }
-      if (v < 0.35) glint(g, P, cx, cy - 2, Math.round(4 * (1 - v / 0.35)) + 1, 0, 0);
+      for (let i = 0; i < 5; i++) { const an = i * 1.7 + (u.id || 0); dot(i % 2 ? P.hot : P.mid, cx + Math.cos(an) * (3 + v * 10), cy + Math.sin(an) * (2 + v * 5) - v * 7); }
+      if (v < 0.3) glint(g, P, cx, cy - 1, Math.round(4 * (1 - v / 0.3)) + 1, 0, 0);
       g.globalAlpha = ga;
     }
     return;

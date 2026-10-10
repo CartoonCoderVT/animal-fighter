@@ -3,21 +3,24 @@
 // swinging across when he turns), the gold crown on his head and the scepter in his hand. He never
 // strikes: the scepter conducts his court. Every order is its own gesture (a sweep for the soldier's
 // cut, a thrust for the shield's bash, a point at the sky for the lightning, a point at the floor for
-// the mercy...) with a glint at the orb on the beat the order is given; through the ATAQUE REAL it is
-// held high, burning gold (along his arm when his frame raises it; with the arm down it rises out of
-// his paw and hangs over his crown until the court is done).
+// the mercy...) with a glint at the orb on the beat the order is given. BANDEIRA REAL (a.act 'plant'):
+// the royal banner, furled on its pole, in his free paw: gathered at his side, raised high, driven
+// down into the floor (from SPECIALS[0].pop it stands on its own: kingdom-art.js), the scepter pointing
+// at the spot. VOLTA AO REINO (a.act 'recall'): the scepter held high, burning gold, a pillar of gold
+// light rising round him until the warp, then fading off him where he lands.
 //
 //   drawRegalia(g, f, ox, oy, t, layer)  f: the renderer's figure record ({ a, hx, hy, info, fc, x, y }).
-//     'back'  the cape. Draw it before his sprite; masked by f.info.sprite, so it also stays behind
-//             his body when drawn after it.
+//     'back'  the cape, and the banner in his free paw. Draw it before his sprite; masked by
+//             f.info.sprite, so it also stays behind his body when drawn after it.
 //     'front' the crown, the ermine collar, the scepter and its glints, after his sprite.
-//     'glow'  emissive bits for the glow layer: the orb's glint, the jewels, the order's spark, and all
-//             of the scepter while he decrees.
+//     'glow'  emissive bits for the glow layer: the orb's glint, the jewels, the order's spark, the
+//             scepter burning through the recall, and the recall's pillar of light.
 //     'keep'  everything but the glints and the swing's smear, in one go (the cape masked behind him):
 //             for the pass that gives the fighters part of their own colour back after the lighting,
 //             and for the impact frames' silhouettes.
 //   regaliaLights(f, t)  light descriptors { x, y, r, color, i } in view px (no shake): a glint off the
-//             crown, the orb, and the decree's blaze.
+//             crown, the orb, and the recall's blaze.
+//   BANNER_POP  where the banner's foot is (view px from his feet, facing right) as it leaves his paw.
 //   drawMenuRegalia(g, a, fr, x, y, t, { face, scale, layer, sprite, dim })  the same round a menu
 //             preview figure.
 //
@@ -25,7 +28,7 @@
 // included) in character space, so it follows any frame: head tilts, body offsets, quarter-turn
 // tumbles. KingHero (king-hero.js) draws the same pieces at the menu's density via drawKingRegalia.
 import { slotPoint, castFor, rotate, mirror } from './pixel-data.js';
-import { MOVES } from '../sim/moves.js';
+import { MOVES, SPECIALS } from '../sim/moves.js';
 import { bayer } from '../engine/const.js';
 import { mix } from '../engine/palette.js';
 
@@ -41,7 +44,8 @@ const BASE = {
   o: '#1c0a14', Y: '#fff7c8', G: '#f8c84a', g: '#cc8a2a', d: '#86501e',
   R: '#ff3c5e', r: '#a6163a', B: '#6cc8ff', b: '#2c5cd4', W: '#ffffff',
   0: '#34081a', 1: '#6a1028', 2: '#a41e36', 3: '#d03444', 4: '#f2665c',
-  E: '#fffaf0', e: '#d4cae2', k: '#1e1428'
+  E: '#fffaf0', e: '#d4cae2', k: '#1e1428',
+  w: '#b8844e', v: '#94603e', u: '#6e4030'
 };
 const pals = new Map();
 function palette(v) {
@@ -82,6 +86,61 @@ const SCEPTER = [
   '..Y..'
 ];
 const SCEPTER_PIV = [2, 12];
+// The royal banner furled on its pole (as it stands planted before it unrolls, kingdom-art.js): the
+// gold crown finial with its ruby, the crimson cloth wound round the pole and tied in gold, the
+// wooden pole, a gold band, the iron-shod foot. Hung from the foot (the pivot).
+const BANNER = [
+  'Y.Y.Y',
+  'GGYGg',
+  'GgRgd',
+  '.gGd.',
+  '.YGg.',
+  '.432.',
+  '.432.',
+  '.431.',
+  '.332.',
+  '.432.',
+  '.432.',
+  '.432.',
+  '.431.',
+  '.332.',
+  '.YGg.',
+  '.432.',
+  '.432.',
+  '.431.',
+  '.332.',
+  '.432.',
+  '.432.',
+  '.432.',
+  '.431.',
+  '.332.',
+  '.YGd.',
+  '.wvu.',
+  '.wvu.',
+  '.wvu.',
+  '.wvu.',
+  '.wvu.',
+  '.wvu.',
+  '.wvu.',
+  '.wvu.',
+  '.wvu.',
+  '.wvu.',
+  '.wvu.',
+  '.wvu.',
+  '.wvu.',
+  '.YGd.',
+  '.wvu.',
+  '.wvu.',
+  '..v..',
+  '..u..',
+  '..g..'
+];
+const BANNER_PIV = [2, 43];
+// The banner in his paw through BANDEIRA REAL: [actT from, how far up the pole his paw is (cells from
+// the foot), the pole's tilt (degrees, clockwise)]. From SPECIALS[0].pop it is planted.
+const PLANT = SPECIALS[0] || { dur: 0.8, pop: 0.45, recall: 0.8, warp: 0.55 };
+const HOLD = [[0, 4, -11.25], [0.15, 2, -22.5], [0.22, 2, -11.25], [0.4, 3, 0, 1]];
+export const BANNER_POP = { x: 3, y: -6 };
 // Along the scepter from its grip (cells, up): the orb's middle and the cross's tip.
 const ORB = 8, TIP = 12;
 
@@ -166,7 +225,9 @@ const ORDERS = {
   kMercy: [[0, 34], [0.35, -10], [0.58, 152, 1], [1, 148]],     // down at the fallen
   kCharge: [[0, 34], [0.3, -30], [0.52, 82, 3], [1, 80, 2]],    // "charge!"
   kShadow: [[0, 34], [0.25, 22], [0.45, 100, 1], [1, 96]],
-  kDrop: [[0, 34], [0.4, -12], [0.6, 165, 1], [1, 160]]
+  kDrop: [[0, 34], [0.4, -12], [0.6, 165, 1], [1, 160]],
+  // BANDEIRA REAL: pointed down at the spot as the banner goes up, and snapped at it as it bites.
+  kPlant: [[0, 34], [0.19, 40], [PLANT.pop / PLANT.dur, 150, 1], [1, 150]]
 };
 const BEAT = k => ORDERS[k][2][0];
 function orderAt(kind, p, from) {
@@ -181,7 +242,8 @@ function orderAt(kind, p, from) {
 }
 const isOrder = a => a.attack > 0 && ORDERS[a.attackKind];
 const orderP = a => clamp(1 - a.attack / (MOVES[a.attackKind]?.dur || 0.3), 0, 1);
-const decreeOf = a => (a.act === 'decree' ? a.actT ?? 0 : -1);
+const plantOf = a => (a.act === 'plant' ? a.actT ?? 0 : -1);
+const recallOf = a => (a.act === 'recall' ? a.actT ?? 0 : -1);
 
 // Frames every fighter shares: in these the arm is not aiming the scepter anywhere.
 const GENERIC = /^(idle|run|jump|fall|crouch|land|skid|hurt|dizzy|tumble|glide|carry|climb|throw|stomp|parry|airdash|roll)/;
@@ -195,45 +257,40 @@ function pose(a, f, t, st) {
   if (st.lastHx != null && dt > 0) { st.vx += ((f.hx - st.lastHx) / (dt * 60) - st.vx) * 0.5; st.vy += ((f.hy - st.lastHy) / (dt * 60) - st.vy) * 0.5; }
   st.lastHx = f.hx; st.lastHy = f.hy;
   const vx = Number.isFinite(a.vx) ? a.vx * (2 / 3) : st.vx, vy = Number.isFinite(a.vy) ? a.vy * (2 / 3) : st.vy;
-  const dec = decreeOf(a), hurt = a.hitstun > 0;
+  const pl = plantOf(a), rc = recallOf(a), hurt = a.hitstun > 0, warp = PLANT.warp ?? 0.55;
   // The cape: swept back by his speed (in world terms, so it swings across when he turns), lifted
-  // when he falls or dashes, billowing in the decree's wind.
+  // when he falls or dashes; flung up as he raises the banner and drives it down; streaming up in the
+  // recall's rising light, settling as he lands.
   let W = 2 + clamp(vx * face * 1.6, -6, 9), L = clamp((a.ground === false ? vy * 1.3 : 0) + Math.abs(vx) * 0.5, -3, 6);
-  if (dec >= 0) { W = 6 + Math.sin(t * 9) * 1.5; L = 3.5 + Math.sin(t * 7) * 1.5; }
+  if (pl >= 0) { W = pl < 0.15 ? 1 : pl < PLANT.pop ? 5 + Math.sin(t * 9) : 7; L = pl < 0.15 ? 0 : pl < PLANT.pop ? 4 : 2; }
+  if (rc >= 0) { W = rc < warp ? 4 + Math.sin(t * 14) * 2 : 3; L = rc < warp ? 2 + Math.min(4, rc * 9) + Math.sin(t * 11) : 1; }
   if (hurt) W += 3;
   for (let k = 0, n = Math.max(1, Math.ceil(dt / (1 / 120))); k < n; k++) {
     const h = dt / n;
     st.vW += ((W * face - st.W) * 160 - st.vW * 11) * h; st.W += st.vW * h;
     st.vL += ((L - st.L) * 120 - st.vL * 10) * h; st.L += st.vL * h;
   }
-  // The scepter. When his frame lifts the arm (the order and decree poses) it points along the arm;
-  // with the arm down it is keyed here, and never swings up through his face.
+  // The scepter. When his frame lifts the arm (the order, plant and recall poses) it points along the
+  // arm; with the arm down it is keyed here, and never swings up through his face.
   const frame = f.info?.frame || {}, armDeg = frame.armF?.[2] || 0, armAng = 180 + armDeg;
   const posed = Math.abs(armDeg) >= 70 && !GENERIC.test(f.info?.name || '');
   const clear = v => (posed || v < -90 || v >= 26 ? [v, 0] : [26, (26 - Math.max(v, -40)) / 30]);
-  let ang = REST, reach = 0, beat = 0, glow = 0;
+  let ang = REST, reach = 0, beat = 0, glow = 0, pillar = null;
   const name = f.info?.name || '';
-  let free = 0;
-  if (dec >= 0) {
-    if (st.kind !== 'decree') { st.kind = 'decree'; st.from = st.ang; }
-    const up = ease(clamp(dec / 0.2, 0, 1)), down = clamp((dec - 2.4) / 0.2, 0, 1);
-    if (posed) {
-      // His arm is up: the scepter held high along it.
-      const [high, extra] = clear(armAng);
-      ang = st.from + (high - st.from) * up + (REST - high) * down; reach = (2 + extra) * up * (1 - down);
-    } else {
-      // His arm is down: the scepter rises out of his paw and hangs over his crown, burning, until
-      // the court is done, then sinks back into his paw.
-      free = ease(clamp(dec / 0.32, 0, 1)) * (1 - clamp((dec - 2.3) / 0.3, 0, 1));
-      ang = (dec < 1 ? st.from : REST) * (1 - free) + Math.sin(t * 3.1) * 6 * free;
-    }
-    glow = Math.min(up, 1 - down);
-    beat = dec < 0.45 ? clamp(1 - Math.abs(dec - 0.2) / 0.25, 0, 1) : 0.35 + 0.25 * Math.sin(t * 8);
-  } else if (isOrder(a)) {
-    const p = orderP(a);
-    if (st.kind !== a.attackKind || p < st.p) { st.kind = a.attackKind; st.from = st.ang; }
+  const kind = pl >= 0 ? 'kPlant' : isOrder(a) ? a.attackKind : null;
+  if (rc >= 0) {
+    // Held high along his arm, burning brighter as the light rises, a flash at the warp.
+    if (st.kind !== 'recall') { st.kind = 'recall'; st.from = st.ang; }
+    const up = ease(clamp(rc / 0.12, 0, 1)), [high, extra] = clear(posed ? armAng : 0);
+    ang = st.from + (high - st.from) * up; reach = (1 + extra) * up;
+    glow = rc < warp ? clamp(rc / 0.3, 0, 1) : clamp(1 - (rc - warp) / 0.2, 0, 1);
+    beat = clamp(1 - Math.abs(rc - warp) / 0.1, 0, 1);
+    pillar = rc < warp ? { rise: rc / warp, land: 0 } : { rise: 1, land: clamp((rc - warp) / Math.max(0.05, (PLANT.recall ?? 0.8) - warp), 0, 1) };
+  } else if (kind) {
+    const p = pl >= 0 ? clamp(pl / (PLANT.dur || 0.8), 0, 1) : orderP(a);
+    if (st.kind !== kind || p < st.p) { st.kind = kind; st.from = st.ang; }
     st.p = p;
-    const o = orderAt(a.attackKind, p, st.from), b = BEAT(a.attackKind);
+    const o = orderAt(kind, p, st.from), b = BEAT(kind);
     const [v, extra] = clear(posed ? armAng : o.ang);
     ang = v; reach = o.reach + extra;
     beat = clamp(1 - Math.abs(p - b) / 0.16, 0, 1);
@@ -248,13 +305,17 @@ function pose(a, f, t, st) {
     st.ang += (v - st.ang) * Math.min(1, dt * 18);
     ang = st.ang;
   }
-  if (dec >= 0 || isOrder(a)) st.ang = ang;
+  if (kind || rc >= 0) st.ang = ang;
   // The swing over the last few frames, for the smear.
   const hist = (st.hist ||= []);
   if (dt > 0) { hist.push([t, ang]); while (hist.length > 8) hist.shift(); }
   let smear = null;
-  if (dec >= 0 || isOrder(a)) for (const [ht, ha] of hist) if (t - ht <= 0.09 && Math.abs(ha - ang) >= 20) { smear = { from: ha, to: ang }; break; }
-  return { W: st.W * face, L: st.L, ang, reach, beat, smear: free > 0.05 ? null : smear, glow, hurt, free, bob: Math.sin(t * 4.2) };
+  if (kind && pl < 0) for (const [ht, ha] of hist) if (t - ht <= 0.09 && Math.abs(ha - ang) >= 20) { smear = { from: ha, to: ang }; break; }
+  // The banner in his free paw until it is planted.
+  let banner = null;
+  if (pl >= 0 && pl < PLANT.pop && !hurt) { let h = HOLD[0]; for (const e of HOLD) if (pl >= e[0]) h = e; banner = { grip: h[1], tilt: h[2], fresh: clamp(1 - pl / 0.08, 0, 1), drive: h[3] ? 1 : 0 }; }
+  const free = 0;
+  return { W: st.W * face, L: st.L, ang, reach, beat, smear, glow, hurt, free, bob: Math.sin(t * 4.2), banner, pillar };
 }
 
 // ---- the cape: a sheet hung from the collar, filled row by row in character space
@@ -440,17 +501,100 @@ function variantOf(a) {
   return '';
 }
 
+// ---- BANDEIRA REAL: the banner in his free paw (P.banner: grip, cells up the pole from its foot to
+// his paw; tilt, degrees clockwise), hung from its foot. Behind him (the 'back' layer), so his body
+// and arm cover it where they cross it; with a mask (the 'keep' pass) it is cut where his body is.
+function bannerFoot(T, frame, ch, P) {
+  const [px, py] = slotPoint('armB', frame, HAND[0], HAND[1], ch), r = (P.banner.tilt * Math.PI) / 180;
+  return [px - Math.sin(r) * P.banner.grip, py + Math.cos(r) * P.banner.grip];
+}
+function bannerTop(T, frame, ch, P) {
+  const [bx, by] = bannerFoot(T, frame, ch, P), r = (P.banner.tilt * Math.PI) / 180, L = BANNER_PIV[1] - 1;
+  return toView(T, bx + Math.sin(r) * L, by - Math.cos(r) * L);
+}
+const bannerSprite = (deg, face, v) => sprite('banner', BANNER, BANNER_PIV, deg, face, v);
+function drawBannerHeld(g, T, frame, ch, P, v, mask) {
+  const [bx, by] = bannerFoot(T, frame, ch, P), s = sprite('banner', BANNER, BANNER_PIV, P.banner.tilt + T.q * 90, T.face, v);
+  const [X, Y] = cell(T, bx, by), x0 = X - s.px * T.sc, y0 = Y - s.py * T.sc;
+  if (!mask) { g.drawImage(s.c, x0, y0, s.w * T.sc, s.h * T.sc); return; }
+  // Cut out where his body is: pixel by pixel (character space, as the cape's mask is tested).
+  const D = (s.data ||= s.c.getContext('2d').getImageData(0, 0, s.w, s.h).data);
+  let last = null;
+  for (let j = 0; j < s.h; j++) for (let i = 0; i < s.w; i++) {
+    const k = (j * s.w + i) * 4;
+    if (D[k + 3] === 0) continue;
+    const vx = x0 + i * T.sc, vy = y0 + j * T.sc;
+    // Back from view to character space (no quarter turns while he plants).
+    const cx = ((vx - T.ox - T.bx) / T.sc) * T.face, cy = (vy - T.oy - T.by) / T.sc;
+    if (mask(Math.round(cx), Math.round(cy))) continue;
+    const c = 'rgb(' + D[k] + ',' + D[k + 1] + ',' + D[k + 2] + ')';
+    if (c !== last) { g.fillStyle = c; last = c; }
+    g.fillRect(vx, vy, T.sc, T.sc);
+  }
+}
+
+// ---- VOLTA AO REINO: a pillar of gold light round him (P.pillar: rise 0..1 up to the warp, land 0..1
+// after it): it climbs from the floor, bright edges and streaks running up it, motes rising and a
+// ring turning at his feet, narrowing and whitening toward the warp; where he lands it flares and
+// falls away, a ring running out over the floor.
+function drawPillar(g, T, P, t) {
+  const [fx, fy] = toView(T, 0, 0), s = T.sc, { rise, land } = P.pillar;
+  const H = Math.round(76 * ease(Math.min(1, rise * 1.2)) * (1 - land * 0.5)) * s;
+  // Wide round him as it rises, drawn in tight about him toward the warp, flaring as he lands.
+  const half = Math.round(rise < 0.7 ? 14 : 14 - (rise - 0.7) * 20) * s + Math.round(land * 8) * s;
+  const A = land > 0 ? (1 - land) : 0.4 + rise * 0.6, hot = !land && rise > 0.8 ? (rise - 0.8) / 0.2 : 0;
+  if (H > 0 && A > 0) {
+    for (let y = 0; y < H; y += s) {
+      const top = y / H, fade = top > 0.6 ? 1 - (top - 0.6) / 0.4 : 1;
+      for (let x = -half; x < half; x += s) {
+        const e = Math.abs(x + s / 2) / half;
+        // A soft gold glow, thicker toward the edges (a tube of light), dithered.
+        const d = ((x / s + y / s) & 1) === 0;
+        const col = Math.round(x / s), ph = (y / s + t * 80 + col * 5.3 + ((col * col) % 7) * 3) % 16;
+        let a = 0, c = '#ffd860';
+        if (e > 0.82) { a = 0.75; c = e > 0.93 ? '#ffc838' : '#fff2a8'; }
+        else if (ph < 2.5 && col % 2 === 0) { a = ph < 1 ? 0.7 : 0.4; c = ph < 1 ? '#ffffff' : '#ffe9a0'; }
+        else if (d) a = 0.1 + 0.25 * e + hot * 0.45;
+        if (hot > 0 && e < 0.5 && d) { a = Math.max(a, hot * 0.7); c = '#fffbe8'; }
+        if (a <= 0) continue;
+        g.globalAlpha = A * fade * a;
+        g.fillStyle = c;
+        g.fillRect(Math.round(fx + x), Math.round(fy - y - s), s, s);
+      }
+    }
+    // Motes rising up it.
+    for (let i = 0; i < 10; i++) {
+      const u = (t * (0.8 + (i % 3) * 0.35) + i * 0.137) % 1, x = fx + Math.sin(i * 2.1 + t * 3) * (half - s * 3), y = fy - u * H;
+      g.globalAlpha = A * (1 - u);
+      g.fillStyle = u < 0.4 ? '#ffffff' : '#ffd860';
+      g.fillRect(Math.round(x), Math.round(y), s, s);
+    }
+  }
+  // The ring at his feet: turning while it rises, running out over the floor when he lands.
+  const R = half + (3 + land * 14) * s, n = 44;
+  g.globalAlpha = land > 0 ? 1 - land : Math.min(1, rise * 3);
+  for (let i = 0; i < n; i++) {
+    if ((i + Math.floor(t * 20)) % 3 === 0) continue;
+    const an = (i / n) * Math.PI * 2;
+    g.fillStyle = Math.sin(an) > 0 ? '#fff2a8' : '#cc8a2a';
+    g.fillRect(Math.round(fx + Math.cos(an) * R), Math.round(fy - s + Math.sin(an) * R * 0.16), s, s);
+  }
+  g.globalAlpha = 1;
+}
+
 // Draws the regalia on any canvas: T maps character space to it (see basis()); used by the game
 // (drawRegalia) and the select screen (king-hero.js) alike.
 export function drawKingRegalia(g, T, a, frame, P, t, layer, { mask = null, ch = castFor(a.type, a.form), v = variantOf(a) } = {}) {
   const severed = a.severed || [];
   if (severed.includes('body')) return;
-  if (layer === 'back') { drawCape(g, T, frame, P, t, v, mask); return; }
+  const hasBanner = P.banner && !severed.includes('armB');
+  if (layer === 'back') { drawCape(g, T, frame, P, t, v, mask); if (hasBanner) drawBannerHeld(g, T, frame, ch, P, v, mask); return; }
   const hasHead = !severed.includes('head'), hasArm = !severed.includes('armF');
   if (layer === 'front' || layer === 'keep') {
-    // 'keep': all of it at once (the cape held behind him by the mask), for the renderer's pass that
-    // gives the fighters back part of their own colour after the lighting, and for silhouettes.
-    if (layer === 'keep') drawCape(g, T, frame, P, t, v, mask);
+    // 'keep': all of it at once (the cape and the banner held behind him by the mask), for the
+    // renderer's pass that gives the fighters back part of their own colour after the lighting, and
+    // for silhouettes.
+    if (layer === 'keep') { drawCape(g, T, frame, P, t, v, mask); if (hasBanner) drawBannerHeld(g, T, frame, ch, P, v, mask); }
     drawCollar(g, T, frame, v);
     if (hasHead) drawCrown(g, T, frame, ch, v, P.hurt ? 1 : 0, P.hurt ? -11.25 : 0);
     if (hasArm) {
@@ -462,6 +606,25 @@ export function drawKingRegalia(g, T, a, frame, P, t, layer, { mask = null, ch =
     return;
   }
   if (layer === 'glow') {
+    if (P.pillar) drawPillar(g, T, P, t);
+    if (hasBanner && P.banner.drive) {
+      // Driven down: streaks of light trailing up off its crown.
+      const [x, y] = bannerTop(T, frame, ch, P);
+      for (const dx of [-2, 0, 2]) for (let j = 1; j <= 10; j++) {
+        if (dx && j > 7) continue;
+        g.globalAlpha = (1 - j / 11) * (dx ? 0.45 : 0.8);
+        g.fillStyle = j < 3 ? '#ffffff' : '#ffd860';
+        g.fillRect(Math.round(x + dx * T.sc), Math.round(y - (j + 1) * T.sc), T.sc, T.sc);
+      }
+      g.globalAlpha = 1;
+    }
+    if (hasBanner && P.banner.fresh > 0) {
+      // The banner appearing in his paw: a glint off its crown.
+      const [x, y] = bannerTop(T, frame, ch, P);
+      g.globalAlpha = P.banner.fresh;
+      star(g, Math.round(x), Math.round(y), 1 + Math.round(P.banner.fresh * 3), T.sc, '#ffffff', '#ffe27a');
+      g.globalAlpha = 1;
+    }
     if (hasArm) {
       if (P.glow > 0) {
         g.globalAlpha = P.glow;
@@ -474,7 +637,8 @@ export function drawKingRegalia(g, T, a, frame, P, t, layer, { mask = null, ch =
   }
 }
 
-// The orb's glint, the star on the beat of an order, the sparks of the decree, the crown's jewels.
+// The orb's glint, the star on the beat of an order, the sparks off the burning scepter, the crown's
+// jewels.
 function glints(g, T, frame, ch, P, t, hasHead, hasArm) {
   const s = T.sc;
   if (hasArm) {
@@ -486,7 +650,7 @@ function glints(g, T, frame, ch, P, t, hasHead, hasArm) {
       star(g, X, Y, 1 + Math.round(P.beat * 3 + P.glow * 2), s, '#ffffff', '#ffe27a');
       g.globalAlpha = 1;
     }
-    // Sparks shed off it while he decrees.
+    // Sparks shed off it while it burns.
     if (P.glow > 0.2) {
       for (let i = 0; i < 7; i++) {
         const ph = (t * (0.9 + (i % 3) * 0.25) + i / 7) % 1, an = i * 2.4 + t * 1.3;
@@ -559,6 +723,11 @@ export function regaliaLights(f, t) {
     out.push({ x, y, r: 9 + P.beat * 10, color: '#ffd27a', i: 0.25 + P.beat * 0.5 });
     if (P.glow > 0) out.push({ x, y, r: 30 + P.glow * 40 + Math.sin(t * 8) * 4, color: '#ffe08a', i: 0.6 + P.glow * 0.8 });
   }
+  // The recall's pillar lighting the floor round him.
+  if (P.pillar) {
+    const [x, y] = toView(T, 0, -14), { rise, land } = P.pillar;
+    out.push({ x, y, r: 40 + rise * 40, color: '#ffd860', i: land > 0 ? (1 - land) * 1.1 : 0.3 + rise * 0.8 });
+  }
   return out;
 }
 
@@ -574,6 +743,12 @@ export function drawMenuRegalia(g, a, fr, x, y, t, { face = 1, scale = 2, layer 
   let P = poses.get(a.id);
   if (!P || P.t !== t) { P = pose(a, { hx: x / scale, hy: y / scale, info: { frame, name: fr.name } }, t, st); P.t = t; poses.set(a.id, P); }
   const mask = layer === 'back' ? bodyMask(sprite) : null;
+  // A menu figure has no kingdom to plant it in: the banner stays where it bit, behind him.
+  const pl = plantOf(a);
+  if (layer === 'back' && pl >= PLANT.pop && !(dim > 0)) {
+    const s = bannerSprite(0, face, '');
+    g.drawImage(s.c, Math.round(x + BANNER_POP.x * face * scale) - s.px * scale, Math.round(y + 1 * scale) - s.py * scale, s.w * scale, s.h * scale);
+  }
   if (!(dim > 0)) {
     drawKingRegalia(g, { bx: x, by: y, face, q: 0, sc: scale, ox: 0, oy: 0 }, a, frame, P, t, layer, { mask, ch, v: '' });
     return;

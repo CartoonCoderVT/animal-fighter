@@ -39,7 +39,7 @@ const HALF_H = 17;
 const INK = '#120b19';
 
 // The owner's colour, by actor id (the scarf of his units, the ribbons on his banner, his pennants).
-export const KINGDOM_COLORS = ['#5aaaff', '#6ee08a', '#c08aff', '#ffe46a'];
+export const KINGDOM_COLORS = ['#5aaaff', '#6ee08a', '#c08aff', '#eef0ff'];
 export const kingdomColor = by => KINGDOM_COLORS[(((by | 0) % 4) + 4) % 4];
 
 // ---- palette -----------------------------------------------------------------------------------
@@ -325,7 +325,7 @@ const houseSprite = stage => spriteOf('house' + stage, () => paintHouse(stage, 0
 const castleSprite = (stage, color) => spriteOf('castle' + stage + color, () => paintCastle(stage, 0x9e37, color));
 const parapetSprite = stage => spriteOf('parapet' + stage, () => paintParapet(stage, 0x9e37));
 function whiteOf(c, w) {
-  w.width = c.width; w.height = c.height;
+  if (w.width !== c.width || w.height !== c.height) { w.width = c.width; w.height = c.height; }
   const g = w.getContext('2d');
   g.globalCompositeOperation = 'copy'; g.drawImage(c, 0, 0);
   g.globalCompositeOperation = 'source-in'; g.fillStyle = '#fff6ea'; g.fillRect(0, 0, w.width, w.height);
@@ -333,13 +333,18 @@ function whiteOf(c, w) {
   return w;
 }
 
-// The fish: a 7x4 silver fish lying on its side, and the same mid-flop, tail up.
-const FISH_PAL = { k: '#1a1626', d: '#3e4c6a', m: '#7f97b8', l: '#c4d6ec', w: '#f4fbff', b: '#a8b8d0', f: '#5a6a8c', e: '#0c0a14', o: '#ff9a6a' };
+// The fish: a little silver fish (9x5 with its ink) lying on its side, and the same mid-flop, tail up.
+const FISH_PAL = { k: '#161222', d: '#4a6a9a', m: '#86a0c4', l: '#c8daf0', w: '#ffffff', b: '#e8f0fa', e: '#0c0a14' };
 const FISH = {
-  lie: ['.d.ddd.', 'dmmllwd', '.dbbbmd', 'd..dd..'],
-  flop: ['d..ddd.', '.dmllwd', '.dbbbmd', '..dd...'],
-  heap: ['.ddd.', 'dllwd', 'dbbmd']
+  lie: ['...kkkk..', 'k.kdddmk.', 'kkmllwelk', 'k.kbbbbk.', '...kkkk..'],
+  flop: ['k..kkkk..', '.kkdddmk.', '.kmllwelk', '..kbbbbk.', '...kkkk..']
 };
+// It flops every 1.5 s or so (phased by its id), turning over as it lands.
+function fishPose(f, time) {
+  const id = f.id | 0, cyc = (time + id * 0.61) / 1.5, ph = (cyc - Math.floor(cyc)) * 1.5, n = Math.floor(cyc);
+  const hop = ph < 0.32, u = ph / 0.32, lift = hop ? Math.round(Math.sin(Math.PI * u) * 4) : 0;
+  return { ph, hop, lift, flip: ((n + id) & 1) ^ (hop && u > 0.5 ? 1 : 0) };
+}
 const fishCache = new Map();
 function fishSprite(kind, flip) {
   const key = kind + flip;
@@ -349,8 +354,6 @@ function fishSprite(kind, flip) {
   c = mk(w, h);
   const g = c.getContext('2d');
   rows.forEach((row, y) => { for (let x = 0; x < w; x++) { const ch = row[flip ? w - 1 - x : x]; if (ch !== '.') { g.fillStyle = FISH_PAL[ch]; g.fillRect(x, y, 1, 1); } } });
-  // Its eye.
-  if (kind !== 'heap') { g.fillStyle = FISH_PAL.e; g.fillRect(flip ? 1 : w - 2, 1, 1, 1); }
   fishCache.set(key, c);
   return c;
 }
@@ -663,8 +666,8 @@ export class KingdomFX {
       drawPennant(g, AX, AY - 44, time, seed, { len: 9, color: col, torn: stage >= 2 ? 1 : 0 });
       // The fish brought in so far, heaped by the door.
       const n = Math.min(kg.res || 0, 4);
-      const HEAP = [[7, -3], [11, -3], [9, -5], [8, -7]];
-      for (let i = 0; i < n; i++) g.drawImage(fishSprite('heap', i % 2), AX + HEAP[i][0], AY + HEAP[i][1]);
+      const HEAP = [[5, -5], [11, -5], [8, -8], [7, -11]];
+      for (let i = 0; i < n; i++) g.drawImage(fishSprite('lie', i % 2), AX + HEAP[i][0], AY + HEAP[i][1]);
       return;
     }
     const C = castleSprite(stage, col);
@@ -673,9 +676,14 @@ export class KingdomFX {
   }
   // Compose the kingdom into its canvas for this frame.
   compose(kg, m, time) {
-    const g = m.c.getContext('2d'), seed = (kg.id % 7) * 0.9;
+    const g = m.c.getContext('2d'), seed = (kg.id % 7) * 0.9, st = kg.st, lv = kg.lv, stage = stageOf(kg);
+    // Standing still it only changes as the cloth sways (12 times a second, as pixel animation goes).
+    if (st === 'stand') {
+      const key = lv + '|' + stage + '|' + (kg.res | 0) + '|' + kg.by + '|' + Math.floor(time * 12);
+      if (m.key === key) return;
+      m.key = key; time = Math.floor(time * 12) / 12;
+    } else m.key = null;
     g.clearRect(0, 0, CW, CH);
-    const st = kg.st, lv = kg.lv, stage = stageOf(kg);
     if (st === 'up' && lv === 1) {
       const u = clamp01((kg.t - flyT(kg)) / (KINGDOM.up - flyT(kg)));
       this.paintLevel(g, kg, 1, time, { unroll: ease(u), seed });
@@ -694,6 +702,17 @@ export class KingdomFX {
       return;
     }
     this.paintLevel(g, kg, lv, time, { stage, seed, mound: !(st === 'fall' && lv === 1) });
+    // Collapsing: it caves in from the top down, unevenly, as it sinks.
+    if (st === 'fall' && lv >= 2) {
+      const u = clamp01(kg.t / KINGDOM.fall), hw = Math.round(KINGDOM.w[lv] * S / 2) + 6, rnd = seeded(kg.id * 131 + 7);
+      // A broken skyline: chunky (two columns at a time), lower toward the middle where it gives first.
+      const p1 = rnd() * 6, p2 = rnd() * 6, jag = [];
+      for (let x = -hw; x <= hw; x++) { const c = x >> 1; jag.push(4 + 3 * Math.sin(c * 0.9 + p1) + 2 * Math.sin(c * 2.3 + p2) + (1 - Math.abs(x) / hw) * 5); }
+      for (let x = -hw; x <= hw; x++) {
+        const cut = Math.round((TOP[lv] + 4) * (1 - easeIn(u) * 1.15) - jag[x + hw] * u * 2);
+        if (cut < TOP[lv] + 4) g.clearRect(AX + x, 0, 1, AY - Math.max(0, cut));
+      }
+    }
   }
   // Timber scaffolding around a build: poles at the corners and between, planks every 8 rows.
   scaffold(g, lv, u, rev) {
@@ -772,8 +791,6 @@ export class KingdomFX {
       // A toppling banner leaves its mound behind.
       if (kg.st === 'fall' && kg.lv === 1) { const M = moundSprite(); lg.globalAlpha = 1 - clamp01((kg.t / KINGDOM.fall - 0.6) / 0.4); lg.drawImage(M.c, X(kg.x) + ox - M.ax, X(kg.y) + oy - M.ay); lg.globalAlpha = 1; }
       this.blit(lg, m.c, p);
-      // Struck: a white flash.
-      if (kg.hurt > 0 && kg.st !== 'fall') { lg.globalAlpha = Math.min(1, kg.hurt / 0.25) * 0.85; this.blit(lg, whiteOf(m.c, m.w), p); lg.globalAlpha = 1; }
     }
   }
 
@@ -782,15 +799,12 @@ export class KingdomFX {
     if (!state?.fish?.length) return;
     const time = state.time ?? 0;
     for (const f of state.fish) {
-      const x = X(f.x) + ox, y = X(f.y) + oy, id = f.id | 0;
-      const cyc = (time + id * 0.61) / 1.5, ph = (cyc - Math.floor(cyc)) * 1.5, n = Math.floor(cyc);
-      const hop = ph < 0.32, u = ph / 0.32, lift = hop ? Math.round(Math.sin(Math.PI * u) * 4) : 0;
-      const flip = ((n + id) & 1) ^ (hop && u > 0.5 ? 1 : 0);
+      const x = X(f.x) + ox, y = X(f.y) + oy, { hop, lift, flip } = fishPose(f, time);
       // Its shadow on the floor (smaller as it leaves it).
       lg.fillStyle = '#0a0612'; lg.globalAlpha = 0.45;
-      lg.fillRect(x - (lift > 2 ? 2 : 3), y - 1, lift > 2 ? 5 : 7, 1);
+      lg.fillRect(x - (lift > 2 ? 2 : 3), y, lift > 2 ? 5 : 7, 1);
       lg.globalAlpha = 1;
-      lg.drawImage(fishSprite(hop ? 'flop' : 'lie', flip), x - 3, y - 4 - lift - (hop ? 0 : 0));
+      lg.drawImage(fishSprite(hop ? 'flop' : 'lie', flip), x - 4, y - 5 - lift);
     }
   }
 
@@ -836,7 +850,6 @@ export class KingdomFX {
       return;
     }
     g.drawImage(P.c, p.bx - P.ax, p.by - P.ay);
-    if (kg.hurt > 0) { g.globalAlpha = Math.min(1, kg.hurt / 0.25) * 0.85; g.drawImage(whiteOf(P.c, this.pw ||= mk(1, 1)), p.bx - P.ax, p.by - P.ay); g.globalAlpha = 1; }
   }
   drawLitParts(g, ox, oy) {
     for (const p of this.parts) {
@@ -868,11 +881,13 @@ export class KingdomFX {
       for (const f of figures || []) if (f?.fc?.body?.c && f.x < x0 + w && f.y < y0 + h && f.x + f.fc.body.c.width > x0 && f.y + f.fc.body.c.height > y0) g.drawImage(f.fc.body.c, f.x - x0, f.y - y0);
       g.globalCompositeOperation = 'source-over';
     };
+    const overlaps = (x0, y0, w, h) => (figures || []).some(f => f?.fc?.body?.c && f.x < x0 + w && f.y < y0 + h && f.x + f.fc.body.c.width > x0 && f.y + f.fc.body.c.height > y0);
     // The structures, at a quarter, cut out where a fighter stands in front.
     for (const kg of state.kingdoms) {
       const m = this.mem.get(kg.id), p = m?.place;
       if (!p || m.time !== time) continue;
       const x0 = p.bx - AX, y0 = p.by - AY;
+      if (!overlaps(x0, y0, CW, CH)) { lg.globalAlpha = 0.25; this.blit(lg, m.c, p); lg.globalAlpha = 1; continue; }
       sg.clearRect(0, 0, CW, CH);
       this.blit(sg, m.c, p, -x0, -y0);
       punch(sg, x0, y0, CW, CH);
@@ -880,31 +895,27 @@ export class KingdomFX {
       lg.drawImage(c, x0, y0);
       lg.globalAlpha = 1;
     }
-    // The units, as the court keeps its colour: the ones behind cut out where a fighter stands.
-    let bx0 = Infinity, by0 = Infinity, bx1 = -Infinity, by1 = -Infinity, any = false;
-    for (const kg of state.kingdoms) for (const u of kg.u || []) { const x = X(u.x) + ox, y = X(u.y) + oy; bx0 = Math.min(bx0, x - 14); bx1 = Math.max(bx1, x + 14); by0 = Math.min(by0, y - 24); by1 = Math.max(by1, y + 4); any = true; }
-    if (!any) return;
-    bx0 = Math.floor(bx0); by0 = Math.floor(by0);
-    const w = Math.ceil(bx1 - bx0), h = Math.ceil(by1 - by0);
+    // The units, as the court keeps its colour: the ones behind cut out where a fighter stands (one
+    // little scratch canvas at a time, only for the ones a fighter overlaps).
+    const UW = 40, UH = 36;
     let u = this.ukeep;
-    if (!u || u.width < w || u.height < h) { u = this.ukeep = mk(Math.max(w, u?.width || 0), Math.max(h, u?.height || 0)); u.getContext('2d').imageSmoothingEnabled = false; }
+    if (!u) { u = this.ukeep = mk(UW, UH); u.getContext('2d').imageSmoothingEnabled = false; }
     const ug = u.getContext('2d');
-    ug.globalCompositeOperation = 'source-over'; ug.globalAlpha = 1;
-    ug.clearRect(0, 0, u.width, u.height);
-    for (const front of [false, true]) {
-      for (const kg of state.kingdoms) {
-        const opts = this.unitOpts(kg);
-        for (const v of kg.u || []) {
-          if (this.isFront(v) !== front) continue;
-          if (cm?.drawUnit) cm.drawUnit(ug, v, ox - bx0, oy - by0, time, opts); else placeholderUnit(ug, v, ox - bx0, oy - by0, time, opts);
-          ug.globalAlpha = 1;
-        }
+    const draw = (g, v, dx, dy, opts) => { if (cm?.drawUnit) cm.drawUnit(g, v, dx, dy, time, opts); else placeholderUnit(g, v, dx, dy, time, opts); };
+    for (const front of [false, true]) for (const kg of state.kingdoms) {
+      const opts = this.unitOpts(kg);
+      for (const v of kg.u || []) {
+        if (this.isFront(v) !== front) continue;
+        const x0 = X(v.x) + ox - UW / 2, y0 = X(v.y) + oy - UH + 6;
+        if (front || !overlaps(x0, y0, UW, UH)) { lg.globalAlpha = 0.45; draw(lg, v, ox, oy, opts); lg.globalAlpha = 1; continue; }
+        ug.globalCompositeOperation = 'source-over'; ug.globalAlpha = 1;
+        ug.clearRect(0, 0, UW, UH);
+        draw(ug, v, ox - x0, oy - y0, opts);
+        ug.globalAlpha = 1;
+        punch(ug, x0, y0, UW, UH);
+        lg.globalAlpha = 0.45; lg.drawImage(u, x0, y0); lg.globalAlpha = 1;
       }
-      if (!front) punch(ug, bx0, by0, w, h);
     }
-    lg.globalAlpha = 0.45;
-    lg.drawImage(u, 0, 0, w, h, bx0, by0, w, h);
-    lg.globalAlpha = 1;
   }
 
   // ---- emissive: the aura, the lit windows, the torches, the ghost banner, the units' glow ----
@@ -918,6 +929,13 @@ export class KingdomFX {
         if (kg.lv === 3 && kg.st === 'stand') castle = true;
         if (kg.st === 'fall' || !m?.place) continue;
         const p = m.place, rev = kg.st === 'up' && kg.lv >= 2 ? Math.round((TOP[kg.lv] + 2) * ease(clamp01(kg.t / KINGDOM.up))) : 999;
+        // Struck: it flashes white (over the light, as the court's blows do).
+        if (kg.hurt > 0) {
+          eg.globalAlpha = Math.min(1, kg.hurt / 0.25) * 0.75;
+          this.blit(eg, whiteOf(m.c, m.w), p);
+          if (kg.lv === 3 && kg.st === 'stand') { const P = parapetSprite(stageOf(kg)); eg.drawImage(whiteOf(P.c, this.pw ||= mk(1, 1)), p.bx - P.ax, p.by - P.ay); }
+          eg.globalAlpha = 1;
+        }
         const flick = i => 0.8 + 0.2 * Math.sin(time * 11 + i * 2.1) * Math.sin(time * 4.3 + i);
         // Windows.
         (WINDOWS[kg.lv] || []).forEach((w, i) => {
@@ -941,12 +959,17 @@ export class KingdomFX {
         if (kg.lv === 3 && rev > 30) {
           for (const sd of [-1, 1]) this.flame(eg, p.bx + sd * TORCH.x, p.by + TORCH.y - 1, time + sd);
           if (kg.st === 'stand') {
+            // A gold rim round the cloth: its shape (swaying as it is drawn) once into a scratch canvas,
+            // stamped one pixel each way, then the cloth itself cut back out of it.
             const seed = (kg.id % 7) * 0.9, a = 0.35 + 0.2 * Math.sin(time * 2.4);
+            const bc = this.bannerScratch ||= mk(20, 40), bg = bc.getContext('2d');
+            bg.clearRect(0, 0, 20, 40);
+            drawBannerTint(bg, 10, 2, 1, time, seed, '#ffd76a', stageOf(kg));
             eg.globalAlpha = a;
-            for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) drawBannerTint(eg, p.bx + dx, p.by - 51 + dy, 1, time, seed, '#ffd76a', stageOf(kg));
+            for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) eg.drawImage(bc, p.bx - 10 + dx, p.by - 53 + dy);
             eg.globalAlpha = 1;
             eg.globalCompositeOperation = 'destination-out';
-            drawBannerTint(eg, p.bx, p.by - 51, 1, time, seed, '#000000', stageOf(kg));
+            eg.drawImage(bc, p.bx - 10, p.by - 53);
             eg.globalCompositeOperation = 'source-over';
             const cp = (time * 0.4) % 1;
             if (cp < 0.1) glint(eg, FXC.gold, p.bx, p.by - 41, Math.round(3 * Math.sin((cp / 0.1) * Math.PI)) + 1);
@@ -963,15 +986,33 @@ export class KingdomFX {
       if (castle) this.drawMotes(eg, ox, oy, time);
       // The units' glowing bits.
       const cm = this.r?.courtMod;
-      if (cm?.drawUnitGlow) for (const kg of state.kingdoms) { const opts = this.unitOpts(kg); for (const u of kg.u || []) { cm.drawUnitGlow(eg, u, ox, oy, time, opts); eg.globalAlpha = 1; } }
+      if (cm?.drawUnitGlow) for (const kg of state.kingdoms) { const opts = this.unitOpts(kg); for (const u of kg.u || []) { cm.drawUnitGlow(eg, u, ox, oy, time, { ...opts, front: this.isFront(u) }); eg.globalAlpha = 1; } }
     }
     // Where a King's banner would go if he pressed K now.
     for (const a of state?.actors || []) if (a.pk != null && !a.bot && !a.dead && (this.localId == null || a.id === this.localId)) this.drawGhost(eg, X(a.pk) + ox, X(a.y + HALF_H) + oy, time);
     // Fish catching the light.
     for (const f of state?.fish || []) {
-      const cyc = (time + (f.id | 0) * 0.61) / 1.5, ph = (cyc - Math.floor(cyc)) * 1.5;
-      if (ph > 0.7 && ph < 0.86) { eg.fillStyle = '#ffffff'; eg.globalAlpha = 0.9; eg.fillRect(X(f.x) + ox, X(f.y) + oy - 4, 1, 1); eg.globalAlpha = 0.5; eg.fillRect(X(f.x) + ox - 1, X(f.y) + oy - 4, 1, 1); eg.fillRect(X(f.x) + ox + 1, X(f.y) + oy - 4, 1, 1); eg.globalAlpha = 1; }
+      const { ph, lift } = fishPose(f, time), fx = X(f.x) + ox, fy = X(f.y) + oy - 3 - lift;
+      // A faint silver sheen so they read in the dark, and a glint running along now and then.
+      eg.globalAlpha = 0.35; eg.fillStyle = '#c8daf0'; eg.fillRect(fx - 1, fy, 3, 1); eg.globalAlpha = 1;
+      if (ph > 0.7 && ph < 0.86) { eg.fillStyle = '#ffffff'; eg.globalAlpha = 0.9; eg.fillRect(fx + Math.round((ph - 0.78) * 30), fy, 1, 1); eg.globalAlpha = 0.5; eg.fillRect(fx, fy - 1, 1, 1); eg.fillRect(fx, fy + 1, 1, 1); eg.globalAlpha = 1; }
     }
+  }
+  // A soft shaft of gold light w wide from y0 down to y1 at x: bright in its core, falling off to its
+  // sides; `fadeUp`: fainter toward its top; `floor`: how strongly it stays lit at the top.
+  shaft(g, x, y0, y1, w, a, floor = 0, fadeUp = false) {
+    const hw = w / 2, H = Math.max(1, y1 - y0), seg = fadeUp ? 6 : 3;
+    for (let dx = -Math.floor(hw); dx <= Math.floor(hw); dx++) {
+      const k = 1 - Math.abs(dx) / (hw + 0.5), col = k > 0.75 ? '#fff2a8' : k > 0.4 ? '#ffd76a' : '#ffb838';
+      g.fillStyle = col;
+      for (let s = 0; s < seg; s++) {
+        const v = (s + 0.5) / seg, va = fadeUp ? v * v : floor + (1 - floor) * v;
+        g.globalAlpha = Math.min(1, a * (0.15 + 0.75 * k * k) * va);
+        const ya = Math.round(y0 + (H * s) / seg), yb = Math.round(y0 + (H * (s + 1)) / seg);
+        g.fillRect(Math.round(x + dx), ya, 1, yb - ya);
+      }
+    }
+    g.globalAlpha = 1;
   }
   flame(g, x, y, t) {
     const f = Math.floor(t * 12) % 3, h = 3 + (f === 1 ? 1 : 0);
@@ -986,21 +1027,37 @@ export class KingdomFX {
     const fadeOut = (m.tier === 3 || kg.st === 'fall') ? clamp01(1 - (m.rx - 120) / 380) * (kg.st === 'fall' ? clamp01(1 - kg.t * 2) : 1) : 1;
     if (fadeOut <= 0.02 || rx < 3 || ry < 3) return;
     const pulse = (0.05 + 0.025 * (1 + Math.sin(time * 2.2 + seed))) * fadeOut;
-    g.fillStyle = '#ffd76a';
-    for (let j = 0; j < ry; j++) {
-      const v = j / ry, w = Math.round(rx * Math.sqrt(1 - v * v));
-      g.globalAlpha = pulse * (0.45 + 0.55 * v * v);
-      g.fillRect(cx - w, cy - 1 - j, w * 2 + 1, 1);
-    }
-    // The rim: every other cell, brighter where the gleam passes.
     const n = Math.round(Math.PI * (rx + ry) * 0.75), gl = (time * 0.9 + seed) % (Math.PI * 1.6) - 0.3;
-    for (let i = 0; i <= n; i++) {
-      const a = (Math.PI * i) / n, x = Math.round(cx + Math.cos(a) * rx), y = Math.round(cy - 1 - Math.sin(a) * ry);
-      const near = Math.max(0, 1 - Math.abs(a - gl) / 0.25);
-      if ((x + y) & 1 && near < 0.3) continue;
+    const rimAt = i => { const a = (Math.PI * i) / n; return [a, Math.round(Math.cos(a) * rx), Math.round(-1 - Math.sin(a) * ry)]; };
+    // The fill (fainter at its foot) and the dithered rim, baked once the dome has settled.
+    const settled = Math.abs(m.rx - (m.tier === 1 || m.tier === 2 ? KINGDOM.aura[m.tier] * S : -99)) < 0.5;
+    let D = settled ? this.domes?.get(rx + 'x' + ry) : null;
+    if (settled && !D) {
+      if (!this.domes || this.domes.size > 8) this.domes = new Map();
+      const fc = mk(rx * 2 + 1, ry + 1), fg = fc.getContext('2d'), rc = mk(rx * 2 + 1, ry + 2), rg = rc.getContext('2d');
+      fg.fillStyle = '#ffd76a';
+      for (let j = 0; j < ry; j++) { const v = j / ry, w = Math.round(rx * Math.sqrt(1 - v * v)); fg.globalAlpha = 0.45 + 0.55 * v * v; fg.fillRect(rx - w, ry - j, w * 2 + 1, 1); }
+      rg.fillStyle = '#ffc838';
+      for (let i = 0; i <= n; i++) { const [, x, y] = rimAt(i); if (!((x + y) & 1)) rg.fillRect(rx + x, ry + 1 + y, 1, 1); }
+      this.domes.set(rx + 'x' + ry, D = { fc, rc });
+    }
+    if (D) {
+      g.globalAlpha = pulse; g.drawImage(D.fc, cx - rx, cy - 1 - ry);
+      g.globalAlpha = 0.35 * fadeOut; g.drawImage(D.rc, cx - rx, cy - 1 - ry);
+    } else {
+      g.fillStyle = '#ffd76a';
+      for (let j = 0; j < ry; j++) { const v = j / ry, w = Math.round(rx * Math.sqrt(1 - v * v)); g.globalAlpha = pulse * (0.45 + 0.55 * v * v); g.fillRect(cx - w, cy - 1 - j, w * 2 + 1, 1); }
+      g.globalAlpha = 0.35 * fadeOut; g.fillStyle = '#ffc838';
+      for (let i = 0; i <= n; i++) { const [, x, y] = rimAt(i); if (!((x + y) & 1)) g.fillRect(cx + x, cy + y, 1, 1); }
+    }
+    // A gleam running round the rim.
+    const i0 = Math.max(0, Math.floor(((gl - 0.25) / Math.PI) * n)), i1 = Math.min(n, Math.ceil(((gl + 0.25) / Math.PI) * n));
+    for (let i = i0; i <= i1; i++) {
+      const [a, x, y] = rimAt(i), near = Math.max(0, 1 - Math.abs(a - gl) / 0.25);
+      if (near <= 0) continue;
       g.globalAlpha = (0.35 + 0.6 * near) * fadeOut;
       g.fillStyle = near > 0.5 ? '#fff2a8' : '#ffc838';
-      g.fillRect(x, y, 1, 1);
+      g.fillRect(cx + x, cy + y, 1, 1);
     }
     // The base line on the floor.
     g.fillStyle = '#ffc838';
@@ -1030,7 +1087,7 @@ export class KingdomFX {
   }
   // The ghost hint: a dashed gold outline of the banner where it would stand (13 x 40), pulsing.
   drawGhost(g, x, y, time) {
-    const a = 0.25 + 0.12 * (1 + Math.sin(time * 5)), march = Math.floor(time * 10);
+    const a = 0.3 + 0.1 * (1 + Math.sin(time * 5)), march = Math.floor(time * 10);
     g.fillStyle = '#ffd76a';
     const dot = (px, py, i) => { if ((i + march) % 3 === 2) return; g.globalAlpha = a; g.fillRect(x + px, y + py, 1, 1); };
     let i = 0;
@@ -1069,13 +1126,7 @@ export class KingdomFX {
         case 'pillar': {
           // A shaft of light from the top of the screen onto the build, rays flung out, a ring at its foot.
           const pw = Math.round(q.w * (u < 0.15 ? u / 0.15 : 1 - (u - 0.15) / 0.85)), top = -oy - 4;
-          if (pw > 0) for (let y = top; y < q.y; y++) {
-            const v = (y - top) / Math.max(1, q.y - top);
-            g.globalAlpha = (1 - u) * (0.18 + 0.3 * v);
-            dot(G.hot, q.x - pw / 2, y, pw, 1);
-            g.globalAlpha = (1 - u) * 0.5;
-            dot(G.core, q.x - 1, y, 2, 1);
-          }
+          if (pw > 0) this.shaft(g, q.x + ox, top + oy, q.y + oy, pw, (1 - u) * 0.9, 0.35);
           g.globalAlpha = 1;
           for (let i = 0; i < 14; i++) {
             const an = (i / 14) * Math.PI * 2 + q.seed, r0 = 12 + u * 34, len = (i % 2 ? 10 : 18) * (1 - u);
@@ -1091,10 +1142,9 @@ export class KingdomFX {
         case 'column': {
           // A gold column on the spot he leaves or arrives at: rising and thinning as he goes, crashing
           // down and spreading as he lands.
-          const H = 46, w = q.arrive ? Math.round(9 * (1 - u)) + 1 : q.out ? Math.round(7 * (1 - u)) + 1 : Math.round(3 + 6 * ease(u));
-          const h = q.up ? H * ease(Math.min(1, u * 1.6)) : H;
-          g.globalAlpha = q.up ? 0.55 * (1 - u * 0.5) : 0.6 * (1 - u);
-          for (let y = 0; y < h; y++) { const v = y / H; dot(v < 0.6 ? G.hot : G.mid, q.x - Math.floor(w / 2), q.y - 1 - y, w, 1); if (y % 3 === 0) { g.globalAlpha *= 1; dot(G.core, q.x, q.y - 1 - y, 1, 1); } }
+          const H = 52, w = q.arrive ? Math.round(12 * (1 - u)) + 2 : q.out ? Math.round(9 * (1 - u)) + 2 : Math.round(4 + 7 * ease(u));
+          const h = Math.round(q.up ? H * ease(Math.min(1, u * 1.6)) : H);
+          if (h > 0) this.shaft(g, q.x + ox, q.y + oy - h, q.y + oy, w, q.up ? 1 - u * 0.4 : 1 - u, 0, true);
           g.globalAlpha = 1;
           if (q.up) for (let i = 0; i < 3; i++) { const k = (u * 2 + i / 3) % 1; dot(G.core, q.x + Math.sin(i * 2 + u * 9) * 5, q.y - 4 - k * 40); }
           break;

@@ -290,7 +290,7 @@ export const FRAMES = {
   // gathered low at his side, then raised high over his head on his toes, then driven down into the
   // floor before him with all his weight (it stands on its own from there), and the proud hold.
   kgPlA: { head: [0, 2, 11.25], body: [0, 1], armF: [1, 1, -45], armB: [-1, 1, 22.5], footF: [2, 0], footB: [-2, 0] },
-  kgPlR: { head: [0, -1, -22.5], body: [0, -1], armF: [2, -1, -67.5], armB: [0, -4, -191.25], footF: [1, -1], footB: [-1, 0] },
+  kgPlR: { head: [0, -1, -22.5], body: [0, -1], armF: [2, -1, -67.5], armB: [-5, -5, 146.25], footF: [1, -1], footB: [-1, 0] },
   kgPlD: { head: [1, 2, 22.5], body: [1, 1], armF: [2, 0, -33.75], armB: [3, 1, -56.25], footF: [3, 0], footB: [-3, 0] },
   // VOLTA AO REINO's arrival: landed, knees bent, the scepter still up.
   kgRcL: { head: [0, 2], body: [0, 2], armF: [2, 0, -157.5], armB: [-3, 1, 56.25], footF: [3, 0], footB: [-3, 0] },
