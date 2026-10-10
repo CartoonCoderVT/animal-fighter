@@ -4,8 +4,8 @@ export const FIGHTERS = [
   {
     id: 'cat', name: 'Mingau', species: 'O REI GATO', role: 'COMANDO / CORTE', word: 'AJOELHEM.', color: '#f68268',
     desc: 'Rei de coroa e cetro. Cinco gatinhos da corte o protegem a todo custo e atacam sozinhos.',
-    ability: 'ATAQUE REAL', icon: '♛', stats: [3, 4, 5], hp: 90, speed: 5, weight: 0.9, cooldown: 14,
-    detail: 'J: soldado, assassino, arqueiro, mago e escudeiro atacam um por vez. S+J chuva de flechas; lado+J carga. K: a corte inteira ataca junto.'
+    ability: 'BANDEIRA REAL', icon: '♛', stats: [3, 4, 5], hp: 90, speed: 5, weight: 0.9, cooldown: 15,
+    detail: 'J: a corte ataca um por vez. S+J flechas; lado+J carga. K: finca a bandeira: gatinhos buscam peixe e ela vira casa e castelo.'
   },
   {
     id: 'rat', name: 'Marola', species: 'O RATO', role: 'ALCANCE / ATROPELO', word: 'ALOHA.', color: '#7bcbbb',
