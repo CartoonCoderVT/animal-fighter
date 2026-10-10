@@ -195,6 +195,17 @@ export class Shell {
     }
     // The cut-in and the stopped world are timed by the time stop's own clock: smooth it too.
     if (remote.timeStop && prev.timeStop && remote.timeStop.owner === prev.timeStop.owner) out.timeStop = { ...remote.timeStop, t: prev.timeStop.t + (remote.timeStop.t - prev.timeStop.t) * t };
+    // The Cat Kings' kingdoms: their units come and go, so they are matched by id; a unit that just
+    // appeared, died or hopped far is not slid.
+    if (remote.kingdoms && prev.kingdoms) out.kingdoms = remote.kingdoms.map(k => {
+      const p = prev.kingdoms.find(q => q.id === k.id);
+      if (!p) return k;
+      const old = new Map(p.u.map(u => [u.id, u]));
+      return { ...k, t: p.lv === k.lv && p.st === k.st ? p.t + (k.t - p.t) * t : k.t, u: k.u.map(u => {
+        const v = old.get(u.id);
+        return v && u.st !== 'appear' && v.st !== 'dead' && Math.hypot(u.x - v.x, u.y - v.y) < 60 ? { ...u, x: v.x + (u.x - v.x) * t, y: v.y + (u.y - v.y) * t } : u;
+      }) };
+    });
     if (remote.hazards && prev.hazards) {
       out.hazards = { ...remote.hazards, lamps: remote.hazards.lamps.map((l, i) => { const p = prev.hazards.lamps[i]; return p ? { ...l, x: p.x + (l.x - p.x) * t, y: p.y + (l.y - p.y) * t } : l; }) };
     }
