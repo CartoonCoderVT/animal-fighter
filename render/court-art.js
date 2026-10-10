@@ -12,11 +12,19 @@
 // Hooks (renderer.js):
 //   const court = new CourtFX(renderer)
 //   court.event(e)                                 every fx event
-//   court.update(dt)                               every frame (game time)
+//   court.update(dt)                               every frame (it measures the game clock the draw
+//                                                  calls see, so the effects slow down with the LAB's
+//                                                  slow motion too)
 //   court.drawCourt(g, a, ox, oy, t, front)        lit layer: front=false before the fighters (the
 //                                                  court in formation, behind the King), front=true
 //                                                  after them (the shield on guard and every familiar
 //                                                  acting, so the blows read over the fighters)
+//   court.drawCourtKeep(lg, a, ox, oy, t, figures)  after the light map, right after the fighters'
+//                                                  own-color pass (lg.globalAlpha = 0.45 ... drawImage):
+//                                                  the familiars keep part of their own color too (the
+//                                                  ones behind are cut out where a fighter stands in
+//                                                  front of them). Until it is called, drawCourtGlow
+//                                                  does it for the familiars in front only.
 //   court.drawCourtGlow(g, a, ox, oy, t)           emissive layer: crystal, eyes, spells, the decree's aura
 //   court.drawEffects(g, ox, oy, t)                emissive layer: the event effects
 //   court.drawBullet(g, b, ox, oy, t)              arrows and magic bolts; true if it drew b
@@ -35,7 +43,6 @@ const KINDS = ['soldier', 'archer', 'assassin', 'mage', 'shield'];
 export const HERO_POSE = { soldier: 'heroRaise', archer: 'heroDraw', assassin: 'heroCrouch', mage: 'heroCast', shield: 'heroKneel' };
 const clamp01 = v => Math.max(0, Math.min(1, v));
 const ease = u => 1 - (1 - u) * (1 - u);
-const easeIn = u => u * u;
 const lerp = (a, b, u) => a + (b - a) * u;
 const DEG = Math.PI / 180;
 
@@ -141,7 +148,10 @@ class Grid {
     }
   }
   pt(name, x, y) { this.pts[name] = [x, y]; }
+  clear() { this.R.fill(null); this.L.fill(0); this.P.fill(0); this.pid = 0; this.cells = null; this.pts = {}; return this; }
 }
+// One grid, cleared for each new pose (built lazily: no DOM or big arrays at load).
+const GRID = { g: null, clear() { return (this.g ||= new Grid()).clear(); } };
 
 // Turns a painted grid into a sprite: an ink outline round the whole silhouette, the top edge lit,
 // cropped to its bounds. pts: named points (relative to the feet) for the glow layer and effects.
@@ -273,7 +283,7 @@ const along = (x, y, a, d) => [x + Math.cos(a) * d, y + Math.sin(a) * d];
 // A sword at angle a (radians, 0 ahead, -90 up): grip, gold guard across, steel blade, bright tip.
 function sword(G, K, hand, a, len = 7, gold = false) {
   const [hx, hy] = hand, c = Math.cos(a), s = Math.sin(a);
-  G.begin();
+  G.begin(true);
   G.set(hx - c, hy - s, K.grip, 2);
   const gx = hx + c * 1.1, gy = hy + s * 1.1;
   G.line(gx - s * 1.5, gy + c * 1.5, gx + s * 1.5, gy - c * 1.5, K.trim, 3);
@@ -321,9 +331,11 @@ const BUILD = {
   // with a gold belt, a short sword.
   soldier(G, K, o) {
     const Kb = { ...K, body: K.main };
-    if (o.swordBack) sword(G, K, o.hand, o.wpn, o.len || 6, o.gold);
     const c = cat(G, Kb, o);
     G.begin(); for (let x = -2; x <= 2; x++) G.set(c.bx + x, c.by + 1, K.trim, x === 0 ? 4 : 2); G.end();
+    // The sword over his body but under his head: raised, it shows over the helmet and before his
+    // face, and never crosses his eyes.
+    sword(G, K, o.hand, o.wpn, o.len || 6, o.gold);
     head(G, K, c, o, { ears: false });
     const { hx, hy } = c;
     G.begin();
@@ -337,7 +349,6 @@ const BUILD = {
     G.set(hx, hy - 7, K.plume, 3); G.set(hx - 1, hy - 7, K.plume, 4); G.set(hx - 1, hy - 8, K.plume, 3); G.set(hx - 2, hy - 8, K.plume, 3);
     G.set(hx - 3, hy - 8 + pw, K.plume, 2); G.set(hx - 4, hy - 7 + pw, K.plume, 2); G.set(hx - 5, hy - 6 + pw, K.plume, 1); G.set(hx - 2, hy - 7, K.plume, 2);
     G.end();
-    if (!o.swordBack) sword(G, K, o.hand, o.wpn, o.len || 6, o.gold);
     arm(G, Kb, c, o.hand);
   },
   // The archer: a cream cat in a green hood (ears up through it) and short cape, a quiver on the
@@ -373,7 +384,7 @@ const BUILD = {
     // The bow in the far paw, held out; the string to the near paw when drawn.
     const bh = o.bowHand, ba = o.bowA ?? 0, draw = o.draw || 0, r = 4.4;
     G.begin();
-    G.line(c.bx, c.by - 1, bh[0], bh[1], K.main, 1);
+    G.line(c.bx, c.by - 1, bh[0], bh[1], K.main, 2);
     const nrm = ba + Math.PI / 2, tips = [];
     for (let i = -4; i <= 4; i++) {
       const u = i / 4, bend = (1 - u * u) * 2.4 - 0.6;
@@ -434,7 +445,7 @@ const BUILD = {
     const cc = { bx, by: -5 + dy, hx, hy };
     head(G, K, cc, o, { ears: false });
     // The hat: a wide brim, a cone bent back at the tip, a gold band and a star.
-    G.begin(true);
+    G.begin();
     const bend = o.hatBend || 0;
     G.rect(hx - 4, hy - 3, 9, 1, K.main, 2); G.set(hx - 5, hy - 2, K.main, 2); G.set(hx + 5, hy - 2, K.main, 1);
     G.poly([[hx - 3, hy - 3], [hx + 3.4, hy - 3], [hx + 0.6, hy - 9], [hx - 1.4 - bend, hy - 11]], K.main, (x) => (x < hx - 1 ? 3 : 2));
@@ -491,8 +502,8 @@ const SHOULDER = o => [(o.bx || 0) + 1, BY(o) - 1];
 function rest(k, o) {
   const by = BY(o);
   switch (k) {
-    case 'soldier': o.hand = [3, by]; o.wpn = -60 * DEG; break;
-    case 'archer': o.hand = [2, by]; o.bowHand = [5, by - 2]; o.bowA = 0; o.draw = 0; break;
+    case 'soldier': o.hand = [4, by]; o.wpn = -32 * DEG; break;
+    case 'archer': o.hand = [2, by]; o.bowHand = [6, by - 1]; o.bowA = 0; o.draw = 0; break;
     case 'assassin': o.hand = [3, by + 1]; o.wpn = 20 * DEG; o.armB = [-2, by + 1]; o.wpnB = 160 * DEG; break;
     case 'mage': o.hand = [4, by - 2]; o.staff = o.hand; o.staffA = -90 * DEG; break;
     case 'shield': o.hand = [3, by - 1]; o.sh = [6, by + 0.5]; o.shRot = 0; break;
@@ -503,7 +514,7 @@ const cycle = (run, ph) => (run ? 'r' : 'w') + (((Math.floor(ph) % 4) + 4) % 4);
 // The archer's bow aimed along a, drawn back (u 0..1) or just released (rel).
 function aimBow(o, a, u, rel = 0) {
   const [sx, sy] = SHOULDER(o), c = Math.cos(a), s = Math.sin(a);
-  o.bowA = a; o.bowHand = [sx + c * 4, sy - 1 + s * 4];
+  o.bowA = a; o.bowHand = [sx + c * 4.6, sy + 0.5 + s * 4.6];
   const pull = rel ? 6.5 : 1.5 + u * 4;
   o.hand = [o.bowHand[0] - c * pull, o.bowHand[1] - s * pull - (rel ? 1 : 0)];
   o.draw = !rel && u > 0.25 ? 1 : 0;
@@ -513,6 +524,8 @@ function aimBow(o, a, u, rel = 0) {
 // returns cues for the glow layer: arc (a swing's smear: centre, radius, from/to degrees, u its
 // age 0..1), ghost (afterimages), charge/fire/sigil (the mage's spells), flash, twang.
 const STRIKE = 0.3;
+// When the simulation blinks the assassin away (sim/court.js: 0.06 s into a stab or a mercy).
+const BLINK = 0.06;
 const ACT = {
   soldier: {
     slash(o, s) {
@@ -526,20 +539,20 @@ const ACT = {
       o.eye = 'angry'; o.ear = 2;
       if (s.pre < 0.6) { o.legs = 'crouch'; o.lean = -1; const by = BY(o); o.hand = [0, by + 2]; o.wpn = 150 * DEG; return {}; }
       if (s.pre < 1) { o.legs = 'lunge'; const by = BY(o); o.hand = [3, by + 1]; o.wpn = 100 * DEG; return {}; }
-      if (s.post < STRIKE) { o.legs = 'jump'; o.lean = 1; const by = BY(o); o.hand = [3, by - 5]; o.wpn = -80 * DEG; o.plume = 1; return { arc: { c: [1, by - 2], r: 8, a0: 110, a1: -85, u: s.post / STRIKE }, ghost: 1 }; }
-      o.legs = 'tuck'; const by = BY(o); o.hand = [2, by - 5]; o.wpn = -100 * DEG; o.plume = 1; return {};
+      if (s.post < STRIKE) { o.legs = 'jump'; o.lean = 1; const by = BY(o); o.hand = [5, by - 4]; o.wpn = -75 * DEG; o.len = 7; o.plume = 1; return { arc: { c: [1, by - 2], r: 8, a0: 110, a1: -85, u: s.post / STRIKE }, ghost: 1 }; }
+      o.legs = 'tuck'; const by = BY(o); o.hand = [5, by - 5]; o.wpn = -88 * DEG; o.len = 7; o.plume = 1; return {};
     },
     air(o, s) {
       o.eye = 'angry'; o.ear = 2; o.legs = 'tuck';
       const by = BY(o);
-      if (s.pre < 0.6) { o.hand = [-1, by - 4]; o.wpn = -135 * DEG; return {}; }
-      if (s.pre < 1) { o.hand = [1, by - 5]; o.wpn = -100 * DEG; return {}; }
+      if (s.pre < 0.6) { o.hand = [-1, by - 4]; o.wpn = -150 * DEG; o.len = 7; return {}; }
+      if (s.pre < 1) { o.hand = [-1, by - 5]; o.wpn = -118 * DEG; o.len = 7; return {}; }
       if (s.post < STRIKE) { o.hand = [5, by]; o.wpn = 35 * DEG; o.plume = 1; return { arc: { c: [1, by - 2], r: 8, a0: -130, a1: 50, u: s.post / STRIKE } }; }
       o.hand = [4, by + 1]; o.wpn = 70 * DEG; return {};
     },
     plunge(o, s) {
       o.eye = 'angry'; o.ear = 2;
-      if (s.pre < 0.5) { o.legs = 'tuck'; const by = BY(o); o.hand = [1, by - 5]; o.wpn = -90 * DEG; return {}; }
+      if (s.pre < 0.5) { o.legs = 'tuck'; const by = BY(o); o.hand = [4, by - 5]; o.wpn = -80 * DEG; o.len = 7; return {}; }
       if (s.pre < 1) { o.legs = 'tuck'; o.plume = 1; const by = BY(o); o.hand = [2, by + 2]; o.wpn = 90 * DEG; o.len = 7; return { ghost: 1, fall: 1 }; }
       if (s.post < STRIKE) { o.legs = 'crouch'; const by = BY(o); o.hand = [3, by + 1]; o.wpn = 90 * DEG; o.len = 6; return { flash: 1 - s.post / STRIKE }; }
       o.legs = s.post < 0.7 ? 'crouch' : 'stand'; const by = BY(o); o.hand = [3, by + 1]; o.wpn = 75 * DEG; return {};
@@ -552,8 +565,8 @@ const ACT = {
     },
     finale(o, s, p) {
       o.eye = 'angry'; o.ear = 2; o.gold = true; o.plume = 1;
-      if (s.pre < 0.6) { o.legs = 'tuck'; const by = BY(o); o.hand = [0, by - 5]; o.wpn = -95 * DEG; o.len = 7; return { gold: 0.5 + s.pre, ghost: 1 }; }
-      if (s.pre < 1) { o.legs = 'tuck'; const by = BY(o); o.hand = [-1, by - 4]; o.wpn = -145 * DEG; o.len = 8; return { gold: 1.2, ghost: 1 }; }
+      if (s.pre < 0.6) { o.legs = 'tuck'; const by = BY(o); o.hand = [5, by - 5]; o.wpn = -86 * DEG; o.len = 8; return { gold: 0.5 + s.pre, ghost: 1 }; }
+      if (s.pre < 1) { o.legs = 'tuck'; const by = BY(o); o.hand = [-2, by - 4]; o.wpn = -125 * DEG; o.len = 9; return { gold: 1.2, ghost: 1 }; }
       if (s.post < STRIKE) { o.legs = 'lunge'; o.lean = 2; const by = BY(o); o.hand = [5, by + 1]; o.wpn = 60 * DEG; o.len = 8; return { gold: 1.4, arc: { c: [1, by - 3], r: 10, a0: -150, a1: 75, u: s.post / STRIKE, gold: 1 } }; }
       o.legs = 'crouch'; const by = BY(o); o.hand = [5, by + 1]; o.wpn = 80 * DEG; o.len = 7; o.gold = s.post < 0.8; return { gold: 1 - s.post };
     }
@@ -571,7 +584,7 @@ const ACT = {
       if (s.i === 0 && s.pre < 1) {
         // Vanishing: low and still; then there behind them, blades cocked.
         o.legs = 'crouch'; const by = BY(o);
-        if ((F?.t ?? 1) < 0.08) { o.hand = [2, by]; o.wpn = 0; return { fade: 1 - (F?.t ?? 0) / 0.08 }; }
+        if ((F?.t ?? 1) < BLINK) { o.hand = [2, by]; o.wpn = 0; return {}; }
         o.hand = [0, by - 2]; o.wpn = -150 * DEG; o.armB = [-2, by]; o.wpnB = 170 * DEG; return {};
       }
       if (s.post < STRIKE && s.pre >= 1) {
@@ -593,7 +606,7 @@ const ACT = {
     mercy(o, s, p, ph, F) {
       o.eye = 'angry'; o.ear = 2; o.legs = 'kneel';
       const by = BY(o), alt = s.i % 2 === 1;
-      if ((F?.t ?? 1) < 0.08) return { fade: 1 - (F?.t ?? 0) / 0.08 };
+      if ((F?.t ?? 1) < BLINK) return {};
       const up = s.pre < 1 || s.post > 0.6, hand = up ? [2, by - 5] : [4, by + 2], a = 90 * DEG;
       if (alt) { o.armB = hand; o.wpnB = a; o.hand = [2, by]; o.wpn = 30 * DEG; }
       else { o.hand = hand; o.wpn = a; o.armB = [-2, by]; o.wpnB = 150 * DEG; }
@@ -676,7 +689,7 @@ function bowAct(o, s, a, fast = false) {
 }
 // The select screen's battle poses.
 const HERO = {
-  soldier(o, ph) { o.legs = 'lunge'; o.eye = 'angry'; o.plume = Math.sin(ph * 3) > 0 ? 1 : 0; const by = BY(o); o.hand = [2, by - 6]; o.wpn = -78 * DEG; o.len = 7; return { glint: 1 }; },
+  soldier(o, ph) { o.legs = 'lunge'; o.eye = 'angry'; o.plume = Math.sin(ph * 3) > 0 ? 1 : 0; const by = BY(o); o.hand = [6, by - 4]; o.wpn = -84 * DEG; o.len = 7; return { glint: 1 }; },
   archer(o, ph) { o.legs = 'lunge'; o.eye = 'angry'; o.cape = 1; aimBow(o, -12 * DEG, 1); return { nock: 1 }; },
   assassin(o, ph) { o.legs = 'split'; o.eye = 'angry'; o.ear = 2; o.ties = Math.round(Math.sin(ph * 4)); const by = BY(o); o.hand = [4, by]; o.wpn = -25 * DEG; o.armB = [-3, by - 1]; o.wpnB = 200 * DEG; return {}; },
   mage(o, ph) { const by = BY(o); o.hand = [4, by - 5]; o.handB = [-1, by - 5]; o.hatBend = 1; o.eye = 'angry'; return { sigil: (ph * 0.25) % 1, charge: 1, hero: 1 }; },
@@ -722,6 +735,12 @@ function poseFor(k, F, t, idx, mem) {
     const A = actInfo(k, F.act), p = clamp01((F.t || 0) / A.dur), s = stageOf(p, A.hits);
     if (k !== 'mage') o.dy = 0;
     cue = ACT[k][F.act](o, s, p, cph, F) || {};
+    // The assassin's blink: he fades out where he stood, and in again behind them.
+    if (k === 'assassin' && (F.act === 'stab' || F.act === 'mercy')) {
+      const bt = F.t || 0;
+      if (bt < BLINK) cue.fade = clamp01(bt / BLINK);
+      else if (bt < BLINK * 2) cue.fade = 1 - (bt - BLINK) / BLINK;
+    }
     cue.act = F.act; cue.p = p;
   } else if (hero) {
     cue = HERO[k](o, ph) || {};
@@ -734,6 +753,12 @@ function poseFor(k, F, t, idx, mem) {
     o.eye = 'happy';
   }
   if (o.eye === 'blink' && cue.act) o.eye = 'angry';
+  // Only what changes the picture goes in the key: ears show on the assassin alone (the others wear
+  // a hat, a hood or a helmet), the mage's tail only peeks out or not, and through an action the
+  // tail stays put (it would triple the poses to cache).
+  if (k !== 'assassin') o.ear = 0;
+  if (cue.act) o.tail = k === 'mage' ? 0 : -1;
+  if (k === 'mage') o.tail = o.tail > 0 ? 1 : 0;
   return { o, dx: 0, dy, cue };
 }
 
@@ -757,7 +782,7 @@ export function familiarSprite(k, o) {
   const key = keyOf(k, o);
   let s = SPRITES.get(key);
   if (s === undefined) {
-    const G = new Grid();
+    const G = GRID.clear();
     BUILD[k](G, KIT[k], o);
     s = finish(G);
     SPRITES.set(key, s);
@@ -772,12 +797,16 @@ function flippedOf(s) {
   }
   return s.flipped;
 }
-// A flat-colored copy (afterimages, the white pop), or only its outline in a color (the decree's rim).
+// A flat-colored copy (the white pop), only its outline in a color (rim: the decree's gold rim), or
+// a dithered copy, every other pixel and the outline left out (rim = 'dither': afterimages).
 function tintOf(s, color, rim = false) {
-  const key = (rim ? 'r' : 't') + color;
+  const key = (rim === 'dither' ? 'd' : rim ? 'r' : 't') + color;
   if (!s.tints[key]) {
     const c = mkCanvas(s.w, s.h), g = c.getContext('2d');
-    if (rim) {
+    if (rim === 'dither') {
+      g.fillStyle = color;
+      for (let y = 0; y < s.h; y++) for (let x = 0; x < s.w; x++) if (s.mask[y * s.w + x] === 1 && ((x + y) & 1) === 0) g.fillRect(x, y, 1, 1);
+    } else if (rim) {
       g.fillStyle = color;
       for (let y = 0; y < s.h; y++) for (let x = 0; x < s.w; x++) if (s.mask[y * s.w + x] === 2) g.fillRect(x, y, 1, 1);
     } else {
@@ -861,6 +890,15 @@ function disc(g, x, y, r, colors, ox, oy, t = 0) {
 
 // ---- the court on the field ------------------------------------------------------------------
 let LIVE = null;
+// The order they are drawn in: the mage at the back, the shield last.
+const ORDER = [3, 1, 2, 0, 4];
+// One familiar as drawCourt placed it (popping in white, fading out on a blink).
+function blitRec(g, r, ox, oy, alpha) {
+  const s = r.q.cue.tint ? tintOf(r.s, r.q.cue.tint) : r.s;
+  g.globalAlpha = alpha * (r.q.cue.fade ? 1 - r.q.cue.fade * 0.8 : 1);
+  blit(g, s, r.x + ox, r.y + oy, r.f);
+  g.globalAlpha = 1;
+}
 const FEET = 17 * S;
 export class CourtFX {
   constructor(renderer = null) {
@@ -870,10 +908,13 @@ export class CourtFX {
     this.mem = new Map();
     this.drawn = new Map();
     this.bullets = [];
+    // How fast game time runs against the dt update() is handed (the LAB's slow motion is not in
+    // it): measured from the game clock the draw calls see, so the effects slow down with the game.
+    this.rate = 1; this.clock = { t: null, gt: null, acc: 0, gacc: 0 };
     LIVE = this;
   }
 
-  reset() { this.fx.length = 0; this.parts.length = 0; this.mem.clear(); this.drawn.clear(); this.bullets.length = 0; }
+  reset() { this.fx.length = 0; this.parts.length = 0; this.mem.clear(); this.drawn.clear(); this.bullets.length = 0; this.rate = 1; this.clock = { t: null, gt: null, acc: 0, gacc: 0 }; }
 
   // Particles: k 'spark' (glowing, with a streak), 'smoke' (a puff that grows and fades), 'ember',
   // 'mote' (a gold speck rising); x, y view pixels, v in px/s.
@@ -954,10 +995,10 @@ export class CourtFX {
     const f = e.f || 1, k = e.k, act = e.act, P = KIND_FX[k] || FXC.steel;
     const push = q => this.fx.push({ t: 0, x, y, f, P, ...q });
     if (k === 'soldier') {
-      if (act === 'rise') push({ k: 'cut', cx: x - f * 4, cy: y + 4, r: 13, a0: 110, a1: -85, w: 3, life: 0.2 });
+      if (act === 'rise') push({ k: 'cut', cx: x - f * 4, cy: y + 4, r: 14, a0: 110, a1: -85, w: 4, life: 0.2 });
       else if (act === 'plunge') { push({ k: 'pierce', life: 0.22 }); this.smoke(x, y + FEET - 2, 6, rnd, { r: 10, life: 0.5, up: 6, cols: ['#5a5068', '#6a6078'] }); }
       else if (act === 'charge') push({ k: 'thrust', life: 0.14 });
-      else if (act !== 'finale') push({ k: 'cut', cx: x - f * 2, cy: y - 1, r: 12, a0: -140, a1: 40, w: 3, life: 0.2 });
+      else if (act !== 'finale') push({ k: 'cut', cx: x - f * 2, cy: y - 1, r: 13, a0: -140, a1: 40, w: 4, life: 0.2 });
       push({ k: 'star', life: 0.1, big: act === 'plunge' || act === 'finale' });
       this.sparks(x, y, 7, P, rnd, { a: f > 0 ? 0 : Math.PI, spread: 1.8, sp: 120 });
     } else if (k === 'assassin') {
@@ -981,6 +1022,14 @@ export class CourtFX {
 
   update(dt) {
     if (!(dt > 0)) return;
+    const C = this.clock;
+    C.acc += dt;
+    if (C.acc >= 0.2) {
+      // Over the last fifth of a second: game time gone by against frame time.
+      if (C.gacc > 0) this.rate = Math.max(0.05, Math.min(1, C.gacc / C.acc));
+      C.acc = 0; C.gacc = 0;
+    }
+    dt *= this.rate;
     for (const q of this.fx) q.t += dt;
     this.fx = this.fx.filter(q => q.t < q.life);
     for (const p of this.parts) {
@@ -1045,20 +1094,56 @@ export class CourtFX {
       }
       g.globalAlpha = 1;
     }
-    const order = [3, 1, 2, 0, 4];
-    for (const i of order) {
+    for (const i of ORDER) {
       const F = C[i];
       if (!F || F.st === 'gone') continue;
       const inFront = F.st === 'act' || F.k === 'shield';
       if (inFront !== !!front) continue;
       const r = this.figure(a, i, t);
       if (!r?.s) continue;
+      r.front = !!front;
       recs.list[i] = r;
-      const s = r.q.cue.tint ? tintOf(r.s, r.q.cue.tint) : r.s;
-      if (r.q.cue.fade) g.globalAlpha = 1 - r.q.cue.fade * 0.8;
-      blit(g, s, r.x + ox, r.y + oy, r.f);
-      g.globalAlpha = 1;
+      blitRec(g, r, ox, oy, 1);
     }
+  }
+
+  // After the light map: the familiars keep part of their own color, as the fighters do (they would
+  // sink into the dark arenas otherwise). The renderer calls it right after its fighters' own-color
+  // pass with the figure records: the familiars behind the fighters are cut out where a fighter
+  // stands in front of them, the ones in front are drawn as they are. Until the renderer calls it,
+  // drawCourtGlow does it for the familiars in front (the ones striking) on its own.
+  drawCourtKeep(g, a, ox, oy, t, figures = null, alpha = 0.45) {
+    const recs = a?.court && this.drawn.get(a.id);
+    if (!recs || recs.t !== t) return;
+    recs.kept = t;
+    const ga = g.globalAlpha, gc = g.globalCompositeOperation;
+    if (figures) {
+      // Behind: into a scratch canvas, the fighters' silhouettes punched out of it.
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const r of recs.list) if (r && !r.front) {
+        const X = r.x + ox + (r.f >= 0 ? r.s.x0 : -(r.s.x0 + r.s.w)), Y = r.y + oy + r.s.y0;
+        x0 = Math.min(x0, X); y0 = Math.min(y0, Y); x1 = Math.max(x1, X + r.s.w); y1 = Math.max(y1, Y + r.s.h);
+      }
+      if (x1 > x0) {
+        x0 = Math.floor(x0); y0 = Math.floor(y0);
+        const w = Math.ceil(x1 - x0) + 1, h = Math.ceil(y1 - y0) + 1;
+        let c = this.scratch;
+        if (!c || c.width < w || c.height < h) c = this.scratch = mkCanvas(Math.max(w, c?.width || 0), Math.max(h, c?.height || 0));
+        const sg = c.getContext('2d');
+        sg.globalCompositeOperation = 'source-over';
+        sg.clearRect(0, 0, c.width, c.height);
+        for (const i of ORDER) { const r = recs.list[i]; if (r && !r.front) blitRec(sg, r, ox - x0, oy - y0, 1); }
+        sg.globalCompositeOperation = 'destination-out';
+        for (const f of figures) if (f?.fc?.body?.c && f.x < x0 + w && f.y < y0 + h && f.x + f.fc.body.c.width > x0 && f.y + f.fc.body.c.height > y0) sg.drawImage(f.fc.body.c, f.x - x0, f.y - y0);
+        sg.globalCompositeOperation = 'source-over';
+        g.globalCompositeOperation = 'source-over';
+        g.globalAlpha = alpha;
+        g.drawImage(c, x0, y0);
+      }
+    }
+    g.globalCompositeOperation = 'source-over';
+    for (const i of ORDER) { const r = recs.list[i]; if (r && r.front) blitRec(g, r, ox, oy, alpha); }
+    g.globalAlpha = ga; g.globalCompositeOperation = gc;
   }
 
   // The glowing bits on the emissive layer: the mage's crystal and spells, the assassin's eyes,
@@ -1068,6 +1153,7 @@ export class CourtFX {
     const C = a?.court;
     if (!C?.length) return;
     const recs = this.drawn.get(a.id);
+    if (recs && recs.t === t && recs.kept !== t && this.r?.lg && this.r.lg !== g) this.drawCourtKeep(this.r.lg, a, ox, oy, t, null);
     const decree = a.act === 'decree' && !a.dead;
     if (decree) this.drawAura(g, a, ox, oy, t);
     for (let i = 0; i < C.length; i++) {
@@ -1076,20 +1162,22 @@ export class CourtFX {
       const r = recs && recs.t === t && recs.list[i] ? recs.list[i] : this.figure(a, i, t);
       if (!r?.s) continue;
       const m = this.mem.get(a.id + ':' + i);
-      // Afterimages along a dash.
+      // Afterimages along a dash: dithered, fainter the older, only where it has really moved.
       if (r.q.cue.ghost && m) {
-        const col = KIT[r.k].ghost;
-        for (let j = 0; j < m.hist.length - 1; j++) {
+        const col = KIT[r.k].ghost, n = m.hist.length;
+        let lx = F.x * S, ly = F.y * S;
+        for (let j = n - 2; j >= Math.max(0, n - 4); j--) {
           const h = m.hist[j];
-          if (!h.s || Math.hypot(h.x - F.x * S, h.y - F.y * S) < 3) continue;
-          g.globalAlpha = 0.18 + 0.12 * j;
-          blit(g, tintOf(h.s, col), Math.round(h.x + ox), Math.round(h.y + oy) + h.dy, h.f);
+          if (!h.s || Math.hypot(h.x - lx, h.y - ly) < 4) continue;
+          lx = h.x; ly = h.y;
+          g.globalAlpha = 0.42 - 0.14 * (n - 2 - j);
+          blit(g, tintOf(h.s, col, 'dither'), Math.round(h.x + ox), Math.round(h.y + oy) + h.dy, h.f);
         }
         g.globalAlpha = 1;
       }
       glowBits(g, r.k, r.s, r.q, r.x + ox, r.y + oy, r.f, 1, t + i * 0.37);
       if (decree) {
-        g.globalAlpha = 0.55 + 0.3 * Math.sin(t * 9 + i);
+        g.globalAlpha = 0.38 + 0.18 * Math.sin(t * 9 + i);
         blit(g, tintOf(r.s, '#ffd860', true), r.x + ox, r.y + oy, r.f);
         g.globalAlpha = 1;
       }
@@ -1162,10 +1250,22 @@ export class CourtFX {
 
   // The event effects, on the emissive layer.
   drawEffects(g, ox, oy, t) {
+    const C = this.clock;
+    if (C.gt !== null) { const d = t - C.gt; if (d >= 0 && d < 0.5) C.gacc += d; }
+    C.gt = t;
     const dot = (c, x, y, w = 1, h = w) => { g.fillStyle = c; g.fillRect(Math.round(x + ox), Math.round(y + oy), w, h); };
     // The glowing part of the shots drawn on the lit layer this frame.
     for (const b of this.bullets) {
-      if (b.k === 'arrow') { g.globalAlpha = 0.5; for (let d = 1; d <= 4; d++) dot('#fff4d8', b.x - b.c * (d + 7), b.y - b.s * (d + 7)); g.globalAlpha = 1; dot('#ffffff', b.x, b.y); }
+      if (b.k === 'arrow') {
+        // A streak along the whole shaft (so it reads against the dark), fading off behind it.
+        const at = (d, side = 0) => [b.x - b.c * d - b.s * side, b.y - b.s * d + b.c * side];
+        for (let d = 1; d <= 12; d++) {
+          g.globalAlpha = d <= 7 ? 0.42 : 0.3 * (1 - (d - 7) / 6);
+          dot(d < 2 ? '#e8eeff' : d < 7 ? '#ffe2b0' : '#fff4d8', ...at(d));
+        }
+        g.globalAlpha = 0.5; dot('#c8ffb8', ...at(7, -1)); dot('#c8ffb8', ...at(7, 1));
+        g.globalAlpha = 1; dot('#ffffff', b.x, b.y);
+      }
       else {
         dot(FXC.magic.mid, b.x - 1, b.y - 1, 3); dot('#ffffff', b.x, b.y);
         const an = t * 18, gx = b.x + Math.cos(an) * 3, gy = b.y + Math.sin(an) * 3;
@@ -1458,9 +1558,18 @@ function glowBits(g, k, s, q, x, y, f, scale, t) {
   if (k === 'soldier') {
     const tip = P('tip');
     if (cue.gold && tip) {
-      // The blade burning gold for the finale.
-      const h = P('hand');
-      if (h) { const n = Math.ceil(Math.hypot(tip[0] - h[0], tip[1] - h[1]) / scale); g.globalAlpha = Math.min(1, cue.gold); for (let i = 2; i <= n; i++) dot(i > n - 2 ? '#ffffff' : FXC.gold.hot, h[0] + ((tip[0] - h[0]) * i) / n, h[1] + ((tip[1] - h[1]) * i) / n); g.globalAlpha = 1; }
+      // The blade burning gold for the finale (not where his head hides it).
+      const h = P('hand'), hd = P('head');
+      if (h) {
+        const n = Math.ceil(Math.hypot(tip[0] - h[0], tip[1] - h[1]) / scale);
+        g.globalAlpha = Math.min(1, cue.gold);
+        for (let i = 2; i <= n; i++) {
+          const px = h[0] + ((tip[0] - h[0]) * i) / n, py = h[1] + ((tip[1] - h[1]) * i) / n;
+          if (hd && Math.abs(px - hd[0]) < 4.5 * scale && py - hd[1] > -7 * scale && py - hd[1] < 3.5 * scale) continue;
+          dot(i > n - 2 ? '#ffffff' : FXC.gold.hot, px, py);
+        }
+        g.globalAlpha = 1;
+      }
       glint(g, FXC.gold, tip[0], tip[1], Math.round((2 + Math.sin(t * 20) + cue.gold) * scale), 0, 0);
     } else if (tip && (cue.glint || cue.arc || cue.thrust)) glint(g, FXC.steel, tip[0], tip[1], Math.round((cue.glint ? 2 + Math.max(0, Math.sin(t * 3)) * 2 : 2) * scale), 0, 0);
   }

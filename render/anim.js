@@ -209,6 +209,83 @@ export const FRAMES = {
   dPop2: { head: [1, -3, -33.75], body: [0, -2], armF: [3, -3, -140], armB: [-4, -3, 140], footF: [4, 0], footB: [-4, 0], wing: 'flare' },
   // Turning back: the wings folding away, the far hand up to catch the scythe flying home.
   dCatch: { head: [1, 1, -11.25], body: [0, 1], armF: [2, 0, -100], armB: [-1, -2, 160], footF: [3, 0], footB: [-3, 0], wing: 'fold' },
+  // Mingau, the Cat King (O REI GATO). He never strikes: his court fights for him, and every move of
+  // his is an order given with the scepter in his near paw (render/king-art.js draws it along that arm
+  // whenever the arm is raised past 70 degrees, so these poses aim it; an arm raised behind him is
+  // written past -180 degrees so that angle, 180 + the arm's, swings over his head and not under his
+  // feet). Upright and chin up, the other paw tucked behind his back or on his hip, feet planted apart.
+  // His guard: chest out, a slow breath.
+  kgIdle1: { head: [0, -1, -11.25], body: [0, -1], armF: [1, -1, -45], armB: [-3, -1, 33.75], footF: [1, 0], footB: [-1, 0] },
+  kgIdle2: { head: [0, 0, -11.25], body: [0, 0], armF: [1, 0, -45], armB: [-3, 0, 33.75], footF: [1, 0], footB: [-1, 0] },
+  // A stately walk: one measured step at a time, rising on the pass.
+  kgWalk1: { head: [0, 0, -11.25], body: [0, 0], armF: [1, 0, -40], armB: [-3, 0, 33.75], footF: [2, 0], footB: [-2, 0], tailDeg: 4 },
+  kgWalkP: { head: [0, -1, -11.25], body: [0, -1], armF: [1, -1, -40], armB: [-3, -1, 33.75], footF: [0, -1], footB: [0, 0], tailDeg: 0 },
+  kgWalk2: { head: [0, 0, -11.25], body: [0, 0], armF: [1, 0, -40], armB: [-3, 0, 33.75], footF: [-2, 0], footB: [2, 0], tailDeg: -4 },
+  kgWalkP2: { head: [0, -1, -11.25], body: [0, -1], armF: [1, -1, -40], armB: [-3, -1, 33.75], footF: [0, 0], footB: [0, -1], tailDeg: 0 },
+  // The run: brisk but never hurried, a long stride, upright, the scepter carried ahead of him.
+  kgRun1: { head: [1, 0, -11.25], body: [1, 0], armF: [2, 0, -56.25], armB: [-2, 0, 45], footF: [3, 0], footB: [-3, -1], tailDeg: 8 },
+  kgRunP: { head: [1, -1, -11.25], body: [1, -1], armF: [2, -1, -56.25], armB: [-2, -1, 45], footF: [1, -1], footB: [-1, -2], tailDeg: 0 },
+  kgRun2: { head: [1, 0, -11.25], body: [1, 0], armF: [2, 0, -56.25], armB: [-2, 0, 45], footF: [-3, -1], footB: [3, 0], tailDeg: -8 },
+  kgRunP2: { head: [1, -1, -11.25], body: [1, -1], armF: [2, -1, -56.25], armB: [-2, -1, 45], footF: [-1, -2], footB: [1, -1], tailDeg: 0 },
+  // The proud jump: knees tucked, chin high, the scepter raised; coming down, it leads the way.
+  kgJump: { head: [0, -1, -22.5], body: [0, -1], armF: [2, -4, -157.5], armB: [-3, -1, 45], footF: [1, -2], footB: [-1, -1], tailDeg: -12 },
+  kgFall: { head: [0, 0, -11.25], body: [0, 0], armF: [2, -1, -112.5], armB: [-3, -1, 56.25], footF: [1, 0], footB: [-1, -1], tailDeg: 14 },
+  kgLand: { head: [0, 1, -11.25], body: [0, 1], armF: [1, 1, -45], armB: [-3, 1, 33.75], footF: [2, 0], footB: [-2, 0] },
+  // Up after a launched rival: the scepter thrust up ahead of him.
+  kgLeap: { head: [1, -1, -11.25], body: [1, -1], armF: [3, -2, -135], armB: [-3, -1, 67.5], footF: [-1, 0, 22.5], footB: [-2, -1, 33.75], tailDeg: 20 },
+  // The point (the soldier's cut, the assassin's stab and dash, the air cut): the scepter raised, then
+  // snapped down level at the rival, the body following it in, the free paw flung back.
+  kgPtA: { head: [-1, -1, -11.25], body: [-1, -1], armF: [0, -5, -180], armB: [-3, -1, 33.75], footF: [2, 0], footB: [-2, 0] },
+  kgPtX: { head: [1, 0], body: [1, 0], armF: [2, -1, -112.5], armB: [-3, 0, 45], footF: [3, 0], footB: [-2, 0] },
+  kgPtI: { head: [1, 0, -11.25], body: [1, 0], armF: [3, -1, -90], armB: [-4, 0, 56.25], footF: [3, 0], footB: [-3, 0] },
+  kgPtR: { head: [1, 0, -11.25], body: [0, 0], armF: [2, -1, -90], armB: [-3, 0, 45], footF: [2, 0], footB: [-2, 0] },
+  // The stab: the same point thrust lower and further, a lunge.
+  kgStI: { head: [2, 1], body: [2, 0], armF: [4, 0, -78.75], armB: [-3, 0, 56.25], footF: [4, 0], footB: [-3, 0] },
+  // The shadow dash: a sly low flick.
+  kgShA: { head: [-1, 1, 11.25], body: [-1, 1], armF: [-1, -1, -146.25], armB: [-3, 1, 33.75], footF: [2, 0], footB: [-2, 0] },
+  kgShI: { head: [1, 2, 11.25], body: [1, 1], armF: [3, 0, -78.75], armB: [-4, 1, 56.25], footF: [3, 0], footB: [-3, 0] },
+  // The sweep (the archer's volley): gathered in over his chest, then both arms swept open wide, the
+  // scepter flung out and up ahead of him: "loose!".
+  kgSwA: { head: [0, 1, 11.25], body: [0, 1], armF: [0, 0, -22.5], armB: [2, 0, -56.25], footF: [2, 0], footB: [-2, 0] },
+  kgSwX: { head: [0, 0, -11.25], body: [0, 0], armF: [2, -2, -135], armB: [-2, -1, 90], footF: [2, 0], footB: [-2, 0] },
+  kgSwI: { head: [1, -1, -11.25], body: [1, -1], armF: [3, -2, -112.5], armB: [-4, -2, 123.75], footF: [3, 0], footB: [-3, 0] },
+  kgSwR: { head: [1, 0, -11.25], body: [1, 0], armF: [3, -1, -101.25], armB: [-3, -1, 90], footF: [3, 0], footB: [-3, 0] },
+  // At the sky (the mage's lightning, the meteor): gathered low, then up on his toes, chin up.
+  kgSkA: { head: [0, 1], body: [0, 1], armF: [1, 0, -78.75], armB: [-3, 1, 33.75], footF: [2, 0], footB: [-2, 0] },
+  kgSkI: { head: [0, -1, -22.5], body: [0, -1], armF: [3, -5, -146.25], armB: [-3, -1, 45], footF: [2, 0], footB: [-2, 0] },
+  kgSkyI: { head: [0, -1, -22.5], body: [0, -1], armF: [3, -6, -180], armB: [-3, -1, 45], footF: [1, -2], footB: [-1, -1] },
+  // The palm (the shield's bash): both paws pulled in to the chest (the scepter drawn back upright), then
+  // thrust out flat, planted wide.
+  kgPaA: { head: [-1, 0], body: [-1, 0], armF: [-2, 0, -33.75], armB: [-1, 0, -45], footF: [3, 0], footB: [-2, 0] },
+  kgPaI: { head: [2, 0, -11.25], body: [2, 0], armF: [4, -1, -90], armB: [4, 1, -90], footF: [4, 0], footB: [-3, 0], front: 'armB' },
+  kgPaR: { head: [1, 0, -11.25], body: [1, 0], armF: [3, -1, -90], armB: [1, 0, -45], footF: [3, 0], footB: [-3, 0] },
+  // "À CARGA!": the scepter cocked behind his head, swept over and out ahead, a lunging stride, a shout.
+  kgChA: { head: [-1, 0, -11.25], body: [-1, 0], armF: [1, -6, -202.5], armB: [0, 0, -33.75], footF: [2, 0], footB: [-3, 0] },
+  kgChX: { head: [1, -1, -11.25], body: [1, -1], armF: [3, -5, -168.75], armB: [-2, -1, 45], footF: [3, 0], footB: [-3, 0] },
+  kgChI: { head: [2, 0, -11.25], body: [2, 0], armF: [4, -2, -123.75], armB: [-4, -1, 78.75], footF: [4, 0], footB: [-4, 0] },
+  // Straight up (the rain of arrows): sunk, then stretched up on his toes, the scepter waved at the sky.
+  kgUpA: { head: [0, 2], body: [0, 1], armF: [1, 1, -22.5], armB: [-3, 1, 33.75], footF: [2, 0], footB: [-2, 0] },
+  kgUpI: { head: [0, -1, -22.5], body: [0, -1], armF: [3, -6, -180], armB: [-3, -1, 45], footF: [2, 0], footB: [-2, 0] },
+  kgUpI2: { head: [0, -1, -22.5], body: [0, -1], armF: [3, -6, -168.75], armB: [-3, -1, 45], footF: [2, 0], footB: [-2, 0] },
+  // Down at the fallen (the mercy): raised, then brought down, looking down his nose at them.
+  kgDnA: { head: [0, -1, -11.25], body: [0, -1], armF: [1, -5, -168.75], armB: [-3, -1, 33.75], footF: [2, 0], footB: [-2, 0] },
+  kgDnI: { head: [1, 2, 22.5], body: [1, 1], armF: [3, 0, -33.75], armB: [-3, 1, 45], footF: [3, 0], footB: [-2, 0] },
+  // The rising gesture (the soldier's launcher): low, then the scepter swept up to the sky.
+  kgRsA: { head: [0, 2, 11.25], body: [0, 1], armF: [2, 1, -33.75], armB: [-3, 1, 33.75], footF: [3, 0], footB: [-3, 0] },
+  kgRsX: { head: [0, -1, -11.25], body: [0, -1], armF: [2, -2, -135], armB: [-3, -1, 45], footF: [2, 0], footB: [-2, 0] },
+  kgRsI: { head: [0, -1, -22.5], body: [0, -1], armF: [3, -6, -168.75], armB: [-3, -1, 56.25], footF: [1, 0], footB: [-1, 0] },
+  // In the air: the cut and the shot pointed ahead and down, the meteor called from the sky, the
+  // shield dropped on them with the scepter pointed straight down.
+  kgAA: { head: [0, -1, -11.25], body: [0, -1], armF: [1, -5, -168.75], armB: [-3, -1, 45], footF: [1, -2], footB: [-1, -1] },
+  kgAPt: { head: [1, 0, -11.25], body: [1, 0], armF: [3, -1, -90], armB: [-4, -1, 56.25], footF: [1, -2], footB: [-2, -1] },
+  kgAShot: { head: [1, 1, 11.25], body: [1, 0], armF: [3, 0, -56.25], armB: [-3, -1, 56.25], footF: [1, -2], footB: [-2, -1] },
+  kgADrop: { head: [0, 1, 22.5], body: [0, 0], armF: [1, 1, -11.25], armB: [-3, 0, 33.75], footF: [1, -2], footB: [-1, -2] },
+  // POR ORDEM DO REI! A squash, then the scepter thrust high and held there, the other paw on his hip,
+  // chest out, chin up, breathing; lowered at the end.
+  kgDecA: { head: [0, 2], body: [0, 1], armF: [1, 0, -146.25], armB: [-3, 1, 33.75], footF: [2, 0], footB: [-2, 0] },
+  kgDec1: { head: [0, -1, -22.5], body: [1, -1], armF: [3, -6, -180], armB: [-5, 1, 90], footF: [2, 0], footB: [-2, 0] },
+  kgDec2: { head: [0, 0, -22.5], body: [1, 0], armF: [3, -5, -180], armB: [-5, 2, 90], footF: [2, 0], footB: [-2, 0] },
+  kgDecL: { head: [0, 0, -11.25], body: [0, 0], armF: [2, -1, -123.75], armB: [-3, 0, 45], footF: [2, 0], footB: [-2, 0] },
   // Mingau
   scratchA0: { armF: [-1, -1, 150], body: [-1, 0], head: [-1, 0] },
   scratchA1: { armF: [2, 0, -70], body: [1, 0], head: [1, 0], footF: [1, 0] },
@@ -528,7 +605,23 @@ const KEYS = {
   lAirCut: [[0, 'nAcA', 'Angry'], [0.2, 'nAcX', 'Angry'], [0.3, 'nAcI', 'Angry'], [0.46, 'nAcA2', 'Angry'], [0.56, 'nAcX2', 'Angry'], [0.64, 'nAcI2', 'Angry'], [0.84, 'nAcR', '']],
   lAirDive: [[0, 'lDvA', 'Angry'], [0.22, 'lDvX', 'Open']],
   lFan: [[0, 'lSkA', 'Angry'], [0.12, 'lFanA', 'Angry'], [0.3, 'lFanX', 'Open'], [0.5, 'lFanI', 'Angry'], [0.85, 'lStance1', '']],
-  lRain: [[0, 'lLoA', 'Angry'], [0.26, 'lRsX', 'Open'], [0.38, 'lRsI', 'Open'], [0.44, 'lRainX', 'Open'], [0.66, 'lRainI', 'Angry'], [0.88, 'lStance1', '']]
+  lRain: [[0, 'lLoA', 'Angry'], [0.26, 'lRsX', 'Open'], [0.38, 'lRsI', 'Open'], [0.44, 'lRainX', 'Open'], [0.66, 'lRainI', 'Angry'], [0.88, 'lStance1', '']],
+  // The Cat King's orders: a stern wind-up (A), the scepter snapped to where he sends them (X) and held
+  // there calling the order (I) a little before the beat king-art.js glints on, then eased off (R).
+  kSlash: [[0, 'kgPtA', 'Angry'], [0.24, 'kgPtX', 'Open'], [0.36, 'kgPtI', 'Open'], [0.8, 'kgPtR', '']],
+  kStab: [[0, 'kgPtA', 'Angry'], [0.24, 'kgPtX', 'Open'], [0.36, 'kgStI', 'Open'], [0.8, 'kgPtR', '']],
+  kShadow: [[0, 'kgShA', 'Angry'], [0.22, 'kgPtX', 'Angry'], [0.34, 'kgShI', 'Angry'], [0.82, 'kgPtR', '']],
+  kVolley: [[0, 'kgSwA', 'Angry'], [0.22, 'kgSwX', 'Angry'], [0.36, 'kgSwI', 'Open'], [0.8, 'kgSwR', '']],
+  kZap: [[0, 'kgSkA', 'Angry'], [0.24, 'kgRsX', 'Open'], [0.36, 'kgSkI', 'Open'], [0.85, 'kgSkI', '']],
+  kBash: [[0, 'kgPaA', 'Angry'], [0.3, 'kgPtX', 'Angry'], [0.4, 'kgPaI', 'Open'], [0.82, 'kgPaR', '']],
+  kCharge: [[0, 'kgChA', 'Angry'], [0.2, 'kgChX', 'Open'], [0.32, 'kgChI', 'Open'], [0.88, 'kgPtR', 'Open']],
+  kRain: [[0, 'kgUpA', 'Angry'], [0.2, 'kgRsX', 'Open'], [0.3, 'kgUpI', 'Open'], [0.5, 'kgUpI2', 'Open'], [0.62, 'kgUpI', ''], [0.74, 'kgUpI2', ''], [0.88, 'kgUpI', '']],
+  kRise: [[0, 'kgRsA', 'Angry'], [0.26, 'kgRsX', 'Open'], [0.4, 'kgRsI', 'Open'], [0.85, 'kgRsI', '']],
+  kMercy: [[0, 'kgDnA', 'Angry'], [0.34, 'kgPtX', 'Angry'], [0.46, 'kgDnI', 'Angry'], [0.88, 'kgDnI', '']],
+  kAirSlash: [[0, 'kgAA', 'Angry'], [0.24, 'kgPtX', 'Open'], [0.36, 'kgAPt', 'Open'], [0.85, 'kgAPt', '']],
+  kAirShot: [[0, 'kgAA', 'Angry'], [0.28, 'kgAPt', 'Open'], [0.4, 'kgAShot', 'Open'], [0.85, 'kgAShot', '']],
+  kAirMeteor: [[0, 'kgAShot', 'Angry'], [0.26, 'kgAPt', 'Angry'], [0.38, 'kgSkyI', 'Open'], [0.85, 'kgSkyI', '']],
+  kDrop: [[0, 'kgAA', 'Angry'], [0.4, 'kgAPt', 'Angry'], [0.52, 'kgADrop', 'Open'], [0.88, 'kgADrop', '']]
 };
 export const keyFor = (kind, p) => { const k = KEYS[kind]; if (!k) return null; let r = k[0]; for (const e of k) if (p >= e[0]) r = e; return r; };
 
@@ -689,6 +782,32 @@ const aimArm = (a, recoil) => {
   return [recoil ? -1 : 0, 0, (rel * 180) / Math.PI - 90];
 };
 
+// The Cat King. An order: its key (the air orders tuck his feet, the ones on the floor plant them,
+// whichever he happens to be on when he gives it).
+const KING_AIR_ORDERS = new Set(['kAirSlash', 'kAirShot', 'kAirMeteor', 'kDrop']);
+const KING_WALK = ['kgWalk1', 'kgWalkP', 'kgWalk2', 'kgWalkP2'], KING_RUN = ['kgRun1', 'kgRunP', 'kgRun2', 'kgRunP2'];
+function kingOrder(a, kind, pick) {
+  const [, name, expr] = keyFor(kind, Math.max(0, Math.min(0.999, 1 - a.attack / MOVES[kind].dur)));
+  const r = pick(name, expr), air = KING_AIR_ORDERS.has(kind);
+  if (a.ground === false && !air) return { ...r, frame: { ...r.frame, footF: [1, -2], footB: [-1, -1] } };
+  if (a.ground && air) return { ...r, frame: { ...r.frame, footF: [2, 0], footB: [-2, 0] } };
+  return r;
+}
+// ATAQUE REAL (a.act 'decree', SPECIALS[0].dur): a squash, the scepter thrust high with the shout and
+// held there while the court strikes (chest out, the other paw on his hip, a breath every so often,
+// shouting again with the soldier's finale), lowered at the very end. Feet tucked if in the air.
+function kingDecree(a, pick) {
+  const t = a.actT ?? 0;
+  let r;
+  if (t < 0.08) r = pick('kgDecA', 'Angry');
+  else if (t > 2.42) r = pick('kgDecL', 'Proud');
+  else {
+    const breath = t > 0.6 && Math.floor((t - 0.6) / 0.45) % 2 === 1;
+    r = pick(breath ? 'kgDec2' : 'kgDec1', t < 0.7 || (t > 1.75 && t < 2.1) ? 'Open' : 'Proud');
+  }
+  return a.ground === false ? { ...r, frame: { ...r.frame, footF: [1, -2], footB: [-1, -1] } } : r;
+}
+
 // Returns { frame, expr, name } for an actor (live or snapshot).
 export function frameFor(a, time = 0) {
   const r = baseFrame(a, time);
@@ -708,6 +827,7 @@ function baseFrame(a, time) {
   // Lola between two places: the skip pose (the renderer hides her).
   if (act === 'blink') return pick('lSkA', 'Angry');
   if (act === 'world') return worldFrame(a, pick);
+  if (act === 'decree' && a.type === 0 && !(a.hitstun > 0)) return kingDecree(a, pick);
   if (act === 'bite') return pick('bite', 'Open');
   if (act === 'shake') return pick(Math.floor(time * 10) % 2 ? 'shake1' : 'shake2', 'Open');
   if (act === 'toss') return pick('toss', 'Angry');
@@ -757,7 +877,7 @@ function baseFrame(a, time) {
   if (act === 'meteor') return pick('bLeapDn', 'Open');
   if (act === 'slamLand') return pick('bLand', 'Open');
   if (act === 'stomp') return pick('stomp', 'Angry');
-  if (act === 'chase') return pick('chase', 'Angry');
+  if (act === 'chase') return a.type === 0 ? pick('kgLeap', 'Angry') : pick('chase', 'Angry');
   if (a.frozen > 0) return pick('hurt', 'Hurt');
   // Reeling from a hit beats everything else; launched hard, it tumbles instead.
   if (a.hitstun > 0 && !a.climbing && !(a.dodge > 0)) {
@@ -806,7 +926,8 @@ function baseFrame(a, time) {
     return { frame: { ...FRAMES.jSpin, spin: Math.floor((time + seed) * 20) * (a.face || 1) }, expr: 'Angry', name: 'jSpin' };
   }
   if (a.attack > 0 && DARK_MOVES[kind]) return darkAttack(a, kind, time, pick);
-  if (a.attack > 0 && KEYS[kind] && MOVES[kind] && (a.type === 4 || kind !== 'dashAtk')) {
+  if (a.attack > 0 && a.type === 0 && wmv?.order && KEYS[kind]) return kingOrder(a, kind, pick);
+  if (a.attack > 0 && KEYS[kind] && MOVES[kind] && !wmv.order && (a.type === 4 || kind !== 'dashAtk')) {
     const [, name, expr] = keyFor(kind, Math.max(0, Math.min(0.999, 1 - a.attack / MOVES[kind].dur)));
     return pick(name, expr);
   }
@@ -823,16 +944,23 @@ function baseFrame(a, time) {
   if (act === 'carry' || (a.holding && !gun)) return pick('carry', blink ? 'Blink' : '');
   if (a.climbing) return pick(Math.floor((a.y || 0) / 10) % 2 ? 'climb1' : 'climb2');
   let base;
+  const king = a.type === 0;
   if (a.stun > 0.25) base = pick(Math.floor(time * 4) % 2 ? 'dizzy' : 'hurt', 'Hurt');
   else if (a.hurt > 0.06) base = pick('hurt', 'Hurt');
   else if (a.getup > 0) base = pick('crouch');
-  else if (!a.ground) base = a.gliding ? pick('glide') : pick((a.vy ?? 0) < -1 ? 'jump' : 'fall');
+  else if (!a.ground) base = a.gliding ? pick('glide') : king ? pick((a.vy ?? 0) < -1 ? 'kgJump' : 'kgFall') : pick((a.vy ?? 0) < -1 ? 'jump' : 'fall');
   else if (a.crouch) base = pick('crouch');
-  else if (a.landImpact > 5) base = pick('land');
+  else if (a.landImpact > 5) base = pick(king ? 'kgLand' : 'land');
   else if (a.skid > 0) base = pick('skid');
   else if (Math.abs(a.vx || 0) > 0.6) {
     const rate = Math.min(1.4, 0.55 + Math.abs(a.vx) / 6);
-    base = pick(['run1', 'runPass', 'run2', 'runPass2'][Math.floor((time + seed) * 12 * rate) % 4]);
+    // The King walks at a stately pace and only breaks into his long stride at speed.
+    if (king) base = Math.abs(a.vx) < 3 ? pick(KING_WALK[Math.floor((time + seed) * 7 * rate) % 4], blink ? 'Blink' : 'Proud') : pick(KING_RUN[Math.floor((time + seed) * 10 * rate) % 4]);
+    else base = pick(['run1', 'runPass', 'run2', 'runPass2'][Math.floor((time + seed) * 12 * rate) % 4]);
+  } else if (king) {
+    // A slow royal breath, looking down his nose at them, the tail swaying lazily behind him.
+    base = pick(Math.floor((time + seed) * 1.1) % 2 ? 'kgIdle2' : 'kgIdle1', blink ? 'Blink' : 'Proud');
+    base = { ...base, frame: { ...base.frame, tailDeg: Math.round(Math.sin((time + seed) * 0.9) * 3) * 3 } };
   } else {
     const breath = Math.floor((time + seed) * 1.6) % 2;
     // Nox never stands neutral: low, claws up, leaning toward the fight.

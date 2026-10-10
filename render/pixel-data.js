@@ -44,7 +44,11 @@ export const SCARF = {
   strands: [[[0, 0], [-2, 0], [-4, 1], [-6, 2], [-8, 2], [-10, 3]], [[0, 0], [-1, 1], [-3, 2], [-4, 4], [-5, 5]]]
 };
 
-const castOf = id => ({ id, palette: PALETTES[id], parts: PARTS[id], tail: TAILS[id] || null, scarf: id === 'bat' ? SCARF : null });
+// Mingau, the Cat King, has one look of his own: 'Proud', the lids half down over his eyes, looking
+// down his nose at everyone (his guard and his walk). The eye is cells 9-10 of rows 6-8 of the head.
+const lidded = (rows, lid) => rows.map((r, y) => (y === 6 ? r.slice(0, 9) + lid + r.slice(11) : r));
+const KING_PARTS = { ...PARTS.cat, headProud: lidded(PARTS.cat.head, '33') };
+const castOf = id => ({ id, palette: PALETTES[id], parts: id === 'cat' ? KING_PARTS : PARTS[id], tail: TAILS[id] || null, scarf: id === 'bat' ? SCARF : null });
 // Lola's head with its bow sits a pixel higher than the others', so more of her dress shows.
 // eye: the eye in head cells from the head's pivot.
 const LOLA_RIG = {

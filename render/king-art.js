@@ -4,15 +4,22 @@
 // strikes: the scepter conducts his court. Every order is its own gesture (a sweep for the soldier's
 // cut, a thrust for the shield's bash, a point at the sky for the lightning, a point at the floor for
 // the mercy...) with a glint at the orb on the beat the order is given; through the ATAQUE REAL it is
-// held high, burning gold.
+// held high, burning gold (along his arm when his frame raises it; with the arm down it rises out of
+// his paw and hangs over his crown until the court is done).
 //
 //   drawRegalia(g, f, ox, oy, t, layer)  f: the renderer's figure record ({ a, hx, hy, info, fc, x, y }).
-//     'back'  the cape. Draw it before his sprite; with f.fc.alpha (and f.x, f.y) it also stays behind
-//             him when drawn after it.
-//     'front' the crown, the ermine collar and the scepter, after his sprite.
+//     'back'  the cape. Draw it before his sprite; masked by f.info.sprite, so it also stays behind
+//             his body when drawn after it.
+//     'front' the crown, the ermine collar, the scepter and its glints, after his sprite.
 //     'glow'  emissive bits for the glow layer: the orb's glint, the jewels, the order's spark, and all
 //             of the scepter while he decrees.
-//   regaliaLights(f, t)  light descriptors { x, y, r, color, i } in view px (no shake).
+//     'keep'  everything but the glints and the swing's smear, in one go (the cape masked behind him):
+//             for the pass that gives the fighters part of their own colour back after the lighting,
+//             and for the impact frames' silhouettes.
+//   regaliaLights(f, t)  light descriptors { x, y, r, color, i } in view px (no shake): a glint off the
+//             crown, the orb, and the decree's blaze.
+//   drawMenuRegalia(g, a, fr, x, y, t, { face, scale, layer, sprite, dim })  the same round a menu
+//             preview figure.
 //
 // Everything is placed from f.info (the eye recovers where his sprite was painted, hit shivers
 // included) in character space, so it follows any frame: head tilts, body offsets, quarter-turn
@@ -33,7 +40,7 @@ const REST = 40;
 const BASE = {
   o: '#1c0a14', Y: '#fff7c8', G: '#f8c84a', g: '#cc8a2a', d: '#86501e',
   R: '#ff3c5e', r: '#a6163a', B: '#6cc8ff', b: '#2c5cd4', W: '#ffffff',
-  0: '#2c0614', 1: '#5c0c22', 2: '#941a30', 3: '#c42e3e', 4: '#ea5e56',
+  0: '#34081a', 1: '#6a1028', 2: '#a41e36', 3: '#d03444', 4: '#f2665c',
   E: '#fffaf0', e: '#d4cae2', k: '#1e1428'
 };
 const pals = new Map();
@@ -206,11 +213,20 @@ function pose(a, f, t, st) {
   const clear = v => (posed || v < -90 || v >= 26 ? [v, 0] : [26, (26 - Math.max(v, -40)) / 30]);
   let ang = REST, reach = 0, beat = 0, glow = 0;
   const name = f.info?.name || '';
+  let free = 0;
   if (dec >= 0) {
     if (st.kind !== 'decree') { st.kind = 'decree'; st.from = st.ang; }
     const up = ease(clamp(dec / 0.2, 0, 1)), down = clamp((dec - 2.4) / 0.2, 0, 1);
-    const [high, extra] = clear(posed ? armAng : 0);
-    ang = st.from + (high - st.from) * up + (REST - high) * down; reach = (2 + extra) * up * (1 - down);
+    if (posed) {
+      // His arm is up: the scepter held high along it.
+      const [high, extra] = clear(armAng);
+      ang = st.from + (high - st.from) * up + (REST - high) * down; reach = (2 + extra) * up * (1 - down);
+    } else {
+      // His arm is down: the scepter rises out of his paw and hangs over his crown, burning, until
+      // the court is done, then sinks back into his paw.
+      free = ease(clamp(dec / 0.32, 0, 1)) * (1 - clamp((dec - 2.3) / 0.3, 0, 1));
+      ang = (dec < 1 ? st.from : REST) * (1 - free) + Math.sin(t * 3.1) * 6 * free;
+    }
     glow = Math.min(up, 1 - down);
     beat = dec < 0.45 ? clamp(1 - Math.abs(dec - 0.2) / 0.25, 0, 1) : 0.35 + 0.25 * Math.sin(t * 8);
   } else if (isOrder(a)) {
@@ -238,7 +254,7 @@ function pose(a, f, t, st) {
   if (dt > 0) { hist.push([t, ang]); while (hist.length > 8) hist.shift(); }
   let smear = null;
   if (dec >= 0 || isOrder(a)) for (const [ht, ha] of hist) if (t - ht <= 0.09 && Math.abs(ha - ang) >= 20) { smear = { from: ha, to: ang }; break; }
-  return { W: st.W * face, L: st.L, ang, reach, beat, smear, glow, hurt };
+  return { W: st.W * face, L: st.L, ang, reach, beat, smear: free > 0.05 ? null : smear, glow, hurt, free, bob: Math.sin(t * 4.2) };
 }
 
 // ---- the cape: a sheet hung from the collar, filled row by row in character space
@@ -310,7 +326,7 @@ function fillCape(frame, P, t) {
       const ang = Math.atan2(x + 0.5 - fx0, y + 0.5 - fy0), fold = Math.sin(ang * 10 + wave);
       let v = 0.5 + 0.42 * fold - 0.03 * top + (at(x - 2, y) ? 0 : 0.22) - (at(x + 1, y) ? 0 : 0.3);
       v += (bayer(x + 64, y + 64) - 0.5) * 0.22;
-      c = v > 0.9 ? C['4'] : v > 0.58 ? C['3'] : v > 0.22 ? C['2'] : v > 0 ? C['1'] : C['0'];
+      c = v > 0.88 ? C['4'] : v > 0.52 ? C['3'] : v > 0.18 ? C['2'] : v > 0 ? C['1'] : C['0'];
     }
     grid[i] = c;
   }
@@ -354,8 +370,14 @@ function drawCollar(g, T, frame, v) {
   for (const [x, y, c] of cells) { const [X, Y] = cell(T, x + bdx, y + bdy); g.fillStyle = P[c]; g.fillRect(X, Y, s, s); }
 }
 
+// Where the scepter hangs over his crown when it leaves his paw (head cells, its grip).
+const FLOAT = [2, -19];
 function scepterAt(T, frame, ch, P) {
-  const [hx, hy] = slotPoint('armF', frame, HAND[0], HAND[1], ch);
+  let [hx, hy] = slotPoint('armF', frame, HAND[0], HAND[1], ch);
+  if (P.free > 0) {
+    const [fx, fy] = slotPoint('head', frame, FLOAT[0], FLOAT[1] + (P.bob || 0), ch), k = P.free;
+    hx += (fx - hx) * k; hy += (fy - hy) * k;
+  }
   const r = (P.ang * Math.PI) / 180, dx = Math.sin(r), dy = -Math.cos(r);
   // Thrust out along itself.
   const gx = hx + dx * P.reach, gy = hy + dy * P.reach;
@@ -367,7 +389,7 @@ function drawScepter(g, T, frame, ch, P, v, paw = true) {
   const [X, Y] = cell(T, S.gx, S.gy);
   g.drawImage(s.c, X - s.px * T.sc, Y - s.py * T.sc, s.w * T.sc, s.h * T.sc);
   // His paw closed round the grip.
-  if (paw) {
+  if (paw && !(P.free > 0.12)) {
     const [hx, hy] = slotPoint('armF', frame, HAND[0], HAND[1], ch), pal = castPal(ch);
     const [px, py] = cell(T, hx, hy), [qx, qy] = cell(T, hx - 1, hy - 1 + 0.01);
     g.fillStyle = pal[4] || '#fff3dc'; g.fillRect(qx, qy, T.sc, T.sc);
@@ -425,17 +447,21 @@ export function drawKingRegalia(g, T, a, frame, P, t, layer, { mask = null, ch =
   if (severed.includes('body')) return;
   if (layer === 'back') { drawCape(g, T, frame, P, t, v, mask); return; }
   const hasHead = !severed.includes('head'), hasArm = !severed.includes('armF');
-  if (layer === 'front') {
+  if (layer === 'front' || layer === 'keep') {
+    // 'keep': all of it at once (the cape held behind him by the mask), for the renderer's pass that
+    // gives the fighters back part of their own colour after the lighting, and for silhouettes.
+    if (layer === 'keep') drawCape(g, T, frame, P, t, v, mask);
     drawCollar(g, T, frame, v);
     if (hasHead) drawCrown(g, T, frame, ch, v, P.hurt ? 1 : 0, P.hurt ? -11.25 : 0);
     if (hasArm) {
-      drawSmear(g, T, frame, ch, P, 0.55);
+      if (layer === 'front') drawSmear(g, T, frame, ch, P, 0.55);
       drawScepter(g, T, frame, ch, P, P.glow > 0.5 ? 'glow' : v);
     }
+    // The glints go on the lit layer too, so they read even where nothing draws the glow layer.
+    if (layer === 'front') glints(g, T, frame, ch, P, t, hasHead, hasArm);
     return;
   }
   if (layer === 'glow') {
-    const s = T.sc;
     if (hasArm) {
       if (P.glow > 0) {
         g.globalAlpha = P.glow;
@@ -443,42 +469,50 @@ export function drawKingRegalia(g, T, a, frame, P, t, layer, { mask = null, ch =
         g.globalAlpha = 1;
       }
       drawSmear(g, T, frame, ch, P, 0.8);
-      const [ox, oy] = orbPoint(T, frame, ch, P), X = Math.round(ox), Y = Math.round(oy);
-      // The ruby glints; on the beat of an order a star flares on it.
-      g.fillStyle = '#ffd0d8'; g.fillRect(X - s, Y - s, s, s);
-      if (P.beat > 0.05) {
-        g.globalAlpha = Math.min(1, P.beat * 1.4);
-        star(g, X, Y, 1 + Math.round(P.beat * 3 + P.glow * 2), s, '#ffffff', '#ffe27a');
-        g.globalAlpha = 1;
-      }
-      // Sparks shed off it while he decrees.
-      if (P.glow > 0.2) {
-        for (let i = 0; i < 7; i++) {
-          const ph = (t * (0.9 + (i % 3) * 0.25) + i / 7) % 1, an = i * 2.4 + t * 1.3;
-          g.globalAlpha = (1 - ph) * P.glow;
-          g.fillStyle = ph < 0.4 ? '#ffffff' : '#ffd860';
-          g.fillRect(Math.round(ox + Math.cos(an) * (3 + ph * 9) * s), Math.round(oy + Math.sin(an) * (3 + ph * 9) * s - ph * 4 * s), s, s);
-        }
-        g.globalAlpha = 1;
-      }
     }
-    if (hasHead) {
-      // The crown's jewels twinkle in turn.
-      const [cx, cy] = slotPoint('head', frame, CROWN_AT[0], CROWN_AT[1] - (P.hurt ? 1 : 0), ch);
-      const k = Math.floor(t * 1.7) % 5;
-      if (k < 3) {
-        const [X, Y] = cell(T, cx + (k - 1) * 2 + (k === 1 ? 0 : 0), cy - 1);
-        g.globalAlpha = 0.6 + 0.4 * Math.sin(t * 11);
-        g.fillStyle = k === 1 ? '#c8ecff' : '#ffd0dc';
-        g.fillRect(X, Y, s, s);
-        g.globalAlpha = 1;
+    glints(g, T, frame, ch, P, t, hasHead, hasArm);
+  }
+}
+
+// The orb's glint, the star on the beat of an order, the sparks of the decree, the crown's jewels.
+function glints(g, T, frame, ch, P, t, hasHead, hasArm) {
+  const s = T.sc;
+  if (hasArm) {
+    const [ox, oy] = orbPoint(T, frame, ch, P), X = Math.round(ox), Y = Math.round(oy);
+    // The ruby glints; on the beat of an order a star flares on it.
+    g.fillStyle = '#ffd0d8'; g.fillRect(X - s, Y - s, s, s);
+    if (P.beat > 0.05) {
+      g.globalAlpha = Math.min(1, P.beat * 1.4);
+      star(g, X, Y, 1 + Math.round(P.beat * 3 + P.glow * 2), s, '#ffffff', '#ffe27a');
+      g.globalAlpha = 1;
+    }
+    // Sparks shed off it while he decrees.
+    if (P.glow > 0.2) {
+      for (let i = 0; i < 7; i++) {
+        const ph = (t * (0.9 + (i % 3) * 0.25) + i / 7) % 1, an = i * 2.4 + t * 1.3;
+        g.globalAlpha = (1 - ph) * P.glow;
+        g.fillStyle = ph < 0.4 ? '#ffffff' : '#ffd860';
+        g.fillRect(Math.round(ox + Math.cos(an) * (3 + ph * 9) * s), Math.round(oy + Math.sin(an) * (3 + ph * 9) * s - ph * 4 * s), s, s);
       }
-      if (P.glow > 0.2) {
-        const [X, Y] = cell(T, cx, cy - 5);
-        g.globalAlpha = 0.8 * P.glow * (0.6 + 0.4 * Math.sin(t * 6));
-        star(g, X, Y, 2, s, '#ffffff', '#fff0a0');
-        g.globalAlpha = 1;
-      }
+      g.globalAlpha = 1;
+    }
+  }
+  if (hasHead) {
+    // The crown's jewels twinkle in turn.
+    const [cx, cy] = slotPoint('head', frame, CROWN_AT[0], CROWN_AT[1] - (P.hurt ? 1 : 0), ch);
+    const k = Math.floor(t * 1.7) % 5;
+    if (k < 3) {
+      const [X, Y] = cell(T, cx + (k - 1) * 2, cy - 1);
+      g.globalAlpha = 0.6 + 0.4 * Math.sin(t * 11);
+      g.fillStyle = k === 1 ? '#c8ecff' : '#ffd0dc';
+      g.fillRect(X, Y, s, s);
+      g.globalAlpha = 1;
+    }
+    if (P.glow > 0.6 && !(P.free > 0.3)) {
+      const [X, Y] = cell(T, cx, cy - 5);
+      g.globalAlpha = ((P.glow - 0.6) / 0.4) * (0.7 + 0.3 * Math.sin(t * 6));
+      star(g, X, Y, 2, s, '#ffffff', '#fff0a0');
+      g.globalAlpha = 1;
     }
   }
 }
@@ -505,23 +539,60 @@ export function drawRegalia(g, f, ox, oy, t, layer = 'front') {
   const a = f?.a;
   if (!a || a.type !== 0 || !f.info) return;
   const { frame, ch, T } = basis(f, ox, oy), P = poseFor(f, t);
-  drawKingRegalia(g, T, a, frame, P, t, layer, { mask: layer === 'back' ? bodyMask(f.info.sprite) : null, ch });
+  drawKingRegalia(g, T, a, frame, P, t, layer, { mask: layer === 'back' || layer === 'keep' ? bodyMask(f.info.sprite) : null, ch });
 }
 
 export function regaliaLights(f, t) {
   const a = f?.a;
-  if (!a || a.type !== 0 || !f.info || (a.severed || []).includes('armF')) return [];
+  if (!a || a.type !== 0 || !f.info) return [];
   // Lights are gathered before the figures are drawn, on another clock: use the pose last drawn.
   const P = poses.get(a.id);
   if (!P) return [];
-  const { frame, ch, T } = basis(f, 0, 0);
-  const [x, y] = orbPoint(T, frame, ch, P), out = [{ x, y, r: 9 + P.beat * 10, color: '#ffd27a', i: 0.25 + P.beat * 0.5 }];
-  if (P.glow > 0) out.push({ x, y, r: 30 + P.glow * 40 + Math.sin(t * 8) * 4, color: '#ffe08a', i: 0.6 + P.glow * 0.8 });
+  const { frame, ch, T } = basis(f, 0, 0), severed = a.severed || [], out = [];
+  // A soft glint off the crown, so the gold reads in the darkest arenas.
+  if (!severed.includes('head') && !severed.includes('body')) {
+    const [cx, cy] = slotPoint('head', frame, CROWN_AT[0], CROWN_AT[1] - 2, ch), [x, y] = toView(T, cx, cy);
+    out.push({ x, y, r: 12, color: '#ffd88a', i: 0.45 + P.glow * 0.4, noRim: true });
+  }
+  if (!severed.includes('armF') && !severed.includes('body')) {
+    const [x, y] = orbPoint(T, frame, ch, P);
+    out.push({ x, y, r: 9 + P.beat * 10, color: '#ffd27a', i: 0.25 + P.beat * 0.5 });
+    if (P.glow > 0) out.push({ x, y, r: 30 + P.glow * 40 + Math.sin(t * 8) * 4, color: '#ffe08a', i: 0.6 + P.glow * 0.8 });
+  }
   return out;
+}
+
+// The regalia round a menu figure (the select screen's previews): a = the preview's actor, fr = its
+// frameFor() result ({ frame, name }), feet at canvas pixel (x, y), drawn at `scale`. 'back' (the cape,
+// held behind his body with `sprite`, the figure sprite) goes before the figure, 'front' after it;
+// dim (0..1) darkens them like the unselected fighters' shadows.
+const SCR = 160;
+let scratch = null;
+export function drawMenuRegalia(g, a, fr, x, y, t, { face = 1, scale = 2, layer = 'front', sprite = null, dim = 0 } = {}) {
+  if (!a || a.type !== 0 || !fr?.frame) return;
+  const frame = fr.frame, ch = castFor(0), st = stateOf(a, t);
+  let P = poses.get(a.id);
+  if (!P || P.t !== t) { P = pose(a, { hx: x / scale, hy: y / scale, info: { frame, name: fr.name } }, t, st); P.t = t; poses.set(a.id, P); }
+  const mask = layer === 'back' ? bodyMask(sprite) : null;
+  if (!(dim > 0)) {
+    drawKingRegalia(g, { bx: x, by: y, face, q: 0, sc: scale, ox: 0, oy: 0 }, a, frame, P, t, layer, { mask, ch, v: '' });
+    return;
+  }
+  // Dimmed: drawn apart, darkened, then laid down.
+  if (!scratch) { scratch = document.createElement('canvas'); scratch.width = SCR; scratch.height = SCR; }
+  const sg = scratch.getContext('2d'), bx = SCR / 2, by = SCR * 0.75;
+  sg.globalCompositeOperation = 'source-over'; sg.globalAlpha = 1; sg.imageSmoothingEnabled = false;
+  sg.clearRect(0, 0, SCR, SCR);
+  drawKingRegalia(sg, { bx, by, face, q: 0, sc: scale, ox: 0, oy: 0 }, a, frame, P, t, layer, { mask, ch, v: '' });
+  sg.globalCompositeOperation = 'source-atop'; sg.globalAlpha = Math.min(1, dim);
+  sg.fillStyle = '#0e0a18'; sg.fillRect(0, 0, SCR, SCR);
+  sg.globalCompositeOperation = 'source-over'; sg.globalAlpha = 1;
+  g.drawImage(scratch, Math.round(x - bx), Math.round(y - by));
 }
 
 // For the select screen: the pose of his regalia for a scripted moment. P fields: W (cape sweep,
 // px back), L (lift), ang (scepter, degrees from up), reach, beat (0..1 the orb's star), glow
-// (0..1 the scepter burning gold), smear ({ from, to } or null), hurt.
+// (0..1 the scepter burning gold), smear ({ from, to } or null), hurt, free (0..1 the scepter
+// floating over his crown), bob.
 export const REGALIA_REST = REST;
 export { star as regaliaStar, tipPoint as scepterTip, orbPoint as scepterOrb };

@@ -458,6 +458,7 @@ export class Renderer {
     for (const f of figures) {
       sil.globalCompositeOperation = 'copy';
       sil.drawImage(f.fc.body.c, 0, 0);
+      if (f.a.type === 0 && !f.a.dead && this.kingArt) { sil.globalCompositeOperation = 'source-over'; this.kingArt.drawRegalia(sil, f, ox - f.x, oy - f.y, state.time ?? 0, 'keep'); }
       sil.globalCompositeOperation = 'source-in';
       sil.fillStyle = fg;
       sil.fillRect(0, 0, FIG_W, FIG_H);
@@ -598,6 +599,9 @@ export class Renderer {
     // ---- fighters keep part of their own color so they read against the set
     lg.globalAlpha = 0.45;
     for (const f of figures) lg.drawImage(f.fc.body.c, f.x, f.y);
+    // (the Cat King's crown, cape and scepter, and his court, too)
+    if (this.kingArt) for (const f of figures) if (f.a.type === 0 && !f.a.dead) this.kingArt.drawRegalia(lg, f, ox, oy, state.time ?? t, 'keep');
+    if (this.court) for (const a of state.actors) if (a.court) this.court.drawCourtKeep?.(lg, a, ox, oy, state.time ?? t, figures);
     lg.globalAlpha = 1;
     for (const f of figures) if (f.info.smear) this.drawSmear(lg, f.a, f.info.smear.frame, f.info.smear.sm, f.hx + ox, f.hy + oy, f.a.face || 1, 1);
     if (state.limbs?.length) this.drawLimbs(lg, state, ox, oy, t, 0.38);
@@ -1078,6 +1082,7 @@ export class Renderer {
     }
     if (this.court) {
       for (const a of state.actors) if (a.court) this.court.drawCourtGlow(eg, a, ox, oy, st);
+      if (this.kingArt) for (const f of figures) if (f.a.type === 0 && !f.a.dead) this.kingArt.drawRegalia(eg, f, ox, oy, st, 'glow');
       this.court.drawEffects(eg, ox, oy, st);
     }
     for (const f of figures) {
@@ -1264,11 +1269,13 @@ export class Renderer {
     const s = flash ? tintOf(sprites.s, flash) : sprites.s, overlay = sprites.overlay && flash ? tintOf(sprites.overlay, flash) : sprites.overlay;
     x += morphJitter(a, p.t) * density;
     if (type === 2 && !dim) handKnives(g, a, f, x, y, face, density, p.t, 'back');
+    if (type === 0 && this.kingArt) this.kingArt.drawMenuRegalia(g, a, f, x, y, p.t, { face, scale: density, layer: 'back', sprite: s, dim });
     if (overlay) drawFigure(g, overlay, x, y, face, density);
     drawFigure(g, s, x, y, face, density);
     if (type === 2 && !dim) handKnives(g, a, f, x, y, face, density, p.t, 'front');
     if (f.ball) this.drawBall(g, x, y, density, p.t);
     if (type === 4 && !dim) drawBloodArt(g, a, f.frame, x, y, p.t, { scale: density, gore: this.fx.gore });
+    if (type === 0 && this.kingArt) this.kingArt.drawMenuRegalia(g, a, f, x, y, p.t, { face, scale: density, layer: 'front', sprite: s, dim });
     if (dim > 0) {
       const prev = g.globalAlpha;
       g.globalAlpha = prev * dim;

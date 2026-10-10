@@ -212,7 +212,7 @@ export const FAM_PLAN = {
 // The Cat King's court (sim/court.js): the five little cats who follow Mingau, in this order. RANKS:
 // each one's place by him, [along his facing (negative: behind), up from his feet].
 export const COURT = ['soldier', 'archer', 'assassin', 'mage', 'shield'];
-export const RANKS = { soldier: [-14, 0], archer: [-34, 0], assassin: [-24, 0], mage: [-18, 12], shield: [15, 0] };
+export const RANKS = { soldier: [-22, 0], archer: [-52, 0], assassin: [-38, 0], mage: [-30, 15], shield: [20, 0] };
 // What each of them can do: `dur` s, strikes at `hits` (fractions of dur), `dmg` each, push `kb`, `hold` s of
 // hitstun at least, `reach` (how far from the King a target can be), `r` how wide the strike is.
 export const COURT_ACTS = {
