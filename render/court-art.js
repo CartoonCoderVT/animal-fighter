@@ -5,13 +5,20 @@
 // cached sprite per pose (1-px ink outline, a light rim along the top), then posed from what the
 // simulation says it is doing (a.court[i]: st, act, t, vx, air, f): idle breathing, walk and run
 // cycles, jumps, every action with its anticipation, strike frame and follow-through, popping in and out.
+// They are restless: in rank they bounce on their toes, weapons up, glance about and hop round their
+// places; with the King on the move they run flat out. They are mortal: a blow (f.hurt) flashes white,
+// then red, with a shiver and squeezed-shut eyes; a fallen one (st 'dead', t since) is thrown the way
+// it was struck, tumbles, loses its weapon, lands, flickers out in a puff and a little haloed ghost
+// rises from where it lay. (Their health bars and the King's card pips are in hud.js.)
 // The event effects (slashes, stabs, lightning, meteors, the shockwave, smoke, the royal arc), the
 // arrows and magic bolts and the lights are drawn from fx events and observable state, so remote peers
 // see the same thing. Pure at load time (no DOM until something is drawn).
 //
 // Hooks (renderer.js):
 //   const court = new CourtFX(renderer)
-//   court.event(e)                                 every fx event
+//   court.event(e)                                 every fx event (courtHit, blink, bolt, meteor,
+//                                                  shieldSlam, courtPoof, courtAppear, decree, royal,
+//                                                  courtHurt, courtDie)
 //   court.update(dt)                               every frame (it measures the game clock the draw
 //                                                  calls see, so the effects slow down with the LAB's
 //                                                  slow motion too)
@@ -725,7 +732,7 @@ function poseFor(k, F, t, idx, mem) {
   const breath = Math.sin(ph * 2.6) > 0.55 ? 1 : 0;
   const blink = (ph * 0.7) % 4.3 < 0.12;
   const twitch = (ph * 1.7 + idx) % 2.3 < 0.12 ? 1 : 0;
-  const o = { legs: 'stand', eye: blink ? 'blink' : 'open', ear: twitch, tail: Math.round(Math.sin(ph * 3.4) * 1.5), dy: breath };
+  const o = { legs: 'stand', eye: blink ? 'blink' : 'open', ear: twitch, tail: Math.round(Math.sin(ph * 3.4)), dy: breath };
   let dy = 0, dx = 0, flip = false, cue = {};
   const acting = F.st === 'act' && ACT[k]?.[F.act];
   const hero = F.st === 'hero';
@@ -765,8 +772,9 @@ function poseFor(k, F, t, idx, mem) {
   if (k === 'soldier') {
     o.plume = moving ? 1 : Math.sin(ph * 4.5) > 0.4 ? 1 : 0;
     if (run) { o.hand = [3, BY(o) - 1]; o.wpn = -20 * DEG; }
-    // Sword up on guard, twitching between guards.
-    else if (ready || hopping) { o.hand = [4, BY(o) - 1]; o.wpn = [-40, -25, -55, -30][Math.floor(ph * 2.3) % 4] * DEG; }
+    // Sword up on guard, twitching between guards (held still through a hop).
+    else if (hopping) { o.hand = [4, BY(o) - 1]; o.wpn = -30 * DEG; o.plume = 1; }
+    else if (ready) { o.hand = [4, BY(o) - 1]; o.wpn = [-40, -25, -55][Math.floor(ph * 2.3) % 3] * DEG; }
   }
   if (k === 'archer') {
     o.cape = moving ? 1 : 0;
@@ -801,7 +809,7 @@ function poseFor(k, F, t, idx, mem) {
   } else if (hero) {
     cue = HERO[k](o, ph) || {};
     if (k !== 'mage') o.dy = breath;
-  } else if (run && sp > 2.5) cue.ghost = 1;
+  } else if (run && sp > 2.5) cue.ghost = 0.55;
   if (F.st === 'appear') {
     const at = F.t || 0;
     if (at < 0.12) cue.tint = '#ffffff';
@@ -811,7 +819,8 @@ function poseFor(k, F, t, idx, mem) {
   // Struck: eyes squeezed shut, head thrown back, a shiver (and the flash, drawn over it).
   const hurt = F.hurt > 0 && F.st !== 'dead' ? clamp01(F.hurt / HURT) : 0;
   if (hurt) {
-    if (hurt > 0.3) o.eye = 'pain';
+    // (an action keeps its own face: fewer poses to paint)
+    if (hurt > 0.3 && !acting) o.eye = 'pain';
     if (hurt > 0.45 && !acting && k !== 'mage') o.lean = -1;
     if (hurt > 0.35) dx = Math.floor(F.hurt * 60) % 2 ? 1 : -1;
     cue.hurt = hurt; flip = false;
@@ -832,7 +841,9 @@ class LRU {
   get(k) { const v = this.map.get(k); if (v !== undefined) { this.map.delete(k); this.map.set(k, v); } return v; }
   set(k, v) { this.map.set(k, v); if (this.map.size > this.max) this.map.delete(this.map.keys().next().value); }
 }
-const SPRITES = new LRU(1500);
+const SPRITES = new LRU(2400);
+// How many poses have been painted (a cache miss each): for profiling.
+export const STATS = { built: 0 };
 const keyOf = (k, o) => {
   let s = k;
   for (const n in o) {
@@ -846,6 +857,7 @@ export function familiarSprite(k, o) {
   const key = keyOf(k, o);
   let s = SPRITES.get(key);
   if (s === undefined) {
+    STATS.built++;
     const G = GRID.clear();
     BUILD[k](G, KIT[k], o);
     s = finish(G);
@@ -1233,6 +1245,12 @@ export class CourtFX {
       const sp = Math.abs(F.vx || 0), back = F.st === 'back', run = back || (sp > 0.6 && km.v > 0.5);
       m.ph += dt * (run ? 16 : 10) * (sp > 0.12 || back ? Math.sign((F.vx || 0) * (F.f || 1)) || 1 : 0);
       m.bph += dt * (sp > 0.12 && km.v <= 0.5 ? 6 : 3.4);
+      // Running flat out, little kicks of dust off its heels.
+      if (run && sp > 1.5 && !F.air && F.st !== 'act' && (m.dust = (m.dust || 0) + dt) > 0.09) {
+        m.dust = 0;
+        const fx = F.f >= 0 ? 1 : -1;
+        this.part('smoke', F.x * S - fx * 3, F.y * S - 1, -fx * (8 + (i % 3) * 4), -5 - (i % 2) * 4, 0.24, i % 2 ? '#6a6078' : '#4e4466', { s: 1, drag: 0.1 });
+      }
       m.ht += dt;
       if (m.ht >= 1 / 30) { m.ht = 0; m.hist.push({ x: F.x * S, y: F.y * S, f: F.f || 1, s: null, dy: 0 }); if (m.hist.length > 5) m.hist.shift(); }
       m.x = F.x; m.y = F.y; m.t = t;
@@ -1425,13 +1443,13 @@ export class CourtFX {
       const m = this.mem.get(a.id + ':' + i);
       // Afterimages along a dash: dithered, fainter the older, only where it has really moved.
       if (r.q.cue.ghost && m) {
-        const col = KIT[r.k].ghost, n = m.hist.length;
+        const col = KIT[r.k].ghost, n = m.hist.length, gk = r.q.cue.ghost;
         let lx = F.x * S, ly = F.y * S;
-        for (let j = n - 2; j >= Math.max(0, n - 4); j--) {
+        for (let j = n - 2; j >= Math.max(0, n - (gk < 1 ? 3 : 4)); j--) {
           const h = m.hist[j];
           if (!h.s || Math.hypot(h.x - lx, h.y - ly) < 4) continue;
           lx = h.x; ly = h.y;
-          g.globalAlpha = 0.42 - 0.14 * (n - 2 - j);
+          g.globalAlpha = (0.42 - 0.14 * (n - 2 - j)) * gk;
           blit(g, tintOf(h.s, col, 'dither'), Math.round(h.x + ox), Math.round(h.y + oy) + h.dy, h.f);
         }
         g.globalAlpha = 1;
@@ -1883,6 +1901,13 @@ export function courtLights(state, t) {
   for (const a of state?.actors || []) {
     if (!a.court || a.dead) continue;
     if (a.act === 'decree') out.push({ x: a.x * S, y: (a.y + 4) * S, r: 70 + Math.sin(t * 6) * 6, color: '#ffd860', i: 0.9 });
+    // The little ghosts of the fallen, a faint glow as they rise.
+    a.court.forEach((F, i) => {
+      const T = F.t || 0;
+      if (F.st !== 'dead' || T < DIE.ghost0 || T > DIE.ghost1) return;
+      const at = LIVE?.mem.get(a.id + ':' + i)?.death?.last;
+      if (at) out.push({ x: at[0], y: at[1] - 6 - ease((T - DIE.ghost0) / (DIE.ghost1 - DIE.ghost0)) * 28, r: 16, color: '#d8ccff', i: 0.4, noRim: true });
+    });
     const m = a.court.find(F => F.k === 'mage');
     if (m && m.st !== 'gone' && m.st !== 'dead') {
       const casting = m.st === 'act';

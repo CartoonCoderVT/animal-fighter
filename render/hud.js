@@ -1,4 +1,5 @@
-// In-match HUD drawn on the 640x360 grid after the world: fighter cards, floating tags, kill feed.
+// In-match HUD drawn on the 640x360 grid after the world: fighter cards (the Cat King's with his court's pips),
+// floating tags, the little health bars over his familiars, kill feed.
 import { VIEW_W, VIEW_H, S, clamp } from '../engine/const.js';
 import { P } from '../engine/palette.js';
 import { drawText, measure } from '../engine/font.js';
@@ -15,7 +16,7 @@ const X = v => Math.round(v * S);
 // its full health, and how high its head stands over its feet (view px) for its little health bar.
 const COURT_KINDS = ['soldier', 'archer', 'assassin', 'mage', 'shield'];
 const COURT_COL = {
-  soldier: ['#c8cee6', '#4a4e66'], archer: ['#6ccc5c', '#244a28'], assassin: ['#a878f0', '#3a2a5e'],
+  soldier: ['#9eaee0', '#3e4868'], archer: ['#6ccc5c', '#244a28'], assassin: ['#a878f0', '#3a2a5e'],
   mage: ['#5c96ff', '#1e2e66'], shield: ['#f2c35b', '#5a4220']
 };
 const COURT_TOP = { soldier: 21, archer: 19, assassin: 17, mage: 24, shield: 18 };
@@ -199,15 +200,16 @@ export class HUD {
         if (k01 <= 0.34) alpha = Math.max(alpha, 0.75);
         if (alpha <= 0.02) continue;
         const p = this.r.worldToView(F.x, F.y), z = VIEW_W / this.r.cam.sw;
-        const x = Math.round(p.x) - 4, y = Math.round(p.y - (COURT_TOP[k] + 3) * z);
+        const x = Math.round(p.x) - 4, y = Math.round(p.y - (COURT_TOP[k] + 4) * z);
         if (x < -10 || x > VIEW_W + 2 || y < -4 || y > VIEW_H) continue;
         g.globalAlpha = alpha;
-        g.fillStyle = '#0b0812'; g.fillRect(x - 1, y - 1, 10, 3);
-        g.fillStyle = '#2a2036'; g.fillRect(x, y, 8, 1);
-        g.fillStyle = '#ffc8d4'; g.fillRect(x, y, Math.round(8 * clamp(m.lag / max, 0, 1)), 1);
-        const low = k01 <= 0.34, blinkOff = low && k01 <= 0.2 && Math.floor(time * 6) % 2;
+        g.fillStyle = '#0b0812'; g.fillRect(x - 1, y - 1, 10, 4);
+        g.fillStyle = '#2a2036'; g.fillRect(x, y, 8, 2);
+        g.fillStyle = '#ffc8d4'; g.fillRect(x, y, Math.round(8 * clamp(m.lag / max, 0, 1)), 2);
+        const low = k01 <= 0.34, blinkOff = low && k01 <= 0.2 && Math.floor(time * 6) % 2, fw = Math.max(1, Math.round(8 * k01));
         g.fillStyle = blinkOff ? '#ff9a9a' : low ? '#ee6b6b' : k01 <= 0.6 ? '#f2c35b' : '#8fd694';
-        g.fillRect(x, y, Math.max(1, Math.round(8 * k01)), 1);
+        g.fillRect(x, y, fw, 2);
+        g.fillStyle = 'rgba(255,255,255,0.35)'; g.fillRect(x, y, fw, 1);
         g.globalAlpha = 1;
       }
     }
