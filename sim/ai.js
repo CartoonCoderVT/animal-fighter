@@ -1,6 +1,6 @@
 import { EMPTY_INPUT } from '../engine/input.js';
 import { MAP, pathTo } from './map.js';
-import { inPit } from './physics.js';
+import { inPit, Query } from './physics.js';
 import { rnd, dist, clamp } from '../engine/const.js';
 import { FOOT, HALF_H } from '../render/rig.js';
 import { MOVES, DARK, POOL, KINGDOM, comboOf } from './moves.js';
@@ -109,8 +109,9 @@ export function think(g, a, dt) {
   const ek = rivalKingdom(g, a);
   if (ek) {
     const dR = target ? dist(a, target) : Infinity, dS = Math.hypot(ek.x - a.x, ek.y - (a.y + HALF_H));
-    const threat = target && ((target.attack > 0 && dR < 90) || (a.blowBy === target.id && g.time - (a.blowT ?? -9) < 1.2));
-    const want = !target || target.knocked || target.invincible > 0 || (currentNode(g, a)?.id === ek.node && dS < 140 && dR > 160) || dS < 0.4 * dR;
+    const threat = target && ((target.attack > 0 && dR < 90) || (a.blowBy === target.id && g.time - (a.blowT ?? -9) < 1.2 && dR < 150));
+    // (a downed or untouchable rival right there is still the one to go for: to pick up, or to wait on)
+    const want = !target || ((target.knocked || target.invincible > 0) && dS < 220 && dR > 40) || (currentNode(g, a)?.id === ek.node && dS < 140 && dR > 160) || dS < 0.4 * dR;
     if (want && !threat) { if (ai.goalKg !== ek.id) { ai.goalKg = ek.id; ai.goalT = g.time + 1; } }
     else if (threat || g.time >= (ai.goalT ?? 0)) ai.goalKg = null;
   } else ai.goalKg = null;
@@ -124,7 +125,9 @@ export function think(g, a, dt) {
 
   const mine = currentNode(g, a);
   const theirs = target.knocked ? nodeAt(g, target.x, target.y + 6) : nodeAt(g, target.x, target.y + FOOT);
-  const clearShot = ranged && Math.abs(dy) < 160;
+  // (a kingdom is only shot at with nothing solid in the way; else the bot goes there)
+  const lineOk = !target.kg || !ai.aimAt || !Query.ray(g.staticBodies, { x: a.x, y: a.y + 5 }, ai.aimAt, 1).length;
+  const clearShot = ranged && Math.abs(dy) < 160 && lineOk;
   let moveTo = null;
 
   if (!a.ground && ai.airborne && ai.edge) {
@@ -198,11 +201,16 @@ export function think(g, a, dt) {
   if (reign && a.ground && !a.act && !target.kg && dist(a, target) > 200) {
     const kg = ownKingdom(g, a);
     if (!kg && a.abilityCd <= 1) { const c = canPlant(g, a); if (!c.ok && c.near != null) moveTo = c.near; }
-    else if (kg && kg.lv < 3 && mine?.id === kg.node && Math.abs(a.x - kg.x) > 100) moveTo = kg.x;
-  }
+    else if (kg && kg.lv < 3 && mine?.id === kg.node) {
+      // Home (all the way to the door once he sets off), and he stays there.
+      if (Math.abs(a.x - kg.x) > 100) ai.home = true;
+      if (ai.home && Math.abs(a.x - kg.x) < 30) ai.home = false;
+      moveTo = ai.home ? kg.x : null;
+    }
+  } else ai.home = false;
   // Hurt and with nobody close: a fish on this floor.
   if (a.ground && !a.act && a.hp < a.maxHp * 0.7 && g.fish?.length && !(reign && ownKingdom(g, a)) && (!target || target.kg || dist(a, target) > 140)) {
-    const f = g.fish.filter(f => Math.abs(f.x - a.x) < 120 && Math.abs(f.y - (a.y + HALF_H)) < 6).sort((p, q) => Math.abs(p.x - a.x) - Math.abs(q.x - a.x))[0];
+    const f = g.fish.filter(f => mine && f.node === mine.id && Math.abs(f.x - a.x) < 120).sort((p, q) => Math.abs(p.x - a.x) - Math.abs(q.x - a.x))[0];
     if (f) moveTo = f.x;
   }
 
@@ -262,15 +270,15 @@ export function think(g, a, dt) {
     const meleeRange = a.weapon === 'extinguisher' ? 110 : armed ? MOVES[a.weapon + ':nLight'].range + 4 : natural;
     const facing = dx * a.face >= -4;
     const reachX = target.kg ? target.hw + meleeRange - 4 : meleeRange;
-    input.attack = ranged ? Math.abs(dy) < 230 && Math.abs(dx) < 650 : Math.abs(dy) < 24 && Math.abs(dx) < reachX && facing && !target.knocked;
+    input.attack = ranged ? Math.abs(dy) < 230 && Math.abs(dx) < 650 && lineOk : Math.abs(dy) < 24 && Math.abs(dx) < reachX && facing && !target.knocked;
     if (target.kg && reign) input.attack = Math.abs(dx) < target.hw + 100 && Math.abs(dy) < 40 && facing;
     input.power = target.kg ? false : armed ? Math.abs(dy) < 26 && Math.abs(dx) < meleeRange + 10 && facing && Math.random() < 0.06 : a.abilityCd <= 0 && !a.act && !target.knocked && facing && SPECIAL_RANGE[styleOf(a)](dx, dy, a, target, g);
     // The Cat King: the banner when nobody is on top of him and it may go here; with his kingdom standing,
     // home when it is under attack and he is far from it.
     if (reign) {
       const kg = ownKingdom(g, a), near = (r, ry) => g.enemies(a).some(b => !b.dead && Math.abs(b.x - a.x) < r && Math.abs(b.y - a.y) < ry);
-      if (!kg) input.power = a.abilityCd <= 0 && !a.act && a.ground && !near(120, 80) && canPlant(g, a).ok;
-      else input.power = !target.kg && a.abilityCd <= 0 && !a.act && a.ground && g.time - kg.hitT < 1.5 && Math.hypot(a.x - kg.x, a.y + HALF_H - kg.y) > 260 && !near(140, 90);
+      if (!kg) input.power = a.abilityCd <= 0 && !a.act && a.ground && !input.jump && !near(120, 80) && canPlant(g, a).ok;
+      else input.power = !target.kg && a.abilityCd <= 0 && !a.act && a.ground && !input.jump && g.time - kg.hitT < 1.5 && Math.hypot(a.x - kg.x, a.y + HALF_H - kg.y) > 260 && !near(140, 90);
     }
     // With a weapon, mix in the directional lights now and then: side to lunge in, down to lift.
     if (armed && input.attack && a.ground && Math.random() < 0.25) { aimed = true; if (Math.abs(dx) > meleeRange * 0.6) { input.right = dx > 0; input.left = dx < 0; } else input.down = Math.random() < 0.4; }

@@ -101,7 +101,7 @@ export function kingSpecial(g, a) {
 
 // A refusal: a word over him now and then, and nothing spent (the input buffer tries again a moment).
 function refuse(g, a, text) {
-  if (!text || g.time - (a.plantMsgT ?? -9) < K.msg) return;
+  if (!text || a.bot || g.time - (a.plantMsgT ?? -9) < K.msg) return;
   a.plantMsgT = g.time;
   g.text(a.x, a.y - 30, text, '#e4b18a');
 }
@@ -162,6 +162,7 @@ export function stepRecall(g, a) {
     Body.setPosition(a.body, { x: tx, y: ty });
     Body.setVelocity(a.body, { x: 0, y: 0 });
     a.x = tx; a.y = ty; a.prevFeet = ty + HALF_H; a.teleported = g.seq; a.ghostClear = true; a.lagPos = null;
+    a.skips = (a.skips || 0) + 1;
     a.face = -side;
     courtFollow(g, a);
     a.abilityCd = K.recallCd;
@@ -299,18 +300,21 @@ export function buffTier(g, king, x, feetY) {
 
 // A blow reaching the kingdoms of the rivals of `atk` (an actor or { id, team }; null for anyone's): the
 // structure when any of its points passes `test`, each unit whose body does. Returns how many were hit.
-export function strikeKingdoms(g, atk, test, amount, dirOf = null, kind = 'hit') {
+export function strikeKingdoms(g, atk, test, amount, dirOf = null, kind = 'hit', skip = null) {
   if (!(amount > 0) || !g.kingdoms?.length) return 0;
   let n = 0;
   for (const kg of [...g.kingdoms]) {
     if (kg.st === 'fall' || (atk && (kg.by === atk.id || kg.team === atk.team))) continue;
-    if (GRID[kg.lv].some(([dx, dy]) => test(kg.x + dx, kg.y + dy))) {
+    if (!skip?.has(kg) && GRID[kg.lv].some(([dx, dy]) => test(kg.x + dx, kg.y + dy))) {
+      skip?.add(kg);
       const c = { x: kg.x, y: kg.y - K.h[kg.lv] / 2 };
       if (hurtKingdom(g, kg, kg, amount, atk?.id ?? null, dirOf ? dirOf(c) : 0, kind)) n++;
     }
     for (const u of [...kg.u]) {
       if (kg.st === 'fall') break;
-      if (unitAlive(u) && test(u.x, u.y - K.unitY[u.k]) && hurtKingdom(g, kg, u, amount, atk?.id ?? null, dirOf ? dirOf(u) : 0, kind)) n++;
+      if (!unitAlive(u) || skip?.has(u) || !test(u.x, u.y - K.unitY[u.k])) continue;
+      skip?.add(u);
+      if (hurtKingdom(g, kg, u, amount, atk?.id ?? null, dirOf ? dirOf(u) : 0, kind)) n++;
     }
   }
   return n;
@@ -335,7 +339,9 @@ export function kingdomInPath(g, b, x1, y1) {
   const dx = x1 - b.x, dy = y1 - b.y, len2 = dx * dx + dy * dy || 1;
   for (const kg of g.kingdoms || []) {
     if (kg.st === 'fall' || kg.team === b.team || kg.by === b.owner) continue;
-    const w = K.w[kg.lv] / 2, t = slab(b.x, b.y, x1, y1, kg.x - w, kg.y - K.h[kg.lv], kg.x + w, kg.y);
+    // (a shot fired from inside it flies out: only shots coming in stop on it)
+    const w = K.w[kg.lv] / 2, h = K.h[kg.lv], inside = b.x > kg.x - w && b.x < kg.x + w && b.y > kg.y - h && b.y < kg.y;
+    const t = inside ? Infinity : slab(b.x, b.y, x1, y1, kg.x - w, kg.y - h, kg.x + w, kg.y);
     if (t < (best?.u ?? Infinity)) best = { kg, f: kg, u: t };
     for (const u of kg.u) {
       if (!unitAlive(u)) continue;
@@ -434,9 +440,9 @@ function unitHit(g, kg, u, spec, cx, cy, dir) {
     if (!fair(b, kg.team) || Math.hypot(b.x - cx, (b.y - cy) * 1.15) >= spec.r) continue;
     if (b.iframes > 0 && b.dodge > 0 && !b.perfect) { perfectDodge(g, b); continue; }
     const light = g.time - (b.courtReelT ?? -9) < AUTO.stagger;
-    if (!light) b.courtReelT = g.time;
-    const dealt = damage(g, b, dmg, { x: b.x - dir * 4, y: b.y }, kg.by, spec.kind, { kb: { x: dir * spec.kb[0], y: spec.kb[1] }, solo: true, light, noLift: true, dir: rnd(-0.8, 0.8), familiar: () => { u.cd = Math.max(u.cd, 0.8); } });
+    const dealt = damage(g, b, dmg, { x: b.x - dir * 4, y: b.y }, kg.by, spec.kind, { kb: { x: dir * spec.kb[0], y: spec.kb[1] }, solo: true, light, noLift: true, unit: true, dir: rnd(-0.8, 0.8), familiar: () => { u.cd = Math.max(u.cd, 0.8); } });
     if (!dealt) continue;
+    if (!light) b.courtReelT = g.time;
     struck++;
     if (!b.dead && !b.knocked && !light && spec.hold) { b.hitstun = Math.max(b.hitstun || 0, spec.hold); b.hitstunMax = Math.max(b.hitstunMax || 0, b.hitstun); }
   }
@@ -563,7 +569,7 @@ function stepKnight(g, kg, u, dt) {
   if (u.st === 'appear') { if (u.t >= 0.4) { u.st = 'guard'; u.t = 0; } return; }
   if (u.st === 'hit') {
     u.vx = 0;
-    if (u.t >= N.swing.dur * N.swing.at && !u.swung) { u.swung = true; unitHit(g, kg, u, N.swing, u.x + u.f * 14, u.y - 17, u.f); }
+    if (u.t >= N.swing.dur * N.swing.at && !u.swung) { u.swung = true; unitHit(g, kg, u, N.swing, u.x + u.f * 16, u.y - 17, u.f); }
     if (u.t >= N.swing.dur) { u.st = 'guard'; u.t = 0; u.cd = N.cd; u.swung = false; }
     return;
   }
@@ -574,13 +580,14 @@ function stepKnight(g, kg, u, dt) {
   const move = (to, speed) => { const d = clamp(to, kg.lo, kg.hi) - u.x, s = Math.sign(d) * Math.min(Math.abs(d), speed); u.x += s; u.vx = s; if (Math.abs(s) > 0.1) u.f = Math.sign(s); };
   if (T) {
     const s = Math.sign(T.x - u.x) || side;
+    // (a knight held at the end of its ground still swings at a rival just beyond it)
     if (Math.abs(T.x - u.x) < N.reach && Math.abs(T.y + HALF_H - u.y) < 40 && u.cd <= 0) { u.st = 'hit'; u.t = 0; u.f = s; u.swung = false; u.vx = 0; return; }
     if (u.st !== 'chase') { u.st = 'chase'; u.t = 0; }
     move(T.x - s * 16, N.speed);
     u.f = s;
     return;
   }
-  const post = kg.x + side * (K.w[kg.lv] / 2 + N.post);
+  const post = clamp(kg.x + side * (K.w[kg.lv] / 2 + N.post), kg.lo, kg.hi);
   move(post, N.speed * 0.8);
   if (Math.abs(post - u.x) < 1) { if (u.st !== 'guard') { u.st = 'guard'; u.t = 0; } u.f = side; u.vx = 0; }
   else if (u.st !== 'chase') { u.st = 'chase'; u.t = 0; }
@@ -622,7 +629,7 @@ function seedFish(g) {
 }
 function takeFish(g, f) {
   g.fish = g.fish.filter(o => o !== f);
-  const s = g.fishSpots?.[f.i];
+  const s = g.fishSpots?.find(s => s.i === f.i);
   if (s) { s.on = false; s.t = K.fish.back; }
 }
 
@@ -693,11 +700,12 @@ export function tickKingdoms(g, dt) {
 function hitByThrown(g, kg) {
   const w = K.w[kg.lv] / 2, h = K.h[kg.lv];
   for (const p of g.props) {
-    if (p.held || !(p.throwTime > g.time) || p.body.speed <= 4 || p.kgHit === kg.id) continue;
+    const mark = kg.id + ':' + p.throwTime;
+    if (p.held || !(p.throwTime > g.time) || p.body.speed <= 4 || p.kgHit === mark) continue;
     if (Math.abs(p.x - kg.x) > w + (p.w || 0) / 2 || p.y < kg.y - h - (p.h || 0) / 2 || p.y > kg.y + (p.h || 0) / 2) continue;
     const o = g.actor(p.owner);
     if (o && o.team === kg.team) continue;
-    p.kgHit = kg.id;
+    p.kgHit = mark;
     hurtKingdom(g, kg, kg, K.vs.thrown, p.owner ?? null, Math.sign(p.body.velocity.x) || 1, 'thrown');
     if (kg.st === 'fall') return;
   }

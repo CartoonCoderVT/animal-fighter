@@ -412,7 +412,9 @@ export function strike(g, a, mv, i) {
     if (vamp && !b.dead) bleedFor(g, a, b, mv.dark ? DARK.bleed * 2 : DARK.bleed);
   }
   // The Cat King's court in the way takes the blow too (sim/court.js).
-  strikeCourts(g, a, (x, y) => reaches(a, mv, x, y, 4, low), amount, f => Math.sign(f.x - a.x) || face);
+  // (each of them takes one blow a strike, whether the blow or its shockwave reaches it)
+  const struckKg = new Set();
+  strikeCourts(g, a, (x, y) => reaches(a, mv, x, y, 4, low), amount, f => Math.sign(f.x - a.x) || face, 'hit', struckKg);
   // Eco: the axolotl's clones close to the rival repeat the blow a beat later.
   if (mv.echo && first && a.type === 6 && (i === mv.hits.length - 1)) queueEcho(g, a, a.attackKind, first, amount);
   // The axolotl's clones in reach take the blow too.
@@ -428,7 +430,7 @@ export function strike(g, a, mv, i) {
   if (mv.sweep && a.ground) g.fx('scytheSweep', { x: a.x + face * 8, y: a.y + 16, x2: a.x + face * mv.sweep, face });
   // The guillotine's blade bites into the floor ahead.
   if (mv.floor && a.ground) { g.fx('scytheFloor', { x: a.x + face * mv.floor, y: a.y + 16, face }); g.shake = Math.max(g.shake, 4); g.sound('chop', a.x); }
-  if (mv.shock) struck = shockwave(g, a, mv, amount, hit) || struck;
+  if (mv.shock) struck = shockwave(g, a, mv, amount, hit, struckKg) || struck;
   // The beast's clap: a ring of force out of her paws shoves everyone else back.
   if (mv.clap) clapRing(g, a, hit);
   // The frog's croak: the throat sac bursts into a ring of sound all around him.
@@ -620,7 +622,7 @@ function execute(g, a, mv) {
 }
 
 // Ground slams: a ring of force along the floor around the impact.
-function shockwave(g, a, mv, amount, already) {
+function shockwave(g, a, mv, amount, already, struckKg = null) {
   const x = a.x + a.face * (mv.shockAt ?? 12), y = a.y + 16;
   let struck = false;
   for (const b of g.enemies(a)) {
@@ -630,7 +632,7 @@ function shockwave(g, a, mv, amount, already) {
   }
   if (areaMinions(g, a, x, y - 10, mv.shock, 34, k => amount * (0.4 + 0.4 * k), mv.kind)) struck = true;
   for (const l of g.limbs) if (Math.abs(l.x - x) < mv.shock && Math.abs(l.y - y) < 40) Body.setVelocity(l.body, { x: l.body.velocity.x + Math.sign(l.x - x) * 3, y: l.body.velocity.y - 4 });
-  if (strikeCourts(g, a, (px, py) => Math.abs(px - x) < mv.shock && Math.abs(py - y) < 40, amount * 0.6, f => Math.sign(f.x - x) || a.face)) struck = true;
+  if (strikeCourts(g, a, (px, py) => Math.abs(px - x) < mv.shock && Math.abs(py - y) < 40, amount * 0.6, f => Math.sign(f.x - x) || a.face, 'hit', struckKg)) struck = true;
   g.fx('ring', { x, y, size: mv.shock, color: '#ffe6c8' });
   g.fx('land', { x, y, p: 1 });
   g.fx('dust', { x, y, n: 6 + Math.round(mv.shock / 10) });
@@ -861,8 +863,8 @@ function bulletHit(g, b, body, point) {
       // The court's arrows: no freeze on the King far away, and they keep the rival reeling. A castle's
       // archers' (gate) make them reel only once every so often, with the court's own blows.
       const light = !!b.gate && g.time - (a.courtReelT ?? -9) < AUTO.stagger;
-      if (b.gate && !light) a.courtReelT = g.time;
-      const dealt = damage(g, a, b.damage, point, b.owner, b.kind, { kb: { x: b.vx * 0.12, y: Math.min(0, b.vy * 0.05) - 0.8 }, dir: angle, solo: true, light });
+      const dealt = damage(g, a, b.damage, point, b.owner, b.kind, { kb: { x: b.vx * 0.12, y: Math.min(0, b.vy * 0.05) - 0.8 }, dir: angle, solo: true, light, unit: !!b.gate });
+      if (b.gate && !light && dealt) a.courtReelT = g.time;
       if (dealt && !a.dead && !a.knocked && b.hold && !light) { a.hitstun = Math.max(a.hitstun || 0, b.hold); a.hitstunMax = Math.max(a.hitstunMax || 0, a.hitstun); }
       if (dealt && !b.auto) { const k = g.actor(b.owner); if (k) { k.lastPrey = a.id; k.lastPreyT = g.time; } }
     }
@@ -1010,7 +1012,8 @@ export function damage(g, a, amount, point, ownerId, kind = 'punch', opts = {}) 
   a.hurt = 0.16;
   if (!DOT.has(cat) || ownerId !== a.id) { a.lastHit = ownerId; a.lastHitTime = g.time; }
   // Real blows only (not bleeding or burning): who just struck this fighter (the Cat King's court watches).
-  if (!DOT.has(cat) && owner && owner !== a) { a.blowBy = ownerId; a.blowT = g.time; }
+  // (a blow of a Cat King's worker or knight is not his: he may be across the arena)
+  if (!DOT.has(cat) && owner && owner !== a && !opts.unit) { a.blowBy = ownerId; a.blowT = g.time; }
   a.lastHitKind = kind;
   if (owner && ownerId !== a.id) owner.stats.damage += amount;
   // The rival a fighter's string is on: blows only, not a thrown knife that strays into a bystander

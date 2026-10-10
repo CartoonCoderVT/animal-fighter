@@ -400,8 +400,8 @@ export const KINGDOM = {
     swing: { dur: 0.35, at: 0.5, dmg: 3, kb: [1.2, -1], hold: 0.15, r: 16, kind: 'bash' }
   },
   knight: {
-    n: [0, 0, 2, 2], hp: 30, speed: 1.8, guard: 140, guardY: 60, leash: 120, post: 14, reach: 24, cd: 1.3, respawn: 10,
-    swing: { dur: 0.4, at: 0.55, dmg: 4, kb: [2, -1.5], hold: 0.3, r: 22, kind: 'blade' }
+    n: [0, 0, 2, 2], hp: 30, speed: 1.8, guard: 140, guardY: 60, leash: 120, post: 14, reach: 40, cd: 1.3, respawn: 10,
+    swing: { dur: 0.4, at: 0.55, dmg: 4, kb: [2, -1.5], hold: 0.3, r: 28, kind: 'blade' }
   },
   archer: { n: [0, 0, 0, 2], hp: 14, dx: [-30, 30], range: 300, rangeY: 220, every: 2.0, first: 0.6, draw: 0.15, pose: 0.3, dmg: 3, hold: 0.25, lead: 0.5, respawn: 14 },
   unitY: { worker: 9, knight: 12, archer: 9 }, unitR: { worker: 8, knight: 10, archer: 8 }

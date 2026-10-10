@@ -454,15 +454,20 @@ export function hurtFamiliar(g, k, f, amount, src = null, dir = 0) {
 
 // A blow reaching the courts of the rivals of `atk` (an actor or { id, team }, or null for anyone's): every
 // familiar whose body (feet x, y - 9) passes `test` takes `amount`, thrown toward dirOf(f); and so do the
-// rivals' kingdoms (sim/kingdom.js; kind: 'hit', 'shot', 'pellet', 'blast', 'thrown').
-export function strikeCourts(g, atk, test, amount, dirOf = null, kind = 'hit') {
+// rivals' kingdoms (sim/kingdom.js; kind: 'hit', 'shot', 'pellet', 'blast', 'thrown'). `skip`: a Set of
+// those already struck by this blow (it is filled), so a blow and its shockwave hurt each one once.
+export function strikeCourts(g, atk, test, amount, dirOf = null, kind = 'hit', skip = null) {
   if (!(amount > 0)) return 0;
   let n = 0;
   for (const k of g.actors) {
     if (!k.court || k.dead || k === atk || (atk && k.team === atk.team)) continue;
-    for (const f of k.court) if (alive(f) && test(f.x, f.y - 9) && hurtFamiliar(g, k, f, amount, atk?.id ?? null, dirOf ? dirOf(f) : 0)) n++;
+    for (const f of k.court) {
+      if (!alive(f) || skip?.has(f) || !test(f.x, f.y - 9)) continue;
+      skip?.add(f);
+      if (hurtFamiliar(g, k, f, amount, atk?.id ?? null, dirOf ? dirOf(f) : 0)) n++;
+    }
   }
-  return n + strikeKingdoms(g, atk, test, amount, dirOf, kind);
+  return n + strikeKingdoms(g, atk, test, amount, dirOf, kind, skip);
 }
 
 // A shot on its way from (x0, y0) to (x1, y1): the first rival familiar on that segment, with where (0..1):
