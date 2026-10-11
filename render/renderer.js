@@ -543,7 +543,8 @@ export class Renderer {
     this.fx.gore = settings.gore ?? 2;
     this.fx.limit = settings.particles === false ? 300 : 900;
     const events = state.fxQueue ? state.fxQueue.splice(0) : (state.events || []).filter(e => e.type === 'fx' && e.id > this.fx.lastId);
-    for (const e of events) { this.fx.event(e); this.lola.event(e); this.darkNox?.event(e); this.court?.event(e); this.kingdom?.event(e); this.hype(e, settings); if (!state.fxQueue) this.fx.lastId = Math.max(this.fx.lastId, e.id); }
+    // Marked as seen first: a guest keeps recent events for a while, and one that throws must not break every frame after it.
+    for (const e of events) { if (!state.fxQueue) this.fx.lastId = Math.max(this.fx.lastId, e.id); this.fx.event(e); this.lola.event(e); this.darkNox?.event(e); this.court?.event(e); this.kingdom?.event(e); this.hype(e, settings); }
     this.updateCamera(state, dt, settings, localId);
     const hz = state.hazards || null;
     // Effects run on game time: they slow down with the dramatic slow motion and the LAB's, and

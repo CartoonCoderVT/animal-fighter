@@ -1,0 +1,16 @@
+# Files wrangler must NOT upload as public assets (gitignore syntax; the assets directory is the repo root).
+.git
+.github
+.claude
+node_modules
+.wrangler
+.dev.vars*
+.env*
+.DS_Store
+/worker/
+/wrangler.jsonc
+/package.json
+/package-lock.json
+/README.md
+/.gitignore
+/.nojekyll

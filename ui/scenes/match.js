@@ -29,7 +29,8 @@ export class MatchScene {
     this.lastBeep = Math.ceil(countdown);
     this.dragging = false;
   }
-  countdownNow() { return this.shell.game ? this.countdown : this.shell.remote?.countdown || 0; }
+  // A guest's countdown is the host's, as it is drawn.
+  countdownNow() { return this.shell.game ? this.countdown : this.shell.state()?.countdown || 0; }
   enter() {
     const s = this.shell;
     s.sound.music('fight');
@@ -97,9 +98,10 @@ export class MatchScene {
     if (this.countdownNow() > 0) Object.assign(gi, { left: false, right: false, jump: false, attack: false, power: false, grab: false, dodge: false, bats: false });
     if (game) game.inputFor(s.localId, gi);
     else if (s.net.started) {
-      s.inputTick += dt;
-      const key = JSON.stringify(gi);
-      if (key !== this.lastSent || s.inputTick > 1 / 30) { s.net.sendInput(gi); s.inputTick = 0; this.lastSent = key; }
+      s.net.sendInput(gi);
+      // The host's beeps, when the second shown changes (as in tickCountdown).
+      const n = Math.ceil(this.countdownNow() - 0.7);
+      if (n !== this.lastBeep && n >= 0) { this.lastBeep = n; s.sound.play(n > 0 ? 'countdown' : 'go'); }
     }
 
     if (st && st.winner !== null && st.winner !== undefined) {

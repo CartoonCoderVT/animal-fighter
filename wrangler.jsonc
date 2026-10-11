@@ -1,0 +1,29 @@
+// Animal Fighter on Cloudflare: one Worker serves the game (static assets from the repo root, so the
+// GitHub Pages copy keeps working) and the PeerJS-compatible signaling rooms (one Durable Object per room).
+// Match traffic never passes through here: it goes browser to browser over WebRTC.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // Workers Builds fails if the Worker name in the dashboard differs from this one.
+  "name": "animal-fighter",
+  "main": "worker/index.js",
+  "compatibility_date": "2026-09-20",
+  "assets": {
+    // The repo root; .assetsignore keeps .git, the Worker source and the tooling files out of the upload.
+    "directory": "./",
+    "binding": "ASSETS",
+    // Only these reach the Worker before the asset lookup; everything else is a plain (free) asset request.
+    "run_worker_first": ["/api/*", "/peerjs/*"]
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "SIGNAL", "class_name": "SignalRoom" }]
+  },
+  // The Free plan only allows SQLite-backed Durable Objects (the room itself stores nothing).
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["SignalRoom"] }]
+  // Optional secrets (not declared as required, so the first deploy works without them):
+  //   TURN_KEY_ID         the "Turn Token ID" of a Cloudflare Realtime TURN key
+  //   TURN_KEY_API_TOKEN  that key's "API Token"
+  // With both set, /api/net hands out short-lived Cloudflare TURN credentials (relay for players behind
+  // strict NATs); without them it falls back to PeerJS's public TURN, exactly like the GitHub Pages copy.
+  // Set them in the dashboard (Worker → Settings → Variables and Secrets) or with `npx wrangler secret put`.
+  // For local dev put them in a .dev.vars file (gitignored).
+}

@@ -1,0 +1,4 @@
+# Only the vendored libraries change rarely enough to cache. Game code keeps the default
+# (max-age=0, must-revalidate + ETag) so host and guests never run different versions.
+/vendor/*
+  Cache-Control: public, max-age=86400

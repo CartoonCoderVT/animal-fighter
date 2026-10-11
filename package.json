@@ -1,0 +1,15 @@
+{
+  "name": "animal-fighter",
+  "private": true,
+  "description": "Animal Fighter: o site e o servidor de salas no Cloudflare (Worker + static assets).",
+  "scripts": {
+    "dev": "wrangler dev --persist-to ../.wrangler-animal-fighter",
+    "deploy": "wrangler deploy"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "wrangler": "4.141.0"
+  }
+}

@@ -85,7 +85,8 @@ export class Game {
     const a = this.actor(id);
     if (!a) return;
     a.queued ??= {};
-    for (const k of ['jump', 'power', 'grab', 'dodge', 'attack', 'drop', 'detonate', 'bats']) if (input[k] === true && a.input[k] !== true) a.queued[k] = true;
+    // Latched until the actor's next step, so a tap shorter than a step still counts.
+    for (const k of ['left', 'right', 'down', 'jump', 'power', 'grab', 'dodge', 'attack', 'drop', 'detonate', 'bats']) if (input[k] === true && a.input[k] !== true) a.queued[k] = true;
     a.input = { ...EMPTY_INPUT(), ...input };
   }
   actor(id) { return id === null || id === undefined ? undefined : this.actors.find(a => a.id === id); }
@@ -94,7 +95,9 @@ export class Game {
   closest(a, max = Infinity) { return this.enemies(a).sort((b, c) => dist(a, b) - dist(a, c)).find(b => dist(a, b) < max); }
 
   fx(type, data) {
-    const e = { id: ++this.eventId, time: this.time, seq: this.seq, type: 'fx', fx: type, ...data };
+    // The event's own keys go last: an effect's data (the gib's fighter type) must not overwrite them,
+    // or guests (who pick effects out of the events by type) never see it.
+    const e = { ...data, id: ++this.eventId, time: this.time, seq: this.seq, type: 'fx', fx: type };
     if (this.fxQueue.length > 600) this.fxQueue.splice(0, 200);
     this.fxQueue.push(e);
     this.netEvents.push(e);

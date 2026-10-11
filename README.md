@@ -2,13 +2,13 @@
 
 Briga de animais em pixel art com física, ragdolls e partidas online direto no navegador.
 
-**Jogar:** https://cartooncodervt.github.io/animal-fighter/
+**Jogar:** https://cartooncodervt.github.io/animal-fighter/ (GitHub Pages). Também dá para hospedar a sua cópia no Cloudflare: veja [Hospedar no Cloudflare](#hospedar-no-cloudflare).
 
 ## Jogar com amigos
 
 1. Abra o jogo e entre em **ONLINE → CRIAR SALA**.
 2. Mande o código da sala (ou o link de convite) para os amigos; eles entram em **ONLINE → ENTRAR**.
-3. Até 4 jogadores. A conexão é direta entre os navegadores (WebRTC via PeerJS).
+3. Até 4 jogadores. A partida roda direto entre os navegadores (WebRTC via PeerJS); o servidor de salas só apresenta os jogadores na entrada (no Cloudflare é o próprio site; no GitHub Pages, o servidor público do PeerJS).
 
 ## Controles
 
@@ -35,6 +35,19 @@ Escolha a arena na tela de lutadores (**M**) ou, online, na sala (o anfitrião e
 
 - **Depósito 07 · Turno da Noite**: esteira, prensa hidráulica, triturador, cabo elétrico e carga pendurada.
 - **Castelo · Salão do Relógio**: um salão gótico à meia-noite. Velas que soltam itens quando quebradas (corações, água benta, armas), um lustre que despenca se a corrente for cortada, pêndulos que varrem as sacadas, uma pedra solta sobre o fosso de estacas, armaduras que desmontam e deixam a arma... e alguns segredos para quem prestar atenção.
+
+## Hospedar no Cloudflare
+
+O repositório também roda como um Worker do Cloudflare (dá no plano gratuito): ele serve o site e o servidor de salas. A partida continua direto entre os navegadores; o Cloudflare só apresenta os jogadores na entrada da sala (e, com o TURN ligado, repassa o tráfego de quem não consegue conexão direta).
+
+**Uma vez só:** no painel do Cloudflare, **Workers & Pages → Create application → Import a repository** e escolha este repositório. Nome do Worker: `animal-fighter` (tem que ser igual ao `name` do `wrangler.jsonc`), build command vazio, deploy command `npx wrangler deploy`. Depois disso cada push na branch principal publica sozinho, em `https://animal-fighter.<sua-conta>.workers.dev`.
+
+**TURN (opcional):** no painel, **Realtime → TURN Server → Create**, e copie o **Turn Token ID** e o **API Token**. No Worker, em **Settings → Variables and Secrets**, adicione os secrets `TURN_KEY_ID` e `TURN_KEY_API_TOKEN`. Sem eles o jogo usa o TURN público do PeerJS, como no GitHub Pages.
+
+**No seu computador** (Node.js 22 ou mais novo): `npm install`, `npm run dev` e abra http://localhost:8787.
+
+As salas são de cada site: quem está na cópia do GitHub Pages não entra numa sala criada na cópia do Cloudflare, e vice-versa.
+
 ## Créditos
 
 Física: [Matter.js](https://brm.io/matter-js/) (MIT) · Rede: [PeerJS](https://peerjs.com/) (MIT). Licenças em `vendor/`.

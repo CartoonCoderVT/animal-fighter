@@ -8,6 +8,7 @@ import { HUD, panel } from '../render/hud.js';
 import { Game } from '../sim/game.js';
 import { FIGHTERS } from '../sim/fighters.js';
 import { Multiplayer } from '../net/network.js';
+import { Playout } from '../net/playout.js';
 import { dissolve } from './widgets.js';
 import { TitleScene, MenuScene } from './scenes/title.js';
 import { MatchScene } from './scenes/match.js';
@@ -35,13 +36,14 @@ export class Shell {
     this.net = new Multiplayer(e => this.networkEvent(e));
     this.selected = Number.isInteger(this.settings.fighter) ? clamp(this.settings.fighter, 0, FIGHTERS.length - 1) : 0;
     this.mode = 'solo';
-    this.game = null; this.remote = null; this.remotePrev = null; this.lastRemote = 0; this.lastEvent = 0; this.latency = 0;
+    this.game = null; this.remote = null; this.lastRemote = 0; this.latency = 0;
+    this.playout = new Playout(); this.view = null; this.released = [];
     this.localId = 0;
     this.attract = null; this.attractAge = 0;
     this.stack = [];
     this.fade = 0; this.fadeDir = 0; this.pending = null;
     this.toasts = [];
-    this.acc = 0; this.netTick = 0; this.inputTick = 0; this.pingTick = 0;
+    this.acc = 0; this.netAcc = 0; this.pingTick = 0;
     this.last = performance.now();
     this.frameMs = 16; this.fpsT = 0; this.fps = 60; this.frames = 0;
     this.resizeFlag = true;
@@ -127,7 +129,7 @@ export class Shell {
     this.mode = mode;
     this.renderer.resetMatch();
     this.hud.reset();
-    this.remote = null; this.remotePrev = null; this.lastEvent = 0; this.lastRemote = 0;
+    this.remote = null; this.lastRemote = 0; this.netAcc = 0; this.resetRemote();
     this.localId = isRemote ? this.net.localId : 0;
     const countdown = mode === 'sandbox' || isRemote ? 0 : 3;
     if (!isRemote) {
@@ -145,7 +147,7 @@ export class Shell {
 
   leaveMatch({ keepRoom = false, toMenu = true } = {}) {
     this.disposeGame();
-    this.remote = null;
+    this.remote = null; this.resetRemote();
     this.renderer.resetMatch();
     if (!keepRoom) this.net.close();
     if (toMenu) this.go(new MenuScene(this));
@@ -166,21 +168,24 @@ export class Shell {
     return this.attract;
   }
 
+  // The host and the offline modes draw the live game; a guest draws the host's snapshots, played back
+  // a little in the past so they can be interpolated (worked out once per frame in playRemote).
   state() {
     if (this.game) return this.game;
-    if (this.remote) return this.interpolateRemote();
+    if (this.remote) return this.view;
     return null;
   }
 
-  interpolateRemote() {
-    const remote = this.remote, prev = this.remotePrev;
-    if (!prev) return remote;
-    const t = clamp((performance.now() - this.lastRemote) / 50, 0, 1);
-    const out = { ...remote, time: prev.time + (remote.time - prev.time) * t };
+  resetRemote() { this.playout.reset(); this.view = null; this.released = []; }
+
+  // Between two snapshots: positions slide and angles turn the short way; the rest is the newer one's.
+  interpolate(prev, next, t) {
+    if (!prev) return next;
+    const out = { ...next, time: prev.time + (next.time - prev.time) * t };
     for (const key of ['actors', 'props', 'limbs', 'bullets', 'minions']) {
-      if (!remote[key] || !prev[key]) continue;
+      if (!next[key] || !prev[key]) continue;
       const old = new Map(prev[key].map(a => [a.id, a]));
-      out[key] = remote[key].map(a => {
+      out[key] = next[key].map(a => {
         const b = old.get(a.id);
         // Teleports are instant, never a slide: Lola's skips (counted in skips) and long jumps.
         if (!b || Math.hypot(a.x - b.x, a.y - b.y) > 180 || a.skips !== b.skips) return a;
@@ -195,10 +200,10 @@ export class Shell {
       });
     }
     // The cut-in and the stopped world are timed by the time stop's own clock: smooth it too.
-    if (remote.timeStop && prev.timeStop && remote.timeStop.owner === prev.timeStop.owner) out.timeStop = { ...remote.timeStop, t: prev.timeStop.t + (remote.timeStop.t - prev.timeStop.t) * t };
+    if (next.timeStop && prev.timeStop && next.timeStop.owner === prev.timeStop.owner) out.timeStop = { ...next.timeStop, t: prev.timeStop.t + (next.timeStop.t - prev.timeStop.t) * t };
     // The Cat Kings' kingdoms: their units come and go, so they are matched by id; a unit that just
     // appeared, died or hopped far is not slid.
-    if (remote.kingdoms && prev.kingdoms) out.kingdoms = remote.kingdoms.map(k => {
+    if (next.kingdoms && prev.kingdoms) out.kingdoms = next.kingdoms.map(k => {
       const p = prev.kingdoms.find(q => q.id === k.id);
       if (!p) return k;
       const old = new Map(p.u.map(u => [u.id, u]));
@@ -207,10 +212,29 @@ export class Shell {
         return v && u.st !== 'appear' && v.st !== 'dead' && Math.hypot(u.x - v.x, u.y - v.y) < 60 ? { ...u, x: v.x + (u.x - v.x) * t, y: v.y + (u.y - v.y) * t } : u;
       }) };
     });
-    if (remote.hazards && prev.hazards) {
-      out.hazards = { ...remote.hazards, lamps: remote.hazards.lamps.map((l, i) => { const p = prev.hazards.lamps[i]; return p ? { ...l, x: p.x + (l.x - p.x) * t, y: p.y + (l.y - p.y) * t } : l; }) };
+    if (next.hazards && prev.hazards) {
+      out.hazards = { ...next.hazards, lamps: next.hazards.lamps.map((l, i) => { const p = prev.hazards.lamps[i]; return p ? { ...l, x: p.x + (l.x - p.x) * t, y: p.y + (l.y - p.y) * t } : l; }) };
     }
     return out;
+  }
+
+  // Guest, every frame: moves the playhead, plays the events that are due and builds the picture.
+  playRemote() {
+    const { a, b, t, events } = this.playout.advance(performance.now());
+    if (!a) return;
+    for (const ev of events) {
+      if (ev.type === 'sound') this.sound.play(ev.name, ev.x);
+      else if (ev.type === 'kill') this.hud.kill(ev);
+      this.released.push(ev);
+    }
+    if (this.released.length > 300) this.released.splice(0, this.released.length - 300);
+    // The renderer fires the effects of events newer than the last it saw: they land with the picture.
+    this.view = { ...(b ? this.interpolate(a.s, b.s, t) : a.s), events: this.released };
+  }
+
+  get netStats() {
+    const p = this.playout;
+    return { delay: p.delay, interval: p.interval, loss: p.loss, starved: p.starved, frames: p.frames, received: p.received, lost: p.lost, fast: this.net.fastReady, latency: this.latency };
   }
 
   // ---- network --------------------------------------------------------------------------
@@ -218,23 +242,28 @@ export class Shell {
     const scene = this.scene;
     if (e.type === 'status' || e.type === 'error') { scene.status = e.message; if (!(scene instanceof OnlineScene)) this.toast(e.message); }
     else if (e.type === 'lobby') { if (!this.playing) { if (this.base instanceof LobbyScene) this.base.refresh?.(); else this.go(new LobbyScene(this)); } }
-    else if (e.type === 'input') this.game?.inputFor(e.id, e.input);
+    else if (e.type === 'input' && this.game) {
+      // A press that came and went between two messages (edges: the key's counter moved) is replayed as
+      // up, down and, if it is not held now, up again: the game latches it for its next step.
+      const { id, input, edges = [] } = e;
+      if (edges.length) {
+        const up = { ...input }, down = { ...input };
+        for (const k of edges) { up[k] = false; down[k] = true; }
+        this.game.inputFor(id, up);
+        this.game.inputFor(id, down);
+        if (edges.some(k => !input[k])) this.game.inputFor(id, input);
+      } else this.game.inputFor(id, input);
+    }
     else if (e.type === 'start') { this.mode = 'online'; this.startMatch(e.players, { mode: 'online', isRemote: true, map: e.map }); }
     else if (e.type === 'state') {
       this.lastRemote = performance.now();
-      this.remotePrev = this.remote;
       this.remote = e.state;
-      for (const ev of e.state.events || []) {
-        if (ev.id <= this.lastEvent) continue;
-        this.lastEvent = Math.max(this.lastEvent, ev.id);
-        if (ev.type === 'sound') this.sound.play(ev.name, ev.x);
-        else if (ev.type === 'kill') this.hud.kill(ev);
-      }
+      this.playout.push(e.state, e.n, e.at, this.lastRemote);
     } else if (e.type === 'left') {
       const a = this.game?.actor(e.id);
       if (a) { a.bot = true; a.input = EMPTY_INPUT(); this.toast(a.name + ' saiu. Um bot assumiu.'); }
     } else if (e.type === 'disconnected') { this.leaveMatch({ keepRoom: false }); this.toast(e.message); }
-    else if (e.type === 'end') { this.disposeGame(); this.remote = null; this.go(new LobbyScene(this)); this.toast(e.message); }
+    else if (e.type === 'end') { this.disposeGame(); this.remote = null; this.resetRemote(); this.go(new LobbyScene(this)); this.toast(e.message); }
     else if (e.type === 'latency') this.latency = e.ms;
   }
 
@@ -248,12 +277,20 @@ export class Shell {
         this.acc = Math.min(this.acc + dt, 0.15);
         while (this.acc >= STEP) { this.game.step(STEP); this.acc -= STEP; }
       }
-      this.netTick += dt;
-      if (this.net.host && this.net.started && this.netTick >= 1 / 20) { this.net.sendState(this.game.snapshot()); this.net.clearStaleInputs(); this.netTick = 0; }
+      // Guests get the state 30 times a second on any display (an accumulator, not a frame count), also
+      // during the countdown so they see it. It is stamped with the moment it shows: the sim runs acc behind.
+      if (this.net.host && this.net.started) {
+        this.netAcc += dt;
+        if (this.netAcc >= 1 / 30) { this.netAcc = Math.min(this.netAcc - 1 / 30, 1 / 30); this.net.sendState(this.game.snapshot(), now - this.acc * 1000); this.net.clearStaleInputs(); }
+      }
     }
     if (hiddenTick) return;
     this.pingTick += dt;
-    if (this.pingTick > 2) { this.net.ping(); this.pingTick = 0; if (!this.game && this.remote && performance.now() - this.lastRemote > 5000) this.toast('Conexão lenta. Aguardando o anfitrião…'); }
+    if (this.pingTick > 1) {
+      this.net.ping(); this.pingTick = 0;
+      const slow = 'Conexão lenta. Aguardando o anfitrião…';
+      if (!this.game && this.remote && performance.now() - this.lastRemote > 5000 && !this.toasts.some(t => t.text === slow)) this.toast(slow);
+    }
   }
 
   frame(now) {
@@ -267,6 +304,7 @@ export class Shell {
     if (this.input.anyPressed) this.enableAudio();
     const t0 = performance.now();
     try {
+      if (!this.game && this.remote && this.playing) this.playRemote();
       this.scene.update?.(dt);
       this.simulate(now);
       // Scenes draw the interface into the UI layer; the world goes through the camera.
